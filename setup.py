@@ -15,9 +15,7 @@ setup(
     description="Subscriptions and payments for your django app",
     long_description=(ROOT / 'README.md').read_text(),
     # license='',
-    install_requires=[
-        'Django>=3.0',
-    ],
+    install_requires=(ROOT / 'requirements.txt').read_text().split('\n'),
     # extras_require={
     #     'docs': ['sphinx', 'sphinx-autobuild'],
     # },
