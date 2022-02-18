@@ -15,7 +15,7 @@ from .fields import MoneyField
 
 #
 #  |--------subscription-------------------------------------------->
-#  begin             (subscription duration)                end or inf
+#  start             (subscription duration)                end or inf
 #
 #  |-----------------------------|---------------------------|------>
 #  charge   (charge period)    charge                      charge
@@ -34,7 +34,7 @@ INFINITY = timedelta(days=365 * 1000)
 class Plan(models.Model):
     codename = models.CharField(max_length=255)
     name = models.CharField(max_length=255)
-    charge_amount = MoneyField()
+    charge_amount = MoneyField(blank=True, null=True)
     charge_period = models.DurationField(blank=True, help_text='leave blank for one-time charge')
     subscription_duration = models.DurationField(blank=True, help_text='leave blank to make it an infinite subscription')
     is_enabled = models.BooleanField(default=True)
@@ -52,17 +52,27 @@ class Plan(models.Model):
         self.subscription_duration = self.subscription_duration or INFINITY
         return super().save(*args, **kwargs)
 
+    def iter_charge_dates(self, from_: datetime) -> Iterator[datetime]:
+        if self.charge_period == INFINITY:
+            return
+
+        i = 1
+        while True:
+            yield from_ + self.charge_period * i
+            i += 1
+
 
 class SubscriptionManager(models.Manager):
-    def active(self):
-        return self.filter(end__gte=now())
+    def active(self, as_of: Optional[datetime] = None):
+        now_ = as_of or now()
+        return self.filter(start__lte=now_, end__gte=now_)
 
 
 class Subscription(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='subscriptions')
     plan = models.ForeignKey(Plan, on_delete=models.PROTECT, related_name='subscriptions')
     # amount = MoneyField()  # should match plan.charge_amount
-    begin = models.DateTimeField(blank=True)
+    start = models.DateTimeField(blank=True)
     end = models.DateTimeField(blank=True)
 
     objects = SubscriptionManager()
@@ -71,8 +81,8 @@ class Subscription(models.Model):
         return f'{self.user} @ {self.plan}'
 
     def save(self, *args, **kwargs):
-        self.begin = self.begin or now()
-        self.end = self.end or (self.begin + self.plan.subscription_duration)
+        self.start = self.start or now()
+        self.end = self.end or (self.start + self.plan.subscription_duration)
         return super().save(*args, **kwargs)
 
     def stop(self):
@@ -131,9 +141,9 @@ class Quota(models.Model):
         return super().save(*args, **kwargs)
 
     @classmethod
-    def iter_events(cls, user: AbstractUser, since: Optional[datetime] = None) -> Iterator[Event]:
+    def iter_events(cls, user, since: Optional[datetime] = None) -> Iterator[Event]:
         active_subscriptions = Subscription.objects.active().filter(user=user)
-        since = since or active_subscriptions.values_list('begin').order_by('begin').first()
+        since = since or active_subscriptions.values_list('start').order_by('start').first()
         now_ = now()
 
         resources_with_quota = set()
@@ -144,7 +154,7 @@ class Quota(models.Model):
 
                 i = 0
                 while True:
-                    recharge_time = subscription.begin + i * quota.recharge_period
+                    recharge_time = subscription.start + i * quota.recharge_period
                     if recharge_time > now_:
                         break
 
@@ -173,7 +183,7 @@ class Quota(models.Model):
                     datetime=usage_time,
                     resource=resource,
                     type=Event.Type.USAGE,
-                    value=-amount,
+                    value=-amount,  # type: ignore
                 )
 
     @classmethod

@@ -13,8 +13,8 @@ class PlanAdmin(admin.ModelAdmin):
 
 @admin.register(Subscription)
 class SubscriptionAdmin(admin.ModelAdmin):
-    list_display = 'user', 'plan', 'begin', 'end',
-    list_filter = 'plan', 'begin', 'end',
+    list_display = 'user', 'plan', 'start', 'end',
+    list_filter = 'plan', 'start', 'end',
     search_fields = 'user',
     ordering = '-pk',
 
