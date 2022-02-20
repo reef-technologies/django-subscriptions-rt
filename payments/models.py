@@ -1,12 +1,9 @@
-from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum, auto
-from functools import reduce
 from typing import Iterator, Optional
 
 from django.conf import settings
-from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.db.models import Index, QuerySet, UniqueConstraint
 from django.utils.timezone import now
@@ -108,7 +105,7 @@ class Resource(models.Model):
 
 
 @dataclass
-class Event:
+class QuotaEvent:
     class Type(Enum):
         RECHARGE = auto()
         BURN = auto()
@@ -141,10 +138,10 @@ class Quota(models.Model):
         return super().save(*args, **kwargs)
 
     @classmethod
-    def iter_events(cls, user, since: Optional[datetime] = None) -> Iterator[Event]:
+    def iter_events(cls, user, since: Optional[datetime] = None, until: Optional[datetime] = None) -> Iterator[QuotaEvent]:
         active_subscriptions = Subscription.objects.active().filter(user=user)
         since = since or active_subscriptions.values_list('start').order_by('start').first()
-        now_ = now()
+        until = until or now()
 
         resources_with_quota = set()
 
@@ -155,52 +152,36 @@ class Quota(models.Model):
                 i = 0
                 while True:
                     recharge_time = subscription.start + i * quota.recharge_period
-                    if recharge_time > now_:
+                    if recharge_time > until:
                         break
 
                     if recharge_time >= since:
-                        yield Event(
+                        yield QuotaEvent(
                             datetime=recharge_time,
                             resource=quota.resource,
-                            type=Event.Type.RECHARGE,
+                            type=QuotaEvent.Type.RECHARGE,
                             value=quota.limit,
                         )
 
                     burn_time = recharge_time + quota.burns_in
-                    if since <= burn_time <= now_:
-                        yield Event(
+                    if since <= burn_time <= until:
+                        yield QuotaEvent(
                             datetime=burn_time,
                             resource=quota.resource,
-                            type=Event.Type.BURN,
+                            type=QuotaEvent.Type.BURN,
                             value=-quota.limit,
                         )
 
                     i += 1
 
         for resource in resources_with_quota:
-            for usage_time, amount in Usage.objects.filter(user=user, resource=resource, datetime__gte=since, datetime__lte=now_).order_by('datetime').values_list('datetime', 'amount'):
-                yield Event(
+            for usage_time, amount in Usage.objects.filter(user=user, resource=resource, datetime__gte=since, datetime__lte=until).order_by('datetime').values_list('datetime', 'amount'):
+                yield QuotaEvent(
                     datetime=usage_time,
                     resource=resource,
-                    type=Event.Type.USAGE,
+                    type=QuotaEvent.Type.USAGE,
                     value=-amount,  # type: ignore
                 )
-
-    @classmethod
-    def calculate_remaining(cls, user: AbstractUser, since: Optional[datetime] = None, initial: Optional[dict['Resource', int]] = None) -> dict[Resource, int]:
-        initial = initial or {}
-
-        events: dict[Resource, list[Event]] = defaultdict(list)
-        for event in cls.iter_events(user, since=since):
-            events[event.resource].append(event)
-
-        for resource in events:
-            events[resource].sort()
-
-        return {
-            resource: reduce(lambda remains, event: max(0, remains + event.value), event_list, initial.get(resource, 0))
-            for resource, event_list in events.items()
-        }
 
 
 class Usage(models.Model):

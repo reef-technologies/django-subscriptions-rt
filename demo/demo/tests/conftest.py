@@ -1,11 +1,12 @@
 from datetime import datetime, timedelta
 from datetime import timezone as tz
 from decimal import Decimal
+from functools import wraps
 
 import pytest
 from django.contrib.auth import get_user_model
-
-from payments.models import Plan, Resource, Subscription
+from payments.helpers import get_remaining
+from payments.models import Plan, Quota, Resource, Subscription
 
 
 @pytest.fixture
@@ -44,3 +45,16 @@ def subscription(db, now, user, plan) -> Subscription:
         plan=plan,
         start=now,
     )
+
+
+@pytest.fixture
+def quota(db, resource, subscription) -> Quota:
+    return Quota.calculate_remaining(user)
+
+
+@pytest.fixture
+def remains(resource, user) -> callable:
+    @wraps(get_remaining)
+    def wrapped(**kwargs):
+        return get_remaining(user=user, **kwargs)[resource]
+    return wrapped

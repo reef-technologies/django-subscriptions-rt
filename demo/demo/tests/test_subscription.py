@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 
 import pytest
-from payments.models import Plan, Subscription
+from payments.models import Subscription
 
 
 def test_limited_plan_duration(db, user, plan, now):
