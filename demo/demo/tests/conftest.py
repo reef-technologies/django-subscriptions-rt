@@ -56,5 +56,5 @@ def quota(db, resource, subscription) -> Quota:
 def remains(resource, user) -> callable:
     @wraps(get_remaining)
     def wrapped(**kwargs):
-        return get_remaining(user=user, **kwargs)[resource]
+        return get_remaining(user=user, resource=resource, **kwargs)
     return wrapped

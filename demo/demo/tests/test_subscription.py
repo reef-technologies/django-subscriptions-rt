@@ -1,7 +1,8 @@
 from datetime import datetime, timedelta
 
 import pytest
-from payments.models import Subscription
+from payments.models import QuotaChunk, Subscription, Quota
+from .utils import days
 
 
 def test_limited_plan_duration(db, user, plan, now):
@@ -76,3 +77,38 @@ def test_active_subscription_filter(db, subscription, now):
 
 # def test_plan_is_enabled(plan: Plan):
 #     raise NotImplementedError()
+
+
+def test_iter_quota_chunks(db, subscription, resource):
+    """
+                       Subscription
+    ----------[=========================]-------------> time
+
+    quota 1:  [----------------]
+              recharge (+100)  burn
+
+    quota 2:               [-----------------]
+                           recharge (+100)   burn
+    """
+    subscription.end = subscription.start + timedelta(days=10)
+    subscription.save(update_fields=['end'])
+
+    Quota.objects.create(
+        plan=subscription.plan,
+        resource=resource,
+        limit=100,
+        recharge_period=timedelta(days=5),
+        burns_in=timedelta(days=7),
+    )
+
+    start = subscription.start
+    chunks = [
+        QuotaChunk(resource=resource, start=start, end=start + timedelta(days=7), remains=100),
+        QuotaChunk(resource=resource, start=start + timedelta(days=5), end=start + timedelta(days=10), remains=100),
+    ]
+
+    assert list(subscription.iter_quota_chunks(until=start - days(1))) == []
+    assert list(subscription.iter_quota_chunks(until=start + days(2))) == chunks[0:1]
+    assert list(subscription.iter_quota_chunks(until=start + days(5))) == chunks
+    assert list(subscription.iter_quota_chunks(until=start + days(11))) == chunks
+    assert list(subscription.iter_quota_chunks(since=subscription.end - days(1))) == chunks[1:]

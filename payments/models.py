@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum, auto
+from math import ceil
 from typing import Iterator, Optional
 
 from django.conf import settings
@@ -26,6 +27,19 @@ from .fields import MoneyField
 
 
 INFINITY = timedelta(days=365 * 1000)
+
+
+class Resource(models.Model):
+    codename = models.CharField(max_length=255)
+    units = models.CharField(max_length=255, blank=True)
+
+    class Meta:
+        constraints = [
+            UniqueConstraint(fields=['codename'], name='unique_resource'),
+        ]
+
+    def __str__(self) -> str:
+        return self.codename
 
 
 class Plan(models.Model):
@@ -59,6 +73,14 @@ class Plan(models.Model):
             i += 1
 
 
+@dataclass
+class QuotaChunk:
+    resource: Resource
+    start: datetime
+    end: datetime
+    remains: int
+
+
 class SubscriptionManager(models.Manager):
     def active(self, as_of: Optional[datetime] = None):
         now_ = as_of or now()
@@ -90,31 +112,31 @@ class Subscription(models.Model):
     def get_expiring(cls, within: timedelta) -> QuerySet:
         return cls.objects.active().filter(end__lte=now() + within)
 
+    def iter_quota_chunks(self, since: Optional[datetime] = None, until: Optional[datetime] = None, resource: Optional[Resource] = None) -> Iterator[QuotaChunk]:
+        assert since <= until
 
-class Resource(models.Model):
-    codename = models.CharField(max_length=255)
-    units = models.CharField(max_length=255, blank=True)
+        since = since or self.start
+        until = min(until, self.end) if until else self.end
 
-    class Meta:
-        constraints = [
-            UniqueConstraint(fields=['codename'], name='unique_resource'),
-        ]
+        quotas = self.plan.quotas.all()
+        if resource:
+            quotas = quotas.filter(resource=resource)
 
-    def __str__(self) -> str:
-        return self.codename
+        for quota in quotas:
+            min_start_time = max(since - quota.burns_in, self.start)  # quota chunks starting after this are OK
+            index = ceil((min_start_time - self.start) / quota.recharge_period)  # index of first quota chunk starting after min_start_time
+            while True:
+                start = self.start + index * quota.recharge_period
+                if start >= until:
+                    return
 
-
-@dataclass
-class QuotaEvent:
-    class Type(Enum):
-        RECHARGE = auto()
-        BURN = auto()
-        USAGE = auto()
-
-    datetime: datetime
-    resource: Resource
-    type: Type
-    value: int
+                yield QuotaChunk(
+                    resource=quota.resource,
+                    start=start,
+                    end=min(start + quota.burns_in, self.end),
+                    remains=quota.limit,
+                )
+                index += 1
 
 
 class Quota(models.Model):
@@ -136,52 +158,6 @@ class Quota(models.Model):
         self.recharge_period = self.recharge_period or self.plan.charge_period
         self.burns_in = self.burns_in or self.recharge_period
         return super().save(*args, **kwargs)
-
-    @classmethod
-    def iter_events(cls, user, since: Optional[datetime] = None, until: Optional[datetime] = None) -> Iterator[QuotaEvent]:
-        active_subscriptions = Subscription.objects.active().filter(user=user)
-        since = since or active_subscriptions.values_list('start').order_by('start').first()
-        until = until or now()
-
-        resources_with_quota = set()
-
-        for subscription in active_subscriptions.select_related('plan__quotas'):
-            for quota in subscription.plan.quotas.all():
-                resources_with_quota.add(quota.resource)
-
-                i = 0
-                while True:
-                    recharge_time = subscription.start + i * quota.recharge_period
-                    if recharge_time > until:
-                        break
-
-                    if recharge_time >= since:
-                        yield QuotaEvent(
-                            datetime=recharge_time,
-                            resource=quota.resource,
-                            type=QuotaEvent.Type.RECHARGE,
-                            value=quota.limit,
-                        )
-
-                    burn_time = recharge_time + quota.burns_in
-                    if since <= burn_time <= until:
-                        yield QuotaEvent(
-                            datetime=burn_time,
-                            resource=quota.resource,
-                            type=QuotaEvent.Type.BURN,
-                            value=-quota.limit,
-                        )
-
-                    i += 1
-
-        for resource in resources_with_quota:
-            for usage_time, amount in Usage.objects.filter(user=user, resource=resource, datetime__gte=since, datetime__lte=until).order_by('datetime').values_list('datetime', 'amount'):
-                yield QuotaEvent(
-                    datetime=usage_time,
-                    resource=resource,
-                    type=QuotaEvent.Type.USAGE,
-                    value=-amount,  # type: ignore
-                )
 
 
 class Usage(models.Model):

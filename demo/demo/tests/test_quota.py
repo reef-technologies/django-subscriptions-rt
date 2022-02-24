@@ -4,14 +4,14 @@ from payments.helpers import get_remaining
 from payments.models import Quota
 
 
-def test_quota_without_subscription(db, plan, resource, user, now):
+def test_quota_without_subscription(db, plan, resource, remains, now):
     Quota.objects.create(
         plan=plan,
         resource=resource,
         limit=100,
     )
 
-    assert get_remaining(user=user, at=now) == 0
+    assert remains(at=now) == 0
 
 
 def test_quota_without_usage(db, subscription, resource, remains):
