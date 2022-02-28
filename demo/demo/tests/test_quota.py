@@ -1,6 +1,6 @@
 from datetime import timedelta
 
-from payments.helpers import get_remaining
+from demo.tests.utils import days
 from payments.models import Quota
 
 
@@ -20,7 +20,7 @@ def test_quota_without_usage(db, subscription, resource, remains):
     --------------[================]------------> time
     quota:    0   100            100   0
     """
-    subscription.end = subscription.start + timedelta(days=30)
+    subscription.end = subscription.start + days(30)
     subscription.save(update_fields=['end'])
 
     Quota.objects.create(
@@ -43,20 +43,20 @@ def test_quota_recharge(db, subscription, resource, remains):
               recharge    recharge    recharge
     quota: 0  100         200         300     0
     """
-    subscription.end = subscription.start + timedelta(days=30)
+    subscription.end = subscription.start + days(30)
     subscription.save(update_fields=['end'])
 
     Quota.objects.create(
         plan=subscription.plan,
         resource=resource,
         limit=100,
-        recharge_period=timedelta(days=9),
+        recharge_period=days(9),
     )
 
     assert remains(at=subscription.start - timedelta(seconds=1)) == 0
     assert remains(at=subscription.start) == 100
-    assert remains(at=subscription.start + timedelta(days=9)) == 200
-    assert remains(at=subscription.start + timedelta(days=18)) == 300
+    assert remains(at=subscription.start + days(9)) == 200
+    assert remains(at=subscription.start + days(18)) == 300
     assert remains(at=subscription.end) == 0
 
 
@@ -73,20 +73,20 @@ def test_quota_burn(db, subscription, resource, remains):
 
     total: 0  100          200  100      0
     """
-    subscription.end = subscription.start + timedelta(days=10)
+    subscription.end = subscription.start + days(10)
     subscription.save(update_fields=['end'])
 
     Quota.objects.create(
         plan=subscription.plan,
         resource=resource,
         limit=100,
-        recharge_period=timedelta(days=5),
-        burns_in=timedelta(days=7),
+        recharge_period=days(5),
+        burns_in=days(7),
     )
 
     assert remains(at=subscription.start - timedelta(seconds=1)) == 0
     assert remains(at=subscription.start) == 100
-    assert remains(at=subscription.start + timedelta(days=5)) == 200
-    assert remains(at=subscription.start + timedelta(days=7)) == 100
-    assert remains(at=subscription.start + timedelta(days=10)) == 0
-    assert remains(at=subscription.start + timedelta(days=15)) == 0
+    assert remains(at=subscription.start + days(5)) == 200
+    assert remains(at=subscription.start + days(7)) == 100
+    assert remains(at=subscription.start + days(10)) == 0
+    assert remains(at=subscription.start + days(15)) == 0

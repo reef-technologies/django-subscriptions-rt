@@ -5,7 +5,7 @@ from functools import wraps
 
 import pytest
 from django.contrib.auth import get_user_model
-from payments.helpers import get_remaining
+from payments.functions import get_remaining
 from payments.models import Plan, Quota, Resource, Subscription
 
 

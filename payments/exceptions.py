@@ -1,0 +1,4 @@
+
+
+class QuotaLimitExceeded(Exception):
+    pass

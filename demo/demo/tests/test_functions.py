@@ -1,12 +1,11 @@
 from operator import attrgetter
 
-from payments.helpers import get_subscriptions_involved
+from demo.tests.utils import days
+from payments.functions import get_subscriptions_involved
 from payments.models import Subscription
 
-from .utils import days
 
-
-def test_subscriptions_involved(user, plan, now):
+def test_subscriptions_involved(user, plan, now, resource):
     """
     Subscriptions:                    |now
     -----------------------[====sub1=====]-----> overlaps with "now"
@@ -20,5 +19,5 @@ def test_subscriptions_involved(user, plan, now):
     _ = Subscription.objects.create(user=user, plan=plan, start=sub2.start - days(5), end=sub2.start)
     sub4 = Subscription.objects.create(user=user, plan=plan, start=sub2.start + days(1), end=sub1.start - days(1))
 
-    subscriptions_involved = get_subscriptions_involved(at=now)
+    subscriptions_involved = get_subscriptions_involved(user=user, at=now, resource=resource)
     assert sorted(subscriptions_involved, key=attrgetter('start')) == [sub2, sub4, sub1]

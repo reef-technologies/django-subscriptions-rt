@@ -1,7 +1,8 @@
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from enum import Enum, auto
+from itertools import count
 from math import ceil
+from operator import attrgetter
 from typing import Iterator, Optional
 
 from django.conf import settings
@@ -10,6 +11,7 @@ from django.db.models import Index, QuerySet, UniqueConstraint
 from django.utils.timezone import now
 
 from .fields import MoneyField
+from .utils import merge_iter
 
 #
 #  |--------subscription-------------------------------------------->
@@ -112,31 +114,29 @@ class Subscription(models.Model):
     def get_expiring(cls, within: timedelta) -> QuerySet:
         return cls.objects.active().filter(end__lte=now() + within)
 
-    def iter_quota_chunks(self, since: Optional[datetime] = None, until: Optional[datetime] = None, resource: Optional[Resource] = None) -> Iterator[QuotaChunk]:
-        assert since <= until
-
-        since = since or self.start
-        until = min(until, self.end) if until else self.end
-
+    def iter_quota_chunks(self, since: Optional[datetime] = None, until: Optional[datetime] = None, resource: Optional[Resource] = None, sort_by: callable = attrgetter('start')) -> Iterator[QuotaChunk]:
         quotas = self.plan.quotas.all()
         if resource:
             quotas = quotas.filter(resource=resource)
 
-        for quota in quotas:
-            min_start_time = max(since - quota.burns_in, self.start)  # quota chunks starting after this are OK
-            index = ceil((min_start_time - self.start) / quota.recharge_period)  # index of first quota chunk starting after min_start_time
-            while True:
-                start = self.start + index * quota.recharge_period
-                if start >= until:
-                    return
+        yield from merge_iter(*(self._iter_single_quota_chunks(quota=quota, since=since, until=until) for quota in quotas), key=sort_by)
 
-                yield QuotaChunk(
-                    resource=quota.resource,
-                    start=start,
-                    end=min(start + quota.burns_in, self.end),
-                    remains=quota.limit,
-                )
-                index += 1
+    def _iter_single_quota_chunks(self, quota: 'Quota', since: Optional[datetime] = None, until: Optional[datetime] = None):
+        min_start_time = max(since - quota.burns_in, self.start) if since else self.start  # quota chunks starting after this are OK
+        until = min(until, self.end) if until else self.end
+
+        count_start = ceil((min_start_time - self.start) / quota.recharge_period)  # index of first quota chunk starting after min_start_time
+        for i in count(start=count_start):
+            start = self.start + i * quota.recharge_period
+            if start > until:
+                return
+
+            yield QuotaChunk(
+                resource=quota.resource,
+                start=start,
+                end=min(start + quota.burns_in, self.end),
+                remains=quota.limit,
+            )
 
 
 class Quota(models.Model):
@@ -152,7 +152,7 @@ class Quota(models.Model):
         ]
 
     def __str__(self) -> str:
-        return f'{self.resource}: {self.limit:,}{self.resource.units}/{self.recharge_period}'
+        return f'{self.resource} {self.limit:,}{self.resource.units}/{self.recharge_period}, burns in {self.burns_in}'
 
     def save(self, *args, **kwargs):
         self.recharge_period = self.recharge_period or self.plan.charge_period

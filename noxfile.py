@@ -23,4 +23,4 @@ def lint(session):
 @nox.parametrize('django', DJANGO_VERSIONS)
 def test(session, django: str):
     session.install(f'django~={django}.0', 'pytest', 'pytest-django', 'ipdb', '.')
-    session.run('pytest', '-W', 'ignore::DeprecationWarning', '--pdb', '--pdbcls', 'IPython.terminal.debugger:Pdb', str(DEMO_APP_DIR), env={'DJANGO_SETTINGS_MODULE': 'demo.settings'})
+    session.run('pytest', '-W', 'ignore::DeprecationWarning', '-s', '--pdb', '--pdbcls', 'IPython.terminal.debugger:Pdb', str(DEMO_APP_DIR), env={'DJANGO_SETTINGS_MODULE': 'demo.settings'})
