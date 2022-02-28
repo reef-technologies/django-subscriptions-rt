@@ -10,39 +10,15 @@ from django.utils.timezone import now
 from payments.exceptions import QuotaLimitExceeded
 from payments.models import QuotaChunk, Resource, Subscription
 
-T = TypeVar('T')
-
-
-def merge_iter(*iterables: Iterable[T], sort_by: callable = lambda x: x) -> Iterator[T]:
-    values: Dict[Iterable[T], T] = {}
-    iterables = [iter(it) for it in iterables]
-    for iterable in iterables:
-        try:
-            values[iterable] = next(iterable)
-        except StopIteration:
-            pass
-
-    last_min_value = None
-    while values:
-        # consume from iterator which provides lowest value
-        min_value = min(values.values(), key=sort_by)
-        if last_min_value is not None:
-            assert last_min_value <= min_value, 'Iterables are not monothonic'
-        yield (last_min_value := min_value)
-        iterable = next(it for it, val in values.items() if val == min_value)
-        try:
-            values[iterable] = next(iterable)
-        except StopIteration:
-            del values[iterable]
-
 
 def get_subscriptions_involved(user: AbstractUser, at: datetime, resource: 'Resource') -> QuerySet['Subscription']:
     from_ = at
 
-    raise NotImplementedError('Arg "resource" not implemented')
-
     while True:
-        starts = Subscription.objects.filter(user=user, start__lte=from_, end__gt=from_).values_list('start', flat=True)
+        subscriptions = Subscription.objects.prefetch_related('plan__quotas').filter(
+            user=user, end__gt=from_, start__lte=at, plan__quotas__resource=resource,
+        ).order_by('pk').distinct()
+        starts = subscriptions.values_list('start', flat=True)
         if not starts:
             return Subscription.objects.none()
 
@@ -52,7 +28,7 @@ def get_subscriptions_involved(user: AbstractUser, at: datetime, resource: 'Reso
 
         from_ = min_start
 
-    return Subscription.objects.filter(user=user, start__lte=at, end__gt=from_)
+    return subscriptions
 
 
 class QuotaCache(NamedTuple):

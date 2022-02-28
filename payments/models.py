@@ -69,10 +69,8 @@ class Plan(models.Model):
         if self.charge_period == INFINITY:
             return
 
-        i = 1
-        while True:
+        for i in count(start=0):
             yield from_ + self.charge_period * i
-            i += 1
 
 
 @dataclass
