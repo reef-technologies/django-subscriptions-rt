@@ -1,6 +1,6 @@
 from datetime import datetime
+from datetime import timezone as tz
 
-import pytest
 from demo.tests.utils import days
 from payments.models import Quota, QuotaChunk, Subscription
 
@@ -29,26 +29,35 @@ def test_unlimited_plan_duration(db, user, plan, now):
     assert subscription.end >= now + days(365 * 10)
 
 
-def test_plan_charge_dates(db, plan):
+def test_subscription_charge_dates(db, plan, subscription):
     plan.charge_period = days(30)
     plan.save(update_fields=['charge_period'])
 
-    start = datetime(2021, 11, 30, 12, 00, 00)
+    subscription.start = datetime(2021, 11, 30, 12, 00, 00, tzinfo=tz.utc)
+    subscription.end = subscription.start + days(65)
+    subscription.save(update_fields=['start', 'end'])
+
     expected_charge_dates = [
-        datetime(2021, 12, 30, 12, 00, 00),
-        datetime(2022, 1, 29, 12, 00, 00),
+        subscription.start,
+        datetime(2021, 12, 30, 12, 00, 00, tzinfo=tz.utc),
+        datetime(2022, 1, 29, 12, 00, 00, tzinfo=tz.utc),
     ]
 
-    for expected_date, yielded_date in zip(expected_charge_dates, plan.iter_charge_dates(from_=start)):
-        assert expected_date == yielded_date
+    assert list(subscription.iter_charge_dates()) == expected_charge_dates
+    assert list(subscription.iter_charge_dates(since=subscription.start)) == expected_charge_dates
+    assert list(subscription.iter_charge_dates(since=subscription.start + days(1))) == expected_charge_dates[1:]
+    assert list(subscription.iter_charge_dates(since=subscription.start + days(30))) == expected_charge_dates[1:]
+    assert list(subscription.iter_charge_dates(since=subscription.start + days(31))) == expected_charge_dates[2:]
+    assert list(subscription.iter_charge_dates(since=subscription.start + days(60))) == expected_charge_dates[2:]
+    assert list(subscription.iter_charge_dates(since=subscription.start + days(64))) == []
+    assert list(subscription.iter_charge_dates(since=subscription.start + days(65))) == []
 
 
-def test_plan_charge_dates_with_no_charge_period(db, plan, now):
+def test_subscription_charge_dates_with_no_charge_period(db, plan, subscription, now):
     plan.charge_period = None
     plan.save(update_fields=['charge_period'])
 
-    with pytest.raises(StopIteration):
-        next(plan.iter_charge_dates(now))
+    assert list(subscription.iter_charge_dates()) == [subscription.start]
 
 
 def test_active_subscription_filter(db, subscription, now):

@@ -65,13 +65,6 @@ class Plan(models.Model):
         self.subscription_duration = self.subscription_duration or INFINITY
         return super().save(*args, **kwargs)
 
-    def iter_charge_dates(self, from_: datetime) -> Iterator[datetime]:
-        if self.charge_period == INFINITY:
-            return
-
-        for i in count(start=0):
-            yield from_ + self.charge_period * i
-
 
 @dataclass
 class QuotaChunk:
@@ -153,6 +146,22 @@ class Subscription(models.Model):
             ),
             key=sort_by,
         )
+
+    def iter_charge_dates(self, since: Optional[datetime] = None) -> Iterator[datetime]:
+        """ Including first charge (i.e. charge to create subscription) """
+        charge_period = self.plan.charge_period
+
+        since = since or self.start
+        start_index = ceil((max(since, self.start) - self.start) / charge_period)
+
+        for i in count(start=start_index):
+            charge_date = self.start + charge_period * i
+            if charge_date >= self.end:
+                return
+
+            yield charge_date
+            if charge_period == INFINITY:
+                break
 
 
 class Quota(models.Model):
