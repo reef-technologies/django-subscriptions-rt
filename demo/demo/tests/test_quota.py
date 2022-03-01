@@ -1,7 +1,8 @@
 from datetime import timedelta
-
+import pytest
 from demo.tests.utils import days
 from payments.models import Quota
+from payments.exceptions import NoActiveSubscription
 
 
 def test_quota_without_subscription(db, plan, resource, remains, now):
@@ -11,7 +12,8 @@ def test_quota_without_subscription(db, plan, resource, remains, now):
         limit=100,
     )
 
-    assert remains(at=now) == 0
+    with pytest.raises(NoActiveSubscription):
+        remains(at=now)
 
 
 def test_quota_without_usage(db, subscription, resource, remains):

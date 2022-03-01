@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from itertools import count
 from math import ceil
 from operator import attrgetter
-from typing import Iterator, Optional
+from typing import Iterable, Iterator, Optional
 
 from django.conf import settings
 from django.db import models
@@ -80,6 +80,9 @@ class QuotaChunk:
     end: datetime
     remains: int
 
+    def includes(self, date: datetime) -> bool:
+        return self.start <= date < self.end
+
 
 class SubscriptionManager(models.Manager):
     def active(self, as_of: Optional[datetime] = None):
@@ -135,6 +138,21 @@ class Subscription(models.Model):
                 end=min(start + quota.burns_in, self.end),
                 remains=quota.limit,
             )
+
+    @classmethod
+    def iter_subscriptions_quota_chunks(cls, subscriptions: Iterable['Subscription'], since: datetime, until: datetime, resource: Resource, sort_by: callable = attrgetter('start')) -> Iterator[QuotaChunk]:
+        return merge_iter(
+            *(
+                subscription.iter_quota_chunks(
+                    since=since,
+                    until=until,
+                    resource=resource,
+                    sort_by=sort_by,
+                )
+                for subscription in subscriptions
+            ),
+            key=sort_by,
+        )
 
 
 class Quota(models.Model):
