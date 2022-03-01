@@ -73,6 +73,9 @@ class QuotaChunk:
     end: datetime
     remains: int
 
+    def __str__(self) -> str:
+        return f'{self.remains} {self.resource} {self.start} - {self.end}'
+
     def includes(self, date: datetime) -> bool:
         return self.start <= date < self.end
 
@@ -197,7 +200,7 @@ class Usage(models.Model):
         ]
 
     def __str__(self) -> str:
-        return f'{self.amount:,}{self.resource.units} {self.resource}'
+        return f'{self.amount:,}{self.resource.units} {self.resource} at {self.datetime}'
 
     def save(self, *args, **kwargs):
         self.datetime = self.datetime or now()

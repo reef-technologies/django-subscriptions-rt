@@ -104,6 +104,7 @@ def get_remaining(
         for chunk in chunks_to_consume:
             if amount <= chunk.remains:
                 chunk.remains -= amount
+                amount = 0
                 break
             else:
                 amount -= chunk.remains

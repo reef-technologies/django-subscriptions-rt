@@ -1,4 +1,8 @@
+from datetime import timedelta
+
+import pytest
 from demo.tests.utils import days
+from payments.exceptions import NoActiveSubscription
 from payments.models import INFINITY, Plan, Quota, Subscription, Usage
 
 
@@ -29,7 +33,8 @@ def test_usage_with_simple_quota(db, subscription, resource, remains):
     assert remains(at=subscription.start) == 100
     assert remains(at=subscription.start + days(3)) == 70
     assert remains(at=subscription.start + days(6)) == 40
-    assert remains(at=subscription.start + days(10)) == 0
+    with pytest.raises(NoActiveSubscription):
+        remains(at=subscription.start + days(10))
 
 
 def test_usage_with_recharging_quota(db, subscription, resource, remains):
@@ -40,8 +45,8 @@ def test_usage_with_recharging_quota(db, subscription, resource, remains):
     quota 1:      [----------------]
              0    100           100  0
 
-    quota 2:                   [---------------]
-                          0    100           100  0
+    quota 2:                   [-----------]
+                          0    100       100  0
 
     -----------------|------|----|-------|-----------
     usage:           30     30   30      30
@@ -69,11 +74,11 @@ def test_usage_with_recharging_quota(db, subscription, resource, remains):
 
     assert remains(at=subscription.start) == 100
     assert remains(at=subscription.start + days(3)) == 70
-    assert remains(at=subscription.start + days(4, hours=12)) == 40
+    assert remains(at=subscription.start + days(4) + timedelta(hours=12)) == 40
     assert remains(at=subscription.start + days(5)) == 140
     assert remains(at=subscription.start + days(6)) == 110
-    assert remains(at=subscription.start + days(7)) == 10
-    assert remains(at=subscription.start + days(9)) == -20
+    assert remains(at=subscription.start + days(7)) == 100
+    assert remains(at=subscription.start + days(9)) == 70
 
 
 def test_subtraction_priority(db, subscription, resource, remains):
@@ -111,7 +116,8 @@ def test_subtraction_priority(db, subscription, resource, remains):
     assert remains(at=subscription.start + days(5)) == 200
     assert remains(at=subscription.start + days(6)) == 50
     assert remains(at=subscription.start + days(7)) == 50
-    assert remains(at=subscription.start + days(10)) == 0
+    with pytest.raises(NoActiveSubscription):
+        remains(at=subscription.start + days(10))
 
 
 def test_multiple_subscriptions(db, user, resource, now, remains):
@@ -177,7 +183,9 @@ def test_multiple_subscriptions(db, user, resource, now, remains):
         Usage(user=user, resource=resource, amount=50, datetime=now + days(12)),
     ])
 
-    assert remains(at=now - days(1)) == 0
+    with pytest.raises(NoActiveSubscription):
+        remains(at=now - days(1))
+
     assert remains(at=now + days(0)) == 100
     assert remains(at=now + days(1)) == 50
     assert remains(at=now + days(2)) == 50
@@ -189,4 +197,6 @@ def test_multiple_subscriptions(db, user, resource, now, remains):
     assert remains(at=now + days(10)) == 150
     assert remains(at=now + days(11)) == 100
     assert remains(at=now + days(12)) == 50
-    assert remains(at=now + days(16)) == 0
+
+    with pytest.raises(NoActiveSubscription):
+        remains(at=now + days(16))
