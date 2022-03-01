@@ -100,7 +100,7 @@ class Subscription(models.Model):
     objects = SubscriptionManager()
 
     def __str__(self) -> str:
-        return f'{self.user} @ {self.plan}'
+        return f'{self.user} @ {self.plan}, {self.start} - {self.end}'
 
     def save(self, *args, **kwargs):
         self.start = self.start or now()

@@ -63,6 +63,7 @@ def get_remaining(
         resource=resource,
         sort_by=attrgetter('start'),
     )
+
     try:
         first_quota_chunk = next(quota_chunks)
     except StopIteration as exc:
