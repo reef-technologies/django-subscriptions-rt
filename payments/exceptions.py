@@ -10,3 +10,7 @@ class NoQuotaApplied(Exception):
 
 class NoActiveSubscription(Exception):
     pass
+
+
+class InconsistentQuotaCache(Exception):
+    pass

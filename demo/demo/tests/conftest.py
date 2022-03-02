@@ -5,7 +5,7 @@ from functools import wraps
 
 import pytest
 from django.contrib.auth import get_user_model
-from payments.functions import get_remaining
+from payments.functions import get_remaining_chunks
 from payments.models import Plan, Quota, Resource, Subscription
 
 
@@ -53,8 +53,19 @@ def quota(db, resource, subscription) -> Quota:
 
 
 @pytest.fixture
-def remains(resource, user) -> callable:
-    @wraps(get_remaining)
+def remaining_chunks(resource, user) -> callable:
+    @wraps(get_remaining_chunks)
     def wrapped(**kwargs):
-        return get_remaining(user=user, resource=resource, **kwargs)
+        return get_remaining_chunks(user=user, resource=resource, **kwargs)
+
+    return wrapped
+
+
+@pytest.fixture
+def remains(resource, user) -> callable:
+    @wraps(get_remaining_chunks)
+    def wrapped(**kwargs):
+        chunks = get_remaining_chunks(user=user, resource=resource, **kwargs)
+        return sum(chunk.remains for chunk in chunks) if chunks else 0
+
     return wrapped

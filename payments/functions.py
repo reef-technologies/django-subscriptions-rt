@@ -1,14 +1,15 @@
 from datetime import datetime
+from itertools import zip_longest
 from logging import getLogger
 from operator import attrgetter
-from typing import List, Literal, NamedTuple, Optional
+from typing import Iterable, Iterator, List, Literal, Optional
 
 from django.contrib.auth.models import AbstractUser
 from django.db.models import QuerySet
 from django.utils.timezone import now
 
-from payments.exceptions import NoActiveSubscription, NoQuotaApplied, QuotaLimitExceeded
-from payments.models import QuotaChunk, Resource, Subscription, Usage
+from payments.exceptions import InconsistentQuotaCache, NoActiveSubscription, NoQuotaApplied, QuotaLimitExceeded
+from payments.models import QuotaCache, QuotaChunk, Resource, Subscription, Usage
 
 log = getLogger(__name__)
 
@@ -33,12 +34,31 @@ def get_subscriptions_involved(user: AbstractUser, at: datetime, resource: 'Reso
     return subscriptions
 
 
-class QuotaCache(NamedTuple):
-    datetime: datetime
-    quota_chunks: List[QuotaChunk]
+def apply_cache(chunks: Iterable[QuotaChunk], cache: QuotaCache) -> Iterator[QuotaChunk]:
+    cached_chunks = iter(cache.chunks)
+
+    # match chunks and cached_chunks one-by-one
+    check_cached_pair = True
+    for i, (chunk, cached_chunk) in enumerate(zip_longest(chunks, cached_chunks, fillvalue=None)):
+        if not chunk and cached_chunk:
+            raise InconsistentQuotaCache(f'Non-paired cached chunk detected at position {i}: {cached_chunk}')
+
+        elif chunk and cached_chunk:
+            if not chunk.same_lifetime(cached_chunk):
+                raise InconsistentQuotaCache(f'Non-matched cached chunk detected at position {i}: {chunk=}, {cached_chunk=}')
+
+            yield cached_chunk
+
+        elif chunk and not cached_chunk:
+            if check_cached_pair:
+                if chunk.includes(cache.datetime):
+                    raise InconsistentQuotaCache(f'No cached chunk for {chunk}')
+                check_cached_pair = False
+
+            yield chunk
 
 
-def get_remaining(
+def get_remaining_chunks(
     user: AbstractUser,
     resource: Resource,
     at: Optional[datetime] = None,
@@ -63,25 +83,26 @@ def get_remaining(
         resource=resource,
         sort_by=attrgetter('start'),
     )
+    if quota_cache:
+        quota_chunks = apply_cache(quota_chunks, quota_cache)
 
     try:
         first_quota_chunk = next(quota_chunks)
+        assert first_quota_chunk.start <= at
     except StopIteration as exc:
         raise NoQuotaApplied() from exc
 
-    assert first_quota_chunk.start <= at
-
-    if quota_cache:
-        raise NotImplementedError()
-        # TODO: invalidate quota cache, if it fails then call the function without cache
+    active_chunks = [first_quota_chunk]
 
     # ---- for each usage, consume chunks ----
 
     usages = Usage.objects.filter(
-        user=user, resource=resource, datetime__gte=first_quota_chunk.start, datetime__lte=at,
+        user=user,
+        resource=resource,
+        **({'datetime__gt': quota_cache.datetime} if quota_cache else {'datetime__gte': first_quota_chunk.start}),
+        datetime__lte=at,
     ).order_by('datetime')
 
-    active_chunks = [first_quota_chunk]
     for date, amount in usages.values_list('datetime', 'amount'):
 
         # add chunks to active_chunks until they bypass "date"
@@ -121,14 +142,14 @@ def get_remaining(
     # ---- now calculate remaining amount at `at` ----
 
     # leave chunks that exist at `at`
-    active_chunks = [chunk for chunk in active_chunks if chunk.includes(at) and chunk.remains]
+    active_chunks = [chunk for chunk in active_chunks if chunk.includes(at)]
 
     # add chunks to active_chunks until they bypass "date"
     for chunk in quota_chunks:
         if chunk.start > at:
             break
 
-        if chunk.includes(at) and chunk.remains:
+        if chunk.includes(at):
             active_chunks.append(chunk)
 
-    return sum(chunk.remains for chunk in active_chunks) if active_chunks else 0
+    return active_chunks
