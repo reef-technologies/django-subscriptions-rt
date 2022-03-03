@@ -11,7 +11,9 @@ from django.db.models import Index, QuerySet, UniqueConstraint
 from django.utils.timezone import now
 
 from .fields import MoneyField
+from .signals import subscription_expires_soon
 from .utils import merge_iter
+
 
 #
 #  |--------subscription-------------------------------------------->
@@ -89,9 +91,13 @@ class QuotaCache(NamedTuple):
 
 
 class SubscriptionManager(models.Manager):
-    def active(self, as_of: Optional[datetime] = None):
+    def active(self, as_of: Optional[datetime] = None) -> QuerySet:
         now_ = as_of or now()
         return self.filter(start__lte=now_, end__gte=now_)
+
+    def expiring(self, in_: datetime, from_: Optional[datetime] = None) -> QuerySet:
+        from_ = from_ or now()
+        return self.filter(start__lte=from_, end__gte=from_ + in_)
 
 
 class Subscription(models.Model):
@@ -175,6 +181,11 @@ class Subscription(models.Model):
             yield charge_date
             if charge_period == INFINITY:
                 break
+
+    @classmethod
+    def send_expiring_signal(cls, expire_in: timedelta):
+        for subscription in cls.objects.active().expiring(in_=expire_in):
+            subscription_expires_soon.send(sender=cls, subscription=subscription)
 
 
 class Quota(models.Model):
