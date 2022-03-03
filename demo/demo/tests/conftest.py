@@ -11,7 +11,7 @@ from payments.models import Plan, Quota, Resource, Subscription
 
 @pytest.fixture
 def now():
-    return datetime(2021, 12, 30, 12, 00, 00, tzinfo=tz.utc)
+    return datetime(2022, 1, 1, 12, 00, 00, tzinfo=tz.utc)
 
 
 @pytest.fixture

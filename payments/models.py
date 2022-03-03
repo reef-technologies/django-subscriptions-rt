@@ -127,7 +127,9 @@ class Subscription(models.Model):
         yield from merge_iter(*(self._iter_single_quota_chunks(quota=quota, since=since, until=until) for quota in quotas), key=sort_by)
 
     def _iter_single_quota_chunks(self, quota: 'Quota', since: Optional[datetime] = None, until: Optional[datetime] = None):
-        min_start_time = max(since - quota.burns_in, self.start) if since else self.start  # quota chunks starting after this are OK
+
+        epsilon = timedelta(milliseconds=1)  # we use epsilon to exclude chunks which start right at `since - quota.burns_in`
+        min_start_time = max(since - quota.burns_in + epsilon, self.start) if since else self.start  # quota chunks starting after this are OK
         until = min(until, self.end) if until else self.end
 
         count_start = ceil((min_start_time - self.start) / quota.recharge_period)  # index of first quota chunk starting after min_start_time

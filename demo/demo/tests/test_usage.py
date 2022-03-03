@@ -1,4 +1,5 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
+from itertools import product
 
 import pytest
 from demo.tests.utils import days
@@ -265,10 +266,15 @@ def test_cache(db, user, now, resource, remains, remaining_chunks):
         Usage(user=user, resource=resource, amount=50, datetime=now + days(12)),
     ])
 
-    assert remains(
-        at=now + days(5),
-        quota_cache=QuotaCache(
-            datetime=now + days(4),
-            chunks=remaining_chunks(at=now + days(4)),
-        ),
-    ) == remains(at=now + days(5))
+    def get_cache(at: datetime) -> QuotaCache:
+        return QuotaCache(
+            datetime=at,
+            chunks=remaining_chunks(at=at),
+        )
+
+    for cache_day, test_day in product(range(13), range(13)):
+        if cache_day > test_day:
+            continue
+
+        assert remains(at=now + days(test_day / 2), quota_cache=get_cache(at=now + days(cache_day / 2))) == remains(at=now + days(test_day / 2))  # "middle" cases
+        assert remains(at=now + days(test_day), quota_cache=get_cache(at=now + days(cache_day))) == remains(at=now + days(test_day))  # corner cases
