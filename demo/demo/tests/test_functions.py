@@ -3,9 +3,9 @@ from itertools import product
 from operator import attrgetter
 
 import pytest
-from payments.exceptions import NoActiveSubscription
+from payments.exceptions import InconsistentQuotaCache, NoActiveSubscription
 from payments.functions import iter_subscriptions_involved
-from payments.models import INFINITY, Quota, Usage
+from payments.models import INFINITY, Quota, QuotaCache, QuotaChunk, Usage
 
 
 def test_subscriptions_involved(five_subscriptions, user, plan, now, days):
@@ -21,9 +21,29 @@ def test_subscriptions_involved_performance(five_subscriptions, django_assert_ma
         list(iter_subscriptions_involved(user=user, at=now))
 
 
-@pytest.mark.skip
-def test_apply_cache():
-    ...
+def test_cache_apply(resource, now, days):
+    chunks = [
+        QuotaChunk(resource=resource, start=now, end=now + days(1), remains=100),
+        QuotaChunk(resource=resource, start=now + days(1), end=now + days(2), remains=100),
+        QuotaChunk(resource=resource, start=now + days(2), end=now + days(3), remains=100),
+    ]
+
+    with pytest.raises(InconsistentQuotaCache):
+        list(QuotaCache(
+            datetime=now + days(2),
+            chunks=chunks[::-1],
+        ).apply(chunks))
+
+    cache = QuotaCache(
+        datetime=now + days(1),
+        chunks=[
+            QuotaChunk(resource=resource, start=now, end=now + days(1), remains=22),
+            QuotaChunk(resource=resource, start=now + days(1), end=now + days(2), remains=33),
+            QuotaChunk(resource=resource, start=now + days(2), end=now + days(3), remains=44),
+        ],
+    )
+
+    assert list(cache.apply(chunks)) == cache.chunks
 
 
 @pytest.mark.skip

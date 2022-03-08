@@ -1,5 +1,4 @@
 from datetime import datetime
-from itertools import zip_longest
 from logging import getLogger
 from operator import attrgetter
 from typing import Iterable, Iterator, List, Optional
@@ -8,7 +7,7 @@ from django.contrib.auth.models import AbstractUser
 from django.utils.timezone import now
 from more_itertools import spy
 
-from payments.exceptions import InconsistentQuotaCache, NoActiveSubscription, NoQuotaApplied, QuotaLimitExceeded
+from payments.exceptions import NoActiveSubscription, NoQuotaApplied, QuotaLimitExceeded
 from payments.models import QuotaCache, QuotaChunk, Resource, Subscription, Usage
 
 log = getLogger(__name__)
@@ -24,30 +23,6 @@ def iter_subscriptions_involved(user: AbstractUser, at: datetime) -> Iterator['S
 
         yield subscription
         from_ = min(from_, subscription.start)
-
-
-def apply_cache(chunks: Iterable[QuotaChunk], cache: QuotaCache) -> Iterator[QuotaChunk]:
-    cached_chunks = iter(cache.chunks)
-
-    # match chunks and cached_chunks one-by-one
-    check_cached_pair = True
-    for i, (chunk, cached_chunk) in enumerate(zip_longest(chunks, cached_chunks, fillvalue=None)):
-        if not chunk and cached_chunk:
-            raise InconsistentQuotaCache(f'Non-paired cached chunk detected at position {i}: {cached_chunk}')
-
-        elif chunk and cached_chunk:
-            if not chunk.same_lifetime(cached_chunk):
-                raise InconsistentQuotaCache(f'Non-matched cached chunk detected at position {i}: {chunk=}, {cached_chunk=}')
-
-            yield cached_chunk
-
-        elif chunk and not cached_chunk:
-            if check_cached_pair:
-                if chunk.includes(cache.datetime):
-                    raise InconsistentQuotaCache(f'No cached chunk for {chunk}')
-                check_cached_pair = False
-
-            yield chunk
 
 
 def get_remaining_chunks(
@@ -76,7 +51,7 @@ def get_remaining_chunks(
         sort_by=attrgetter('start'),
     )
     if quota_cache:
-        quota_chunks = apply_cache(quota_chunks, quota_cache)
+        quota_chunks = quota_cache.apply(quota_chunks)
 
     first_quota_chunks, quota_chunks = spy(quota_chunks, 1)
     if not first_quota_chunks:

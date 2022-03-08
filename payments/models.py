@@ -3,7 +3,9 @@ from datetime import datetime, timedelta
 from itertools import count
 from math import ceil
 from operator import attrgetter
-from typing import Dict, Iterable, Iterator, List, NamedTuple, Optional
+from typing import Dict, Iterable, Iterator, List, Optional
+from itertools import zip_longest
+from payments.exceptions import InconsistentQuotaCache
 
 from django.conf import settings
 from django.db import models
@@ -75,9 +77,33 @@ class QuotaChunk:
         return self.start == other.start and self.end == other.end
 
 
-class QuotaCache(NamedTuple):
+@dataclass
+class QuotaCache:
     datetime: datetime
     chunks: List[QuotaChunk]
+
+    def apply(self, chunks: Iterable[QuotaChunk]) -> Iterator[QuotaChunk]:
+        cached_chunks = iter(self.chunks)
+
+        # match chunks and cached_chunks one-by-one
+        check_cached_pair = True
+        for i, (chunk, cached_chunk) in enumerate(zip_longest(chunks, cached_chunks, fillvalue=None)):
+            if not chunk and cached_chunk:
+                raise InconsistentQuotaCache(f'Non-paired cached chunk detected at position {i}: {cached_chunk}')
+
+            elif chunk and cached_chunk:
+                if not chunk.same_lifetime(cached_chunk):
+                    raise InconsistentQuotaCache(f'Non-matched cached chunk detected at position {i}: {chunk=}, {cached_chunk=}')
+
+                yield cached_chunk
+
+            elif chunk and not cached_chunk:
+                if check_cached_pair:
+                    if chunk.includes(self.datetime):
+                        raise InconsistentQuotaCache(f'No cached chunk for {chunk}')
+                    check_cached_pair = False
+
+                yield chunk
 
 
 class SubscriptionManager(models.Manager):
