@@ -1,4 +1,5 @@
-from typing import Dict, Iterable, Iterator, TypeVar
+from itertools import chain
+from typing import Dict, Iterable, Iterator, Tuple, TypeVar
 
 T = TypeVar('T')
 

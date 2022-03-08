@@ -4,25 +4,21 @@ from operator import attrgetter
 
 import pytest
 from payments.exceptions import NoActiveSubscription
-from payments.functions import get_subscriptions_involved
+from payments.functions import iter_subscriptions_involved
 from payments.models import INFINITY, Quota, Usage
 
 
-def test_subscriptions_involved(five_subscriptions, user, plan, now, resource, days):
+def test_subscriptions_involved(five_subscriptions, user, plan, now, days):
 
-    subscriptions_involved = get_subscriptions_involved(user=user, at=now, resource=resource)
-    assert list(subscriptions_involved) == []
-
-    Quota.objects.create(plan=plan, resource=resource, limit=100)
-    subscriptions_involved = get_subscriptions_involved(user=user, at=now, resource=resource)
+    subscriptions_involved = iter_subscriptions_involved(user=user, at=now)
     assert sorted(subscriptions_involved, key=attrgetter('start')) == [
         five_subscriptions[1], five_subscriptions[3], five_subscriptions[0],
     ]
 
 
-@pytest.mark.skip
-def test_subscriptions_involved_performance(five_subscriptions):
-    ...
+def test_subscriptions_involved_performance(five_subscriptions, django_assert_max_num_queries, user, now, plan):
+    with django_assert_max_num_queries(1):
+        list(iter_subscriptions_involved(user=user, at=now))
 
 
 @pytest.mark.skip

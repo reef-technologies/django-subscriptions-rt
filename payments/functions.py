@@ -5,8 +5,8 @@ from operator import attrgetter
 from typing import Iterable, Iterator, List, Optional
 
 from django.contrib.auth.models import AbstractUser
-from django.db.models import QuerySet
 from django.utils.timezone import now
+from more_itertools import spy
 
 from payments.exceptions import InconsistentQuotaCache, NoActiveSubscription, NoQuotaApplied, QuotaLimitExceeded
 from payments.models import QuotaCache, QuotaChunk, Resource, Subscription, Usage
@@ -14,24 +14,16 @@ from payments.models import QuotaCache, QuotaChunk, Resource, Subscription, Usag
 log = getLogger(__name__)
 
 
-def get_subscriptions_involved(user: AbstractUser, at: datetime, resource: 'Resource') -> QuerySet['Subscription']:
+def iter_subscriptions_involved(user: AbstractUser, at: datetime) -> Iterator['Subscription']:
+    subscriptions = Subscription.objects.filter(user=user).exclude(start__gt=at).order_by('-end')
+
     from_ = at
-
-    while True:
-        subscriptions = Subscription.objects.prefetch_related('plan__quotas').filter(
-            user=user, end__gt=from_, start__lte=at, plan__quotas__resource=resource,
-        ).order_by('pk').distinct()
-        starts = subscriptions.values_list('start', flat=True)
-        if not starts:
-            return Subscription.objects.none()
-
-        min_start = min(starts)
-        if min_start == from_:
+    for subscription in subscriptions:
+        if subscription.end <= from_:
             break
 
-        from_ = min_start
-
-    return subscriptions
+        yield subscription
+        from_ = min(from_, subscription.start)
 
 
 def apply_cache(chunks: Iterable[QuotaChunk], cache: QuotaCache) -> Iterator[QuotaChunk]:
@@ -66,13 +58,14 @@ def get_remaining_chunks(
 ) -> List[QuotaChunk]:
 
     at = at or now()
-    subscriptions_involved = get_subscriptions_involved(user=user, at=at, resource=resource)
+    subscriptions_involved = iter_subscriptions_involved(user=user, at=at)
 
     if quota_cache:
         assert at >= quota_cache.datetime
-        subscriptions_involved = subscriptions_involved.filter(end__gt=quota_cache.datetime)
+        subscriptions_involved = filter(lambda subscription: subscription.end > quota_cache.datetime, subscriptions_involved)
 
-    if not subscriptions_involved:
+    first_subscriptions_involved, subscriptions_involved = spy(subscriptions_involved, 1)
+    if not first_subscriptions_involved:
         raise NoActiveSubscription()
 
     quota_chunks = Subscription.iter_subscriptions_quota_chunks(
@@ -85,23 +78,22 @@ def get_remaining_chunks(
     if quota_cache:
         quota_chunks = apply_cache(quota_chunks, quota_cache)
 
-    try:
-        first_quota_chunk = next(quota_chunks)
-        assert first_quota_chunk.start <= at
-    except StopIteration as exc:
-        raise NoQuotaApplied() from exc
+    first_quota_chunks, quota_chunks = spy(quota_chunks, 1)
+    if not first_quota_chunks:
+        raise NoQuotaApplied()
 
-    active_chunks = [first_quota_chunk]
+    assert first_quota_chunks[0].start <= at
 
     # ---- for each usage, consume chunks ----
 
     usages = Usage.objects.filter(
         user=user,
         resource=resource,
-        **({'datetime__gt': quota_cache.datetime} if quota_cache else {'datetime__gte': first_quota_chunk.start}),
+        **({'datetime__gt': quota_cache.datetime} if quota_cache else {'datetime__gte': first_quota_chunks[0].start}),
         datetime__lte=at,
     ).order_by('datetime')
 
+    active_chunks = []
     for date, amount in usages.values_list('datetime', 'amount'):
 
         # add chunks to active_chunks until they bypass "date"
