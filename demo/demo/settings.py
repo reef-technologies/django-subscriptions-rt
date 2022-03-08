@@ -41,6 +41,7 @@ INSTALLED_APPS = [
 
     # 'django_extensions',
 
+    'demo',
     'payments',
 ]
 
@@ -52,6 +53,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'payments.middleware.SubscriptionsMiddleware',
 ]
 
 ROOT_URLCONF = 'demo.urls'

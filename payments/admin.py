@@ -9,6 +9,7 @@ class PlanAdmin(admin.ModelAdmin):
     list_filter = 'is_enabled',
     search_fields = 'codename', 'name',
     ordering = '-pk',
+    prepopulated_fields = {'slug': ('name',)}
 
 
 @admin.register(Subscription)

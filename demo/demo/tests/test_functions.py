@@ -1,29 +1,192 @@
+from datetime import timedelta
+from itertools import product
 from operator import attrgetter
 
-from demo.tests.utils import days
+import pytest
+from payments.exceptions import NoActiveSubscription
 from payments.functions import get_subscriptions_involved
-from payments.models import Quota, Subscription
+from payments.models import INFINITY, Quota, Usage
 
 
-def test_subscriptions_involved(user, plan, now, resource):
-    """
-    Subscriptions:                    |now
-    ----------------------------------[====sub1=====]-----> overlaps with "now"
-    --------------------[======sub2=======]---------------> overlaps with "sub1"
-    -------------[=sub3=]---------------------------------> overlaps with "sub2"
-    -----------------------[=sub4=]-----------------------> overlaps with "sub2"
-    ----[=sub5=]------------------------------------------> does not overlap with anything
-    """
-
-    sub1 = Subscription.objects.create(user=user, plan=plan, start=now - days(5), end=now + days(2))
-    sub2 = Subscription.objects.create(user=user, plan=plan, start=sub1.start - days(5), end=sub1.start + days(2))
-    sub3 = Subscription.objects.create(user=user, plan=plan, start=sub2.start - days(5), end=sub2.start)
-    sub4 = Subscription.objects.create(user=user, plan=plan, start=sub2.start + days(1), end=sub1.start - days(1))
-    _ = Subscription.objects.create(user=user, plan=plan, start=sub3.start - days(5), end=sub3.start - days(1))
+def test_subscriptions_involved(five_subscriptions, user, plan, now, resource, days):
 
     subscriptions_involved = get_subscriptions_involved(user=user, at=now, resource=resource)
     assert list(subscriptions_involved) == []
 
     Quota.objects.create(plan=plan, resource=resource, limit=100)
     subscriptions_involved = get_subscriptions_involved(user=user, at=now, resource=resource)
-    assert sorted(subscriptions_involved, key=attrgetter('start')) == [sub2, sub4, sub1]
+    assert sorted(subscriptions_involved, key=attrgetter('start')) == [
+        five_subscriptions[1], five_subscriptions[3], five_subscriptions[0],
+    ]
+
+
+@pytest.mark.skip
+def test_subscriptions_involved_performance(five_subscriptions):
+    ...
+
+
+@pytest.mark.skip
+def test_apply_cache():
+    ...
+
+
+@pytest.mark.skip
+def test_remaining_chunks():
+    ...
+
+
+@pytest.mark.skip
+def test_remaining_chunks_performance(db, two_subscriptions, now, remains, django_assert_max_num_queries, get_cache, days):
+    cache_day, test_day = 8, 10
+
+    with django_assert_max_num_queries(2):
+        remains(at=now + days(test_day))
+
+    cache = get_cache(at=now + days(cache_day))
+    with django_assert_max_num_queries(4):
+        remains(at=now + days(test_day), quota_cache=cache)
+
+
+def test_usage_with_simple_quota(db, subscription, resource, remains, days):
+    """
+                     Subscription
+    --------------[================]------------> time
+    quota:    0   100            100   0
+
+    -----------------|------|-------------------
+    usage:           30     30
+    """
+    subscription.end = subscription.start + days(10)
+    subscription.save(update_fields=['end'])
+
+    Quota.objects.create(
+        plan=subscription.plan,
+        resource=resource,
+        limit=100,
+        recharge_period=INFINITY,
+    )
+
+    Usage.objects.bulk_create([
+        Usage(user=subscription.user, resource=resource, amount=30, datetime=subscription.start + days(3)),
+        Usage(user=subscription.user, resource=resource, amount=30, datetime=subscription.start + days(6)),
+    ])
+
+    assert remains(at=subscription.start) == 100
+    assert remains(at=subscription.start + days(3)) == 70
+    assert remains(at=subscription.start + days(6)) == 40
+    with pytest.raises(NoActiveSubscription):
+        remains(at=subscription.start + days(10))
+
+
+def test_usage_with_recharging_quota(db, subscription, resource, remains, days):
+    """
+                         Subscription
+    --------------[========================]------------> time
+
+    quota 1:      [----------------]
+             0    100           100  0
+
+    quota 2:                   [-----------]
+                          0    100       100  0
+
+    -----------------|------|----|-------|-----------
+    usage:           30     30   30      30
+    """
+    subscription.end = subscription.start + days(10)
+    subscription.save(update_fields=['end'])
+
+    Quota.objects.create(
+        plan=subscription.plan,
+        resource=resource,
+        limit=100,
+        recharge_period=days(5),
+        burns_in=days(7),
+    )
+
+    Usage.objects.bulk_create([
+        Usage(user=subscription.user, resource=resource, amount=amount, datetime=when)
+        for amount, when in [
+            (30, subscription.start + days(2)),
+            (30, subscription.start + days(4)),
+            (30, subscription.start + days(6)),
+            (30, subscription.start + days(9)),
+        ]
+    ])
+
+    assert remains(at=subscription.start) == 100
+    assert remains(at=subscription.start + days(3)) == 70
+    assert remains(at=subscription.start + days(4) + timedelta(hours=12)) == 40
+    assert remains(at=subscription.start + days(5)) == 140
+    assert remains(at=subscription.start + days(6)) == 110
+    assert remains(at=subscription.start + days(7)) == 100
+    assert remains(at=subscription.start + days(9)) == 70
+
+
+def test_subtraction_priority(db, subscription, resource, remains, days):
+    """
+                         Subscription
+    --------------[========================]------------> time
+
+    quota 1:      [----------------]
+             0    100           100  0
+
+    quota 2:                   [---------------]
+                          0    100           100  0
+
+    -----------------------------|-------------------
+    usage:                      150
+    """
+    subscription.end = subscription.start + days(10)
+    subscription.save(update_fields=['end'])
+
+    Quota.objects.create(
+        plan=subscription.plan,
+        resource=resource,
+        limit=100,
+        recharge_period=days(5),
+        burns_in=days(7),
+    )
+
+    Usage.objects.create(
+        user=subscription.user,
+        resource=resource,
+        amount=150,
+        datetime=subscription.start + days(6),
+    )
+
+    assert remains(at=subscription.start + days(5)) == 200
+    assert remains(at=subscription.start + days(6)) == 50
+    assert remains(at=subscription.start + days(7)) == 50
+    with pytest.raises(NoActiveSubscription):
+        remains(at=subscription.start + days(10))
+
+
+def test_multiple_subscriptions(db, two_subscriptions, user, resource, now, remains, days):
+
+    with pytest.raises(NoActiveSubscription):
+        remains(at=now - days(1))
+
+    assert remains(at=now + days(0)) == 100
+    assert remains(at=now + days(1)) == 50
+    assert remains(at=now + days(2)) == 50
+    assert remains(at=now + days(4)) == 150
+    assert remains(at=now + days(5)) == 250
+    assert remains(at=now + days(6)) == 50
+    assert remains(at=now + days(7)) == 50
+    assert remains(at=now + days(9)) == 150
+    assert remains(at=now + days(10)) == 150
+    assert remains(at=now + days(11)) == 100
+    assert remains(at=now + days(12)) == 50
+
+    with pytest.raises(NoActiveSubscription):
+        remains(at=now + days(16))
+
+
+def test_cache(db, two_subscriptions, now, remains, remaining_chunks, get_cache, days):
+
+    for cache_day, test_day in product(range(13), range(13)):
+        if cache_day > test_day:
+            continue
+
+        assert remains(at=now + days(test_day / 2), quota_cache=get_cache(at=now + days(cache_day / 2))) == remains(at=now + days(test_day / 2))  # "middle" cases
+        assert remains(at=now + days(test_day), quota_cache=get_cache(at=now + days(cache_day))) == remains(at=now + days(test_day))  # corner cases

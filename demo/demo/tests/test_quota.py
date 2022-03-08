@@ -1,7 +1,6 @@
 from datetime import timedelta
 
 import pytest
-from demo.tests.utils import days
 from payments.exceptions import NoActiveSubscription
 from payments.models import INFINITY, Quota
 
@@ -17,7 +16,7 @@ def test_quota_without_subscription(db, plan, resource, remains, now):
         remains(at=now)
 
 
-def test_quota_without_usage(db, subscription, resource, remains):
+def test_quota_without_usage(db, subscription, resource, remains, days):
     """
                      Subscription
     --------------[================]------------> time
@@ -45,7 +44,7 @@ def test_quota_without_usage(db, subscription, resource, remains):
         remains(at=subscription.end + timedelta(seconds=1))
 
 
-def test_quota_recharge(db, subscription, resource, remains):
+def test_quota_recharge(db, subscription, resource, remains, days):
     """
                    Subscription
     ----------[=========================]-------------> time
@@ -75,7 +74,7 @@ def test_quota_recharge(db, subscription, resource, remains):
         remains(at=subscription.end)
 
 
-def test_quota_burn(db, subscription, resource, remains):
+def test_quota_burn(db, subscription, resource, remains, days):
     """
                    Subscription
     ----------[=========================]-------------> time

@@ -1,0 +1,24 @@
+<table>
+    <tr>
+        <td>Current user</td>
+        <td>{{ request.user }}</td>
+    </tr>
+    <tr>
+        <td>User's subscriptions<br>(from SubscriptionsMiddleware)</td>
+        <td>
+            <ol>
+                {% for subscription, resources in request.subscriptions.items %}
+                    <li>
+                        Subscription: {{ subscription }}<br>
+                        Resources:
+                        <ul>
+                            {% for resource, remains in resources.items %}
+                                <li>{{ resource }}: {{ remains }} left</li>
+                            {% endfor %}
+                        </ul>
+                    </li>
+                {% endfor %}
+            </ol>
+        </td>
+    </tr>
+</table>

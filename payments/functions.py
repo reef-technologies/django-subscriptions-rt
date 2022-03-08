@@ -2,7 +2,7 @@ from datetime import datetime
 from itertools import zip_longest
 from logging import getLogger
 from operator import attrgetter
-from typing import Iterable, Iterator, List, Literal, Optional
+from typing import Iterable, Iterator, List, Optional
 
 from django.contrib.auth.models import AbstractUser
 from django.db.models import QuerySet
@@ -63,7 +63,6 @@ def get_remaining_chunks(
     resource: Resource,
     at: Optional[datetime] = None,
     quota_cache: Optional[QuotaCache] = None,
-    if_exceeds_limit: Literal['raise', 'warn', 'ignore'] = 'raise',
 ) -> List[QuotaChunk]:
 
     at = at or now()
@@ -133,11 +132,7 @@ def get_remaining_chunks(
 
         # check whether limit was exceeded (== amount was fully covered by chunks consumed)
         if amount:
-            msg = f'Quota limit exceeded: {date=} {amount=}'
-            if if_exceeds_limit == 'raise':
-                raise QuotaLimitExceeded(msg)
-            elif if_exceeds_limit == 'warn':
-                log.warning(msg)
+            raise QuotaLimitExceeded(f'Quota limit exceeded: {date=} {amount=}')
 
     # ---- now calculate remaining amount at `at` ----
 
@@ -153,3 +148,19 @@ def get_remaining_chunks(
             active_chunks.append(chunk)
 
     return active_chunks
+
+
+def get_remaining_amount(
+    user: AbstractUser,
+    resource: Resource,
+    at: Optional[datetime] = None,
+    quota_cache: Optional[QuotaCache] = None,
+) -> int:
+    return sum(
+        chunk.remains for chunk in get_remaining_chunks(
+            user=user,
+            resource=resource,
+            at=at,
+            quota_cache=quota_cache,
+        )
+    )

@@ -1,0 +1,9 @@
+Available plans:
+
+<ul>
+    {% for plan in plans %}
+        <li>
+            <a href="{{ plan.get_absolute_url }}">{{ plan.name }}</a>
+        </li>
+    {% endfor %}
+</ul>

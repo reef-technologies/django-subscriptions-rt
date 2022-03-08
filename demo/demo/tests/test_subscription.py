@@ -1,11 +1,11 @@
 from datetime import datetime
 from datetime import timezone as tz
 
-from demo.tests.utils import days
+import pytest
 from payments.models import Quota, QuotaChunk, Subscription
 
 
-def test_limited_plan_duration(db, user, plan, now):
+def test_limited_plan_duration(db, user, plan, now, days):
     plan.subscription_duration = days(30)
     plan.save(update_fields=['subscription_duration'])
 
@@ -17,7 +17,7 @@ def test_limited_plan_duration(db, user, plan, now):
     assert subscription.end == now + days(30)
 
 
-def test_unlimited_plan_duration(db, user, plan, now):
+def test_unlimited_plan_duration(db, user, plan, now, days):
     plan.subscription_duration = None
     plan.save(update_fields=['subscription_duration'])
 
@@ -29,7 +29,7 @@ def test_unlimited_plan_duration(db, user, plan, now):
     assert subscription.end >= now + days(365 * 10)
 
 
-def test_subscription_charge_dates(db, plan, subscription):
+def test_subscription_charge_dates(db, plan, subscription, days):
     plan.charge_period = days(30)
     plan.save(update_fields=['charge_period'])
 
@@ -60,7 +60,7 @@ def test_subscription_charge_dates_with_no_charge_period(db, plan, subscription,
     assert list(subscription.iter_charge_dates()) == [subscription.start]
 
 
-def test_active_subscription_filter(db, subscription, now):
+def test_active_subscription_filter(db, subscription, now, days):
     subscription.start = now - days(2)
     subscription.end = now - days(1)
     subscription.save(update_fields=['start', 'end'])
@@ -88,7 +88,7 @@ def test_active_subscription_filter(db, subscription, now):
 #     raise NotImplementedError()
 
 
-def test_iter_quota_chunks(db, subscription, resource):
+def test_iter_quota_chunks(db, subscription, resource, days):
     """
                        Subscription
     ----------[=========================]-------------> time
@@ -123,3 +123,29 @@ def test_iter_quota_chunks(db, subscription, resource):
     assert list(subscription.iter_quota_chunks(until=start + days(5))) == chunks[0:2]
     assert list(subscription.iter_quota_chunks(until=start + days(11))) == chunks
     assert list(subscription.iter_quota_chunks(since=subscription.end - days(1))) == chunks[1:]
+
+
+def test_subscription_get_expiring_performance(django_assert_num_queries, two_subscriptions, days):
+    with django_assert_num_queries(1):
+        list(Subscription.get_expiring(within=days(5)))
+
+
+@pytest.mark.skip
+def test_subscription_get_remaining_amount_performance():
+    Subscription().get_remaining_amount()
+
+
+@pytest.mark.skip
+def test_subscription_iter_quota_chunks_performance():
+    Subscription().iter_quota_chunks()
+
+
+@pytest.mark.skip
+def test_subscription_iter_subscriptions_quota_chunks_performance():
+    Subscription().iter_subscriptions_quota_chunks()
+
+
+@pytest.mark.skip
+def test_subscription_iter_charge_dates_performance():
+    Subscription().iter_charge_dates()
+

@@ -3,31 +3,17 @@ from datetime import datetime, timedelta
 from itertools import count
 from math import ceil
 from operator import attrgetter
-from typing import Iterable, Iterator, List, NamedTuple, Optional
+from typing import Dict, Iterable, Iterator, List, NamedTuple, Optional
 
 from django.conf import settings
 from django.db import models
 from django.db.models import Index, QuerySet, UniqueConstraint
+from django.urls import reverse
 from django.utils.timezone import now
 
 from .fields import MoneyField
 from .signals import subscription_expires_soon
 from .utils import merge_iter
-
-
-#
-#  |--------subscription-------------------------------------------->
-#  start             (subscription duration)                end or inf
-#
-#  |-----------------------------|---------------------------|------>
-#  charge   (charge period)    charge                      charge
-#
-#  |------------------------------x
-#  quota   (quota lifetime)       quota burned
-#
-#  (quota recharge period) |------------------------------x
-#
-#  (quota recharge period) (quota recharge period) |----------------->
 
 
 INFINITY = timedelta(days=365 * 1000)
@@ -49,9 +35,10 @@ class Resource(models.Model):
 class Plan(models.Model):
     codename = models.CharField(max_length=255)
     name = models.CharField(max_length=255)
+    slug = models.SlugField()
     charge_amount = MoneyField(blank=True, null=True)
-    charge_period = models.DurationField(blank=True, help_text='leave blank for one-time charge')
-    subscription_duration = models.DurationField(blank=True, help_text='leave blank to make it an infinite subscription')
+    charge_period = models.DurationField(blank=True, help_text='DD HH:MM:SS; leave blank for one-time charge')
+    subscription_duration = models.DurationField(blank=True, help_text='DD HH:MM:SS; leave blank to make it an infinite subscription')
     is_enabled = models.BooleanField(default=True)
 
     class Meta:
@@ -61,6 +48,9 @@ class Plan(models.Model):
 
     def __str__(self) -> str:
         return self.name
+
+    def get_absolute_url(self) -> str:
+        return reverse('plan', kwargs={'plan_slug': self.slug})
 
     def save(self, *args, **kwargs):
         self.charge_period = self.charge_period or INFINITY
@@ -125,6 +115,22 @@ class Subscription(models.Model):
     def get_expiring(cls, within: timedelta) -> QuerySet:
         return cls.objects.active().filter(end__lte=now() + within)
 
+    def get_remaining_amount(self, at: Optional[datetime] = None) -> Dict[Resource, int]:
+        from .functions import get_remaining_amount as get_remaining_amount_for_resource
+
+        at = at or now()
+
+        resources = {quota.resource for quota in self.plan.quotas.all()}
+        return {
+            resource: get_remaining_amount_for_resource(
+                user=self.user,
+                resource=resource,
+                at=at,
+                quota_cache=None,  # TODO: auto-fetch quota cache
+            )
+            for resource in resources
+        }
+
     def iter_quota_chunks(self, since: Optional[datetime] = None, until: Optional[datetime] = None, resource: Optional[Resource] = None, sort_by: callable = attrgetter('start')) -> Iterator[QuotaChunk]:
         quotas = self.plan.quotas.all()
         if resource:
@@ -184,8 +190,7 @@ class Subscription(models.Model):
 
     @classmethod
     def send_expiring_signal(cls, expire_in: timedelta):
-        for subscription in cls.objects.active().expiring(in_=expire_in):
-            subscription_expires_soon.send(sender=cls, subscription=subscription)
+        subscription_expires_soon.send(sender=cls, subscriptions=cls.objects.expiring(in_=expire_in))
 
 
 class Quota(models.Model):
