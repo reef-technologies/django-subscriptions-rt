@@ -158,9 +158,10 @@ class Subscription(models.Model):
         }
 
     def iter_quota_chunks(self, since: Optional[datetime] = None, until: Optional[datetime] = None, resource: Optional[Resource] = None, sort_by: callable = attrgetter('start')) -> Iterator[QuotaChunk]:
+
         quotas = self.plan.quotas.all()
         if resource:
-            quotas = quotas.filter(resource=resource)
+            quotas = filter(lambda quota: quota.resource == resource, quotas)
 
         yield from merge_iter(*(self._iter_single_quota_chunks(quota=quota, since=since, until=until) for quota in quotas), key=sort_by)
 

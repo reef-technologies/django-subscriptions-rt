@@ -1,20 +1,31 @@
 from datetime import datetime
 from logging import getLogger
 from operator import attrgetter
-from typing import Iterable, Iterator, List, Optional
+from typing import Iterator, List, Optional
 
 from django.contrib.auth.models import AbstractUser
+from django.db.models import Prefetch
 from django.utils.timezone import now
 from more_itertools import spy
 
 from payments.exceptions import NoActiveSubscription, NoQuotaApplied, QuotaLimitExceeded
-from payments.models import QuotaCache, QuotaChunk, Resource, Subscription, Usage
+from payments.models import Quota, QuotaCache, QuotaChunk, Resource, Subscription, Usage
 
 log = getLogger(__name__)
 
 
 def iter_subscriptions_involved(user: AbstractUser, at: datetime) -> Iterator['Subscription']:
-    subscriptions = Subscription.objects.filter(user=user).exclude(start__gt=at).order_by('-end')
+    subscriptions = (
+        Subscription.objects
+        .select_related('plan')
+        .prefetch_related(Prefetch(
+            'plan__quotas',
+            queryset=Quota.objects.select_related('resource'),
+        ))
+        .filter(user=user)
+        .exclude(start__gt=at)
+        .order_by('-end')
+    )
 
     from_ = at
     for subscription in subscriptions:

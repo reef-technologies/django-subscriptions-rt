@@ -17,7 +17,7 @@ def test_subscriptions_involved(five_subscriptions, user, plan, now, days):
 
 
 def test_subscriptions_involved_performance(five_subscriptions, django_assert_max_num_queries, user, now, plan):
-    with django_assert_max_num_queries(1):
+    with django_assert_max_num_queries(2):
         list(iter_subscriptions_involved(user=user, at=now))
 
 
@@ -51,15 +51,14 @@ def test_remaining_chunks():
     ...
 
 
-@pytest.mark.skip
 def test_remaining_chunks_performance(db, two_subscriptions, now, remains, django_assert_max_num_queries, get_cache, days):
     cache_day, test_day = 8, 10
 
-    with django_assert_max_num_queries(2):
+    with django_assert_max_num_queries(3):
         remains(at=now + days(test_day))
 
     cache = get_cache(at=now + days(cache_day))
-    with django_assert_max_num_queries(4):
+    with django_assert_max_num_queries(3):
         remains(at=now + days(test_day), quota_cache=cache)
 
 
