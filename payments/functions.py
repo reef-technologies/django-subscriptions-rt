@@ -8,7 +8,7 @@ from django.db.models import Prefetch
 from django.utils.timezone import now
 from more_itertools import spy
 
-from payments.exceptions import NoActiveSubscription, NoQuotaApplied, QuotaLimitExceeded
+from payments.exceptions import NoQuotaApplied, QuotaLimitExceeded
 from payments.models import Quota, QuotaCache, QuotaChunk, Resource, Subscription, Usage
 from payments.utils import merge_iter
 
@@ -71,7 +71,7 @@ def get_remaining_chunks(
 
     first_subscriptions_involved, subscriptions_involved = spy(subscriptions_involved, 1)
     if not first_subscriptions_involved:
-        raise NoActiveSubscription()
+        return []
 
     quota_chunks = iter_subscriptions_quota_chunks(
         subscriptions_involved,

@@ -3,7 +3,7 @@ from itertools import product
 from operator import attrgetter
 
 import pytest
-from payments.exceptions import InconsistentQuotaCache, NoActiveSubscription
+from payments.exceptions import InconsistentQuotaCache
 from payments.functions import iter_subscriptions_involved
 from payments.models import INFINITY, Quota, QuotaCache, QuotaChunk, Usage
 
@@ -84,8 +84,7 @@ def test_usage_with_simple_quota(db, subscription, resource, remains, days):
     assert remains(at=subscription.start) == 100
     assert remains(at=subscription.start + days(3)) == 70
     assert remains(at=subscription.start + days(6)) == 40
-    with pytest.raises(NoActiveSubscription):
-        remains(at=subscription.start + days(10))
+    assert remains(at=subscription.start + days(10)) == 0
 
 
 def test_usage_with_recharging_quota(db, subscription, resource, remains, days):
@@ -167,15 +166,12 @@ def test_subtraction_priority(db, subscription, resource, remains, days):
     assert remains(at=subscription.start + days(5)) == 200
     assert remains(at=subscription.start + days(6)) == 50
     assert remains(at=subscription.start + days(7)) == 50
-    with pytest.raises(NoActiveSubscription):
-        remains(at=subscription.start + days(10))
+    assert remains(at=subscription.start + days(10)) == 0
 
 
 def test_multiple_subscriptions(db, two_subscriptions, user, resource, now, remains, days):
 
-    with pytest.raises(NoActiveSubscription):
-        remains(at=now - days(1))
-
+    assert remains(at=now - days(1)) == 0
     assert remains(at=now + days(0)) == 100
     assert remains(at=now + days(1)) == 50
     assert remains(at=now + days(2)) == 50
@@ -187,9 +183,7 @@ def test_multiple_subscriptions(db, two_subscriptions, user, resource, now, rema
     assert remains(at=now + days(10)) == 150
     assert remains(at=now + days(11)) == 100
     assert remains(at=now + days(12)) == 50
-
-    with pytest.raises(NoActiveSubscription):
-        remains(at=now + days(16))
+    assert remains(at=now + days(16)) == 0
 
 
 def test_cache(db, two_subscriptions, now, remains, remaining_chunks, get_cache, days):

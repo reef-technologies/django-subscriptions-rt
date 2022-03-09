@@ -5,7 +5,14 @@
     </tr>
     <tr>
         <th>Active subscriptions</th>
-        <td>{{ request.user.active_subscriptions }}</td>
+        <td>
+            <ul>
+                {% for subscription in request.user.active_subscriptions %}
+                    <li>{{ subscription }}</li>
+                {% endfor %}
+                <li><a href="{% url 'plan_list' %}">Add a subscription</a></li>
+            </ul>
+        </td>
     </tr>
     <tr>
         <th colspan="2">Quotas</th>

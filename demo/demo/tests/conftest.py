@@ -1,19 +1,20 @@
-from datetime import datetime, timedelta
+from datetime import datetime
 from datetime import timezone as tz
 from decimal import Decimal
 from functools import wraps
 from typing import List
+from dateutil.relativedelta import relativedelta
 
 import pytest
 from django.contrib.auth import get_user_model
-from payments.functions import get_remaining_chunks
+from payments.functions import get_remaining_amount, get_remaining_chunks
 from payments.models import Plan, Quota, QuotaCache, Resource, Subscription, Usage
 
 
 @pytest.fixture
 def days():
-    def fn(n: int) -> timedelta:
-        return timedelta(days=n)
+    def fn(n: int) -> relativedelta:
+        return relativedelta(days=n)
     return fn
 
 
@@ -70,11 +71,10 @@ def remaining_chunks(user) -> callable:
 
 
 @pytest.fixture
-def remains(user) -> callable:
-    @wraps(get_remaining_chunks)
+def remains(user, resource) -> callable:
+    @wraps(get_remaining_amount)
     def wrapped(**kwargs):
-        chunks = get_remaining_chunks(user=user, **kwargs)
-        return sum(chunk.remains for chunk in chunks) if chunks else 0
+        return get_remaining_amount(user=user, **kwargs).get(resource, 0)
 
     return wrapped
 

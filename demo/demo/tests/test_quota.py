@@ -1,7 +1,6 @@
 from datetime import timedelta
 
 import pytest
-from payments.exceptions import NoActiveSubscription
 from payments.models import INFINITY, Quota
 
 
@@ -12,8 +11,7 @@ def test_quota_without_subscription(db, plan, resource, remains, now):
         limit=100,
     )
 
-    with pytest.raises(NoActiveSubscription):
-        remains(at=now)
+    assert remains(at=now) == 0
 
 
 def test_quota_without_usage(db, subscription, resource, remains, days):
@@ -31,17 +29,11 @@ def test_quota_without_usage(db, subscription, resource, remains, days):
         limit=100,
     )
 
-    with pytest.raises(NoActiveSubscription):
-        remains(at=subscription.start - timedelta(seconds=1))
-
+    assert remains(at=subscription.start - timedelta(seconds=1)) == 0
     assert remains(at=subscription.start) == 100
     assert remains(at=subscription.start + days(1)) == 100
-
-    with pytest.raises(NoActiveSubscription):
-        remains(at=subscription.end)
-
-    with pytest.raises(NoActiveSubscription):
-        remains(at=subscription.end + timedelta(seconds=1))
+    assert remains(at=subscription.end) == 0
+    assert remains(at=subscription.end + timedelta(seconds=1)) == 0
 
 
 def test_quota_recharge(db, subscription, resource, remains, days):
@@ -63,15 +55,11 @@ def test_quota_recharge(db, subscription, resource, remains, days):
         burns_in=INFINITY,
     )
 
-    with pytest.raises(NoActiveSubscription):
-        remains(at=subscription.start - timedelta(seconds=1))
-
+    assert remains(at=subscription.start - timedelta(seconds=1)) == 0
     assert remains(at=subscription.start) == 100
     assert remains(at=subscription.start + days(9)) == 200
     assert remains(at=subscription.start + days(18)) == 300
-
-    with pytest.raises(NoActiveSubscription):
-        remains(at=subscription.end)
+    assert remains(at=subscription.end) == 0
 
 
 def test_quota_burn(db, subscription, resource, remains, days):
@@ -98,15 +86,9 @@ def test_quota_burn(db, subscription, resource, remains, days):
         burns_in=days(7),
     )
 
-    with pytest.raises(NoActiveSubscription):
-        remains(at=subscription.start - timedelta(seconds=1))
-
+    assert remains(at=subscription.start - timedelta(seconds=1)) == 0
     assert remains(at=subscription.start) == 100
     assert remains(at=subscription.start + days(5)) == 200
     assert remains(at=subscription.start + days(7)) == 100
-
-    with pytest.raises(NoActiveSubscription):
-        remains(at=subscription.start + days(10))
-
-    with pytest.raises(NoActiveSubscription):
-        remains(at=subscription.start + days(15))
+    assert remains(at=subscription.start + days(10)) == 0
+    assert remains(at=subscription.start + days(15)) == 0

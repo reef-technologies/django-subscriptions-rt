@@ -3,20 +3,22 @@ from datetime import datetime, timedelta
 from itertools import count, zip_longest
 from math import ceil
 from operator import attrgetter
-from typing import Dict, Iterable, Iterator, List, Optional
+from typing import Iterable, Iterator, List, Optional
 
+from dateutil.relativedelta import relativedelta
 from django.conf import settings
 from django.db import models
 from django.db.models import Index, QuerySet, UniqueConstraint
 from django.urls import reverse
 from django.utils.timezone import now
+
 from payments.exceptions import InconsistentQuotaCache, QuotaLimitExceeded
 
-from .fields import MoneyField
+from .fields import MoneyField, RelativeDurationField
 from .signals import subscription_expires_soon
 from .utils import merge_iter
 
-INFINITY = timedelta(days=365 * 1000)
+INFINITY = relativedelta(days=365 * 1000)
 
 
 class Resource(models.Model):
@@ -37,8 +39,8 @@ class Plan(models.Model):
     name = models.CharField(max_length=255)
     slug = models.SlugField()
     charge_amount = MoneyField(blank=True, null=True)
-    charge_period = models.DurationField(blank=True, help_text='DD HH:MM:SS; leave blank for one-time charge')
-    subscription_duration = models.DurationField(blank=True, help_text='DD HH:MM:SS; leave blank to make it an infinite subscription')
+    charge_period = RelativeDurationField(blank=True, help_text='leave blank for one-time charge')
+    subscription_duration = RelativeDurationField(blank=True, help_text='DD HH:MM:SS; leave blank to make it an infinite subscription')
     is_enabled = models.BooleanField(default=True)
 
     class Meta:
@@ -158,9 +160,11 @@ class Subscription(models.Model):
         min_start_time = max(since - quota.burns_in + epsilon, self.start) if since else self.start  # quota chunks starting after this are OK
         until = min(until, self.end) if until else self.end
 
-        count_start = ceil((min_start_time - self.start) / quota.recharge_period)  # index of first quota chunk starting after min_start_time
-        for i in count(start=count_start):
+        for i in count(start=0):
             start = self.start + i * quota.recharge_period
+            if start < min_start_time:
+                continue
+
             if start > until:
                 return
 
@@ -174,12 +178,14 @@ class Subscription(models.Model):
     def iter_charge_dates(self, since: Optional[datetime] = None) -> Iterator[datetime]:
         """ Including first charge (i.e. charge to create subscription) """
         charge_period = self.plan.charge_period
-
         since = since or self.start
-        start_index = ceil((max(since, self.start) - self.start) / charge_period)
 
-        for i in count(start=start_index):
+        for i in count(start=0):
             charge_date = self.start + charge_period * i
+
+            if charge_date < since:
+                continue
+
             if charge_date >= self.end:
                 return
 
@@ -196,8 +202,8 @@ class Quota(models.Model):
     plan = models.ForeignKey(Plan, on_delete=models.CASCADE, related_name='quotas')
     resource = models.ForeignKey(Resource, on_delete=models.CASCADE, related_name='quotas')
     limit = models.PositiveIntegerField()
-    recharge_period = models.DurationField(blank=True, help_text='leave blank for recharging only after each subscription prolongation (charge)')
-    burns_in = models.DurationField(blank=True, help_text='leave blank to burn each recharge period')
+    recharge_period = RelativeDurationField(blank=True, help_text='leave blank for recharging only after each subscription prolongation (charge)')
+    burns_in = RelativeDurationField(blank=True, help_text='leave blank to burn each recharge period')
 
     class Meta:
         constraints = [
