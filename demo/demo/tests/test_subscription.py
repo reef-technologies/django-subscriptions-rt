@@ -53,6 +53,11 @@ def test_subscription_charge_dates(db, plan, subscription, days):
     assert list(subscription.iter_charge_dates(since=subscription.start + days(65))) == []
 
 
+def test_subscription_iter_charge_dates_performance(db, subscription, django_assert_num_queries):
+    with django_assert_num_queries(0):
+        list(subscription.iter_charge_dates())
+
+
 def test_subscription_charge_dates_with_no_charge_period(db, plan, subscription, now):
     plan.charge_period = None
     plan.save(update_fields=['charge_period'])
@@ -128,24 +133,3 @@ def test_iter_quota_chunks(db, subscription, resource, days):
 def test_subscription_get_expiring_performance(django_assert_num_queries, two_subscriptions, days):
     with django_assert_num_queries(1):
         list(Subscription.get_expiring(within=days(5)))
-
-
-@pytest.mark.skip
-def test_subscription_get_remaining_amount_performance():
-    Subscription().get_remaining_amount()
-
-
-@pytest.mark.skip
-def test_subscription_iter_quota_chunks_performance():
-    Subscription().iter_quota_chunks()
-
-
-@pytest.mark.skip
-def test_subscription_iter_subscriptions_quota_chunks_performance():
-    Subscription().iter_subscriptions_quota_chunks()
-
-
-@pytest.mark.skip
-def test_subscription_iter_charge_dates_performance():
-    Subscription().iter_charge_dates()
-

@@ -1,24 +1,19 @@
-<table>
+<table border="1">
     <tr>
-        <td>Current user</td>
+        <th>Current user</th>
         <td>{{ request.user }}</td>
     </tr>
     <tr>
-        <td>User's subscriptions<br>(from SubscriptionsMiddleware)</td>
-        <td>
-            <ol>
-                {% for subscription, resources in request.subscriptions.items %}
-                    <li>
-                        Subscription: {{ subscription }}<br>
-                        Resources:
-                        <ul>
-                            {% for resource, remains in resources.items %}
-                                <li>{{ resource }}: {{ remains }} left</li>
-                            {% endfor %}
-                        </ul>
-                    </li>
-                {% endfor %}
-            </ol>
-        </td>
+        <th>Active subscriptions</th>
+        <td>{{ request.user.active_subscriptions }}</td>
     </tr>
+    <tr>
+        <th colspan="2">Quotas</th>
+    </tr>
+    {% for resource, remains in request.user.quotas.items %}
+        <tr>
+            <th>{{ resource }}</th>
+            <td>{{ remains }}</td>
+        </tr>
+    {% endfor %}
 </table>

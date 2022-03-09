@@ -1,7 +1,7 @@
 from datetime import datetime
 from logging import getLogger
 from operator import attrgetter
-from typing import Iterator, List, Optional
+from typing import Dict, Iterable, Iterator, List, Optional
 
 from django.contrib.auth.models import AbstractUser
 from django.db.models import Prefetch
@@ -10,6 +10,7 @@ from more_itertools import spy
 
 from payments.exceptions import NoActiveSubscription, NoQuotaApplied, QuotaLimitExceeded
 from payments.models import Quota, QuotaCache, QuotaChunk, Resource, Subscription, Usage
+from payments.utils import merge_iter
 
 log = getLogger(__name__)
 
@@ -36,9 +37,27 @@ def iter_subscriptions_involved(user: AbstractUser, at: datetime) -> Iterator['S
         from_ = min(from_, subscription.start)
 
 
+def iter_subscriptions_quota_chunks(
+    subscriptions: Iterable[Subscription],
+    since: datetime,
+    until: datetime,
+    sort_by: callable = attrgetter('start'),
+) -> Iterator[QuotaChunk]:
+    return merge_iter(
+        *(
+            subscription.iter_quota_chunks(
+                since=since,
+                until=until,
+                sort_by=sort_by,
+            )
+            for subscription in subscriptions
+        ),
+        key=sort_by,
+    )
+
+
 def get_remaining_chunks(
     user: AbstractUser,
-    resource: Resource,
     at: Optional[datetime] = None,
     quota_cache: Optional[QuotaCache] = None,
 ) -> List[QuotaChunk]:
@@ -54,11 +73,10 @@ def get_remaining_chunks(
     if not first_subscriptions_involved:
         raise NoActiveSubscription()
 
-    quota_chunks = Subscription.iter_subscriptions_quota_chunks(
+    quota_chunks = iter_subscriptions_quota_chunks(
         subscriptions_involved,
         since=quota_cache and quota_cache.datetime,
         until=at,
-        resource=resource,
         sort_by=attrgetter('start'),
     )
     if quota_cache:
@@ -74,13 +92,12 @@ def get_remaining_chunks(
 
     usages = Usage.objects.filter(
         user=user,
-        resource=resource,
         **({'datetime__gt': quota_cache.datetime} if quota_cache else {'datetime__gte': first_quota_chunks[0].start}),
         datetime__lte=at,
     ).order_by('datetime')
 
     active_chunks = []
-    for date, amount in usages.values_list('datetime', 'amount'):
+    for date, resource_id, amount in usages.values_list('datetime', 'resource', 'amount'):
 
         # add chunks to active_chunks until they bypass "date"
         if not active_chunks or active_chunks[-1].start <= date:
@@ -94,7 +111,7 @@ def get_remaining_chunks(
 
         # select & sort chunks to consume from
         chunks_to_consume = sorted(
-            (chunk for chunk in active_chunks if chunk.start <= date < chunk.end),
+            (chunk for chunk in active_chunks if chunk.start <= date < chunk.end and chunk.resource.id == resource_id),
             key=attrgetter('end'),
         )
 
@@ -130,15 +147,12 @@ def get_remaining_chunks(
 
 def get_remaining_amount(
     user: AbstractUser,
-    resource: Resource,
     at: Optional[datetime] = None,
     quota_cache: Optional[QuotaCache] = None,
-) -> int:
-    return sum(
-        chunk.remains for chunk in get_remaining_chunks(
-            user=user,
-            resource=resource,
-            at=at,
-            quota_cache=quota_cache,
-        )
-    )
+) -> Dict[Resource, int]:
+
+    amount = {}
+    for chunk in get_remaining_chunks(user=user, at=at, quota_cache=quota_cache):
+        amount[chunk.resource] = amount.setdefault(chunk.resource, 0) + chunk.remains
+
+    return amount

@@ -61,19 +61,19 @@ def quota(db, resource, subscription) -> Quota:
 
 
 @pytest.fixture
-def remaining_chunks(resource, user) -> callable:
+def remaining_chunks(user) -> callable:
     @wraps(get_remaining_chunks)
     def wrapped(**kwargs):
-        return get_remaining_chunks(user=user, resource=resource, **kwargs)
+        return get_remaining_chunks(user=user, **kwargs)
 
     return wrapped
 
 
 @pytest.fixture
-def remains(resource, user) -> callable:
+def remains(user) -> callable:
     @wraps(get_remaining_chunks)
     def wrapped(**kwargs):
-        chunks = get_remaining_chunks(user=user, resource=resource, **kwargs)
+        chunks = get_remaining_chunks(user=user, **kwargs)
         return sum(chunk.remains for chunk in chunks) if chunks else 0
 
     return wrapped

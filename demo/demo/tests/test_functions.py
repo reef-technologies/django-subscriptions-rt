@@ -46,11 +46,6 @@ def test_cache_apply(resource, now, days):
     assert list(cache.apply(chunks)) == cache.chunks
 
 
-@pytest.mark.skip
-def test_remaining_chunks():
-    ...
-
-
 def test_remaining_chunks_performance(db, two_subscriptions, now, remains, django_assert_max_num_queries, get_cache, days):
     cache_day, test_day = 8, 10
 

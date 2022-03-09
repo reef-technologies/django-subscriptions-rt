@@ -1,22 +1,20 @@
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from itertools import count
+from itertools import count, zip_longest
 from math import ceil
 from operator import attrgetter
 from typing import Dict, Iterable, Iterator, List, Optional
-from itertools import zip_longest
-from payments.exceptions import InconsistentQuotaCache
 
 from django.conf import settings
 from django.db import models
 from django.db.models import Index, QuerySet, UniqueConstraint
 from django.urls import reverse
 from django.utils.timezone import now
+from payments.exceptions import InconsistentQuotaCache, QuotaLimitExceeded
 
 from .fields import MoneyField
 from .signals import subscription_expires_soon
 from .utils import merge_iter
-
 
 INFINITY = timedelta(days=365 * 1000)
 
@@ -106,7 +104,7 @@ class QuotaCache:
                 yield chunk
 
 
-class SubscriptionManager(models.Manager):
+class SubscriptionQuerySet(models.QuerySet):
     def active(self, as_of: Optional[datetime] = None) -> QuerySet:
         now_ = as_of or now()
         return self.filter(start__lte=now_, end__gte=now_)
@@ -123,7 +121,7 @@ class Subscription(models.Model):
     start = models.DateTimeField(blank=True)
     end = models.DateTimeField(blank=True)
 
-    objects = SubscriptionManager()
+    objects = SubscriptionQuerySet.as_manager()
 
     def __str__(self) -> str:
         return f'{self.user} @ {self.plan}, {self.start} - {self.end}'
@@ -141,29 +139,18 @@ class Subscription(models.Model):
     def get_expiring(cls, within: timedelta) -> QuerySet:
         return cls.objects.active().filter(end__lte=now() + within)
 
-    def get_remaining_amount(self, at: Optional[datetime] = None) -> Dict[Resource, int]:
-        from .functions import get_remaining_amount as get_remaining_amount_for_resource
-
-        at = at or now()
-
-        resources = {quota.resource for quota in self.plan.quotas.all()}
-        return {
-            resource: get_remaining_amount_for_resource(
-                user=self.user,
-                resource=resource,
-                at=at,
-                quota_cache=None,  # TODO: auto-fetch quota cache
-            )
-            for resource in resources
-        }
-
-    def iter_quota_chunks(self, since: Optional[datetime] = None, until: Optional[datetime] = None, resource: Optional[Resource] = None, sort_by: callable = attrgetter('start')) -> Iterator[QuotaChunk]:
+    def iter_quota_chunks(
+        self,
+        since: Optional[datetime] = None,
+        until: Optional[datetime] = None,
+        sort_by: callable = attrgetter('start'),
+    ) -> Iterator[QuotaChunk]:
 
         quotas = self.plan.quotas.all()
-        if resource:
-            quotas = filter(lambda quota: quota.resource == resource, quotas)
-
-        yield from merge_iter(*(self._iter_single_quota_chunks(quota=quota, since=since, until=until) for quota in quotas), key=sort_by)
+        yield from merge_iter(
+            *(self._iter_single_quota_chunks(quota=quota, since=since, until=until) for quota in quotas),
+            key=sort_by,
+        )
 
     def _iter_single_quota_chunks(self, quota: 'Quota', since: Optional[datetime] = None, until: Optional[datetime] = None):
 
@@ -183,21 +170,6 @@ class Subscription(models.Model):
                 end=min(start + quota.burns_in, self.end),
                 remains=quota.limit,
             )
-
-    @classmethod
-    def iter_subscriptions_quota_chunks(cls, subscriptions: Iterable['Subscription'], since: datetime, until: datetime, resource: Resource, sort_by: callable = attrgetter('start')) -> Iterator[QuotaChunk]:
-        return merge_iter(
-            *(
-                subscription.iter_quota_chunks(
-                    since=since,
-                    until=until,
-                    resource=resource,
-                    sort_by=sort_by,
-                )
-                for subscription in subscriptions
-            ),
-            key=sort_by,
-        )
 
     def iter_charge_dates(self, since: Optional[datetime] = None) -> Iterator[datetime]:
         """ Including first charge (i.e. charge to create subscription) """
@@ -256,5 +228,12 @@ class Usage(models.Model):
         return f'{self.amount:,}{self.resource.units} {self.resource} at {self.datetime}'
 
     def save(self, *args, **kwargs):
+        from .functions import get_remaining_amount
+
         self.datetime = self.datetime or now()
+
+        remains = get_remaining_amount(user=self.user, at=self.datetime).get(self.resource, 0)
+        if remains < self.amount:
+            raise QuotaLimitExceeded(f'Tried to use {self.amount} {self.resource}(s) while only {remains} is allowed')
+
         return super().save(*args, **kwargs)

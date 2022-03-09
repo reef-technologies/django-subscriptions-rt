@@ -1,15 +1,11 @@
-from typing import Dict
-
 from django.utils.deprecation import MiddlewareMixin
-from django.utils.timezone import now
 
-from payments.models import Resource, Subscription
+from payments.functions import get_remaining_amount
+from payments.models import Subscription
 
 
 class SubscriptionsMiddleware(MiddlewareMixin):
     def process_request(self, request):
-        now_ = now()
-        request.subscriptions: Dict[Subscription: Dict[Resource, int]] = {
-            subscription: subscription.get_remaining_amount(at=now_)
-            for subscription in request.user.subscriptions.active()
-        }
+        is_auth = request.user.is_authenticated
+        request.user.active_subscriptions = Subscription.objects.filter(user=request.user).active() if is_auth else []
+        request.user.quotas = get_remaining_amount(user=request.user) if is_auth else {}
