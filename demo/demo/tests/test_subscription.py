@@ -1,13 +1,14 @@
 from datetime import datetime
 from datetime import timezone as tz
+from itertools import islice
 
-import pytest
+from dateutil.relativedelta import relativedelta
 from payments.models import Quota, QuotaChunk, Subscription
 
 
 def test_limited_plan_duration(db, user, plan, now, days):
-    plan.subscription_duration = days(30)
-    plan.save(update_fields=['subscription_duration'])
+    plan.max_duration = days(30)
+    plan.save(update_fields=['max_duration'])
 
     subscription = Subscription.objects.create(
         user=user,
@@ -18,8 +19,8 @@ def test_limited_plan_duration(db, user, plan, now, days):
 
 
 def test_unlimited_plan_duration(db, user, plan, now, days):
-    plan.subscription_duration = None
-    plan.save(update_fields=['subscription_duration'])
+    plan.max_duration = None
+    plan.save(update_fields=['max_duration'])
 
     subscription = Subscription.objects.create(
         user=user,
@@ -30,7 +31,7 @@ def test_unlimited_plan_duration(db, user, plan, now, days):
 
 
 def test_subscription_charge_dates(db, plan, subscription, days):
-    plan.charge_period = days(30)
+    plan.charge_period = relativedelta(months=1)
     plan.save(update_fields=['charge_period'])
 
     subscription.start = datetime(2021, 11, 30, 12, 00, 00, tzinfo=tz.utc)
@@ -40,57 +41,40 @@ def test_subscription_charge_dates(db, plan, subscription, days):
     expected_charge_dates = [
         subscription.start,
         datetime(2021, 12, 30, 12, 00, 00, tzinfo=tz.utc),
-        datetime(2022, 1, 29, 12, 00, 00, tzinfo=tz.utc),
+        datetime(2022, 1, 30, 12, 00, 00, tzinfo=tz.utc),
+        datetime(2022, 2, 28, 12, 00, 00, tzinfo=tz.utc),
+        datetime(2022, 3, 30, 12, 00, 00, tzinfo=tz.utc),
     ]
 
-    assert list(subscription.iter_charge_dates()) == expected_charge_dates
-    assert list(subscription.iter_charge_dates(since=subscription.start)) == expected_charge_dates
-    assert list(subscription.iter_charge_dates(since=subscription.start + days(1))) == expected_charge_dates[1:]
-    assert list(subscription.iter_charge_dates(since=subscription.start + days(30))) == expected_charge_dates[1:]
-    assert list(subscription.iter_charge_dates(since=subscription.start + days(31))) == expected_charge_dates[2:]
-    assert list(subscription.iter_charge_dates(since=subscription.start + days(60))) == expected_charge_dates[2:]
-    assert list(subscription.iter_charge_dates(since=subscription.start + days(64))) == []
-    assert list(subscription.iter_charge_dates(since=subscription.start + days(65))) == []
+    assert list(islice(subscription.iter_charge_dates(), 3)) == expected_charge_dates[:3]
+    assert list(islice(subscription.iter_charge_dates(since=subscription.start), 3)) == expected_charge_dates[:3]
+    assert list(islice(subscription.iter_charge_dates(since=subscription.start + days(1)), 3)) == expected_charge_dates[1:4]
+    assert list(islice(subscription.iter_charge_dates(since=subscription.start + days(30)), 3)) == expected_charge_dates[1:4]
+    assert list(islice(subscription.iter_charge_dates(since=subscription.start + days(31)), 3)) == expected_charge_dates[2:5]
+    assert list(islice(subscription.iter_charge_dates(since=subscription.start + days(60)), 3)) == expected_charge_dates[2:5]
 
 
 def test_subscription_iter_charge_dates_performance(db, subscription, django_assert_num_queries):
     with django_assert_num_queries(0):
-        list(subscription.iter_charge_dates())
+        list(islice(subscription.iter_charge_dates(), 10))
 
 
 def test_subscription_charge_dates_with_no_charge_period(db, plan, subscription, now):
     plan.charge_period = None
     plan.save(update_fields=['charge_period'])
 
-    assert list(subscription.iter_charge_dates()) == [subscription.start]
+    assert list(islice(subscription.iter_charge_dates(), 10)) == [subscription.start]
 
 
 def test_active_subscription_filter(db, subscription, now, days):
     subscription.start = now - days(2)
     subscription.end = now - days(1)
     subscription.save(update_fields=['start', 'end'])
-    assert subscription not in Subscription.objects.active(as_of=now)
+    assert subscription not in Subscription.objects.active(at=now)
 
     subscription.end = now + days(1)
     subscription.save(update_fields=['end'])
-    assert subscription in Subscription.objects.active(as_of=now)
-
-
-# def test_plan_charge_amount(plan: Plan):
-
-#     raise NotImplementedError()
-
-
-# def test_plan_periodic_charge(plan: Plan):
-#     raise NotImplementedError()
-
-
-# def test_plan_subscription_duration(plan: Plan):
-#     raise NotImplementedError()
-
-
-# def test_plan_is_enabled(plan: Plan):
-#     raise NotImplementedError()
+    assert subscription in Subscription.objects.active(at=now)
 
 
 def test_iter_quota_chunks(db, subscription, resource, days):

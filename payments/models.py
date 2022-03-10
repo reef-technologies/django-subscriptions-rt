@@ -1,7 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from itertools import count, zip_longest
-from math import ceil
+from itertools import count, islice, zip_longest
 from operator import attrgetter
 from typing import Iterable, Iterator, List, Optional
 
@@ -12,10 +11,8 @@ from django.db.models import Index, QuerySet, UniqueConstraint
 from django.urls import reverse
 from django.utils.timezone import now
 
-from payments.exceptions import InconsistentQuotaCache, QuotaLimitExceeded
-
+from .exceptions import InconsistentQuotaCache, QuotaLimitExceeded
 from .fields import MoneyField, RelativeDurationField
-from .signals import subscription_expires_soon
 from .utils import merge_iter
 
 INFINITY = relativedelta(days=365 * 1000)
@@ -40,7 +37,7 @@ class Plan(models.Model):
     slug = models.SlugField()
     charge_amount = MoneyField(blank=True, null=True)
     charge_period = RelativeDurationField(blank=True, help_text='leave blank for one-time charge')
-    subscription_duration = RelativeDurationField(blank=True, help_text='DD HH:MM:SS; leave blank to make it an infinite subscription')
+    max_duration = RelativeDurationField(blank=True, help_text='leave blank to make it an infinite subscription')
     is_enabled = models.BooleanField(default=True)
 
     class Meta:
@@ -56,7 +53,7 @@ class Plan(models.Model):
 
     def save(self, *args, **kwargs):
         self.charge_period = self.charge_period or INFINITY
-        self.subscription_duration = self.subscription_duration or INFINITY
+        self.max_duration = self.max_duration or INFINITY
         return super().save(*args, **kwargs)
 
 
@@ -107,13 +104,13 @@ class QuotaCache:
 
 
 class SubscriptionQuerySet(models.QuerySet):
-    def active(self, as_of: Optional[datetime] = None) -> QuerySet:
-        now_ = as_of or now()
-        return self.filter(start__lte=now_, end__gte=now_)
+    def active(self, at: Optional[datetime] = None) -> QuerySet:
+        at = at or now()
+        return self.filter(start__lte=at, end__gt=at)
 
-    def expiring(self, in_: datetime, from_: Optional[datetime] = None) -> QuerySet:
+    def expiring(self, within: datetime, from_: Optional[datetime] = None) -> QuerySet:
         from_ = from_ or now()
-        return self.filter(start__lte=from_, end__gte=from_ + in_)
+        return self.filter(end__gte=from_, end__lte=from_ + within)
 
 
 class Subscription(models.Model):
@@ -130,7 +127,7 @@ class Subscription(models.Model):
 
     def save(self, *args, **kwargs):
         self.start = self.start or now()
-        self.end = self.end or (self.start + self.plan.subscription_duration)
+        self.end = self.end or (self.start + self.plan.max_duration)
         return super().save(*args, **kwargs)
 
     def stop(self):
@@ -139,7 +136,29 @@ class Subscription(models.Model):
 
     @classmethod
     def get_expiring(cls, within: timedelta) -> QuerySet:
-        return cls.objects.active().filter(end__lte=now() + within)
+        return cls.objects.active().expiring(within)
+
+    def may_be_prolonged(self, at: Optional[datetime] = None) -> bool:
+        at = at or now()
+        next_charge_dates = islice(self.iter_charge_dates(since=at), 2)
+        if not next_charge_dates:
+            return False
+
+        if len(next_charge_dates) == 2 and next_charge_dates[1] <= self.end:
+            return False
+
+        return next_charge_dates[0] <= self.end
+
+    def prolong(self, for_: Optional[relativedelta] = None):
+        if for_:
+            self.end += for_
+        else:
+            max_end = self.start + self.plan.max_duration
+            next_charge_dates = islice(self.iter_charge_dates(since=self.end), 2)
+            next_charge_date = next_charge_dates[1] if next_charge_dates[0] == self.end else next_charge_dates[0]
+            self.end = min(max_end, next_charge_date)
+
+        self.save()
 
     def iter_quota_chunks(
         self,
@@ -186,16 +205,9 @@ class Subscription(models.Model):
             if charge_date < since:
                 continue
 
-            if charge_date >= self.end:
-                return
-
             yield charge_date
             if charge_period == INFINITY:
                 break
-
-    @classmethod
-    def send_expiring_signal(cls, expire_in: timedelta):
-        subscription_expires_soon.send(sender=cls, subscriptions=cls.objects.expiring(in_=expire_in))
 
 
 class Quota(models.Model):
@@ -243,3 +255,52 @@ class Usage(models.Model):
             raise QuotaLimitExceeded(f'Tried to use {self.amount} {self.resource}(s) while only {remains} is allowed')
 
         return super().save(*args, **kwargs)
+
+
+class AbstractTransaction(models.Model):
+
+    class Status(models.IntegerChoices):
+        PENDING = 0
+        PREAUTH = 1
+        COMPLETED = 2
+        CANCELED = 3
+        ERROR = 4
+
+    vendor = models.CharField(max_length=255)
+    vendor_transaction_id = models.CharField(max_length=255)
+    status = models.PositiveSmallIntegerField(choices=Status.choices, default=Status.PENDING)
+    amount = MoneyField()
+    # source = models.ForeignKey(MoneyStorage, on_delete=models.PROTECT, related_name='transactions_out')
+    # destination = models.ForeignKey(MoneyStorage, on_delete=models.PROTECT, related_name='transactions_in')
+    created = models.DateTimeField(blank=True, editable=False)
+    updated = models.DateTimeField(blank=True, editable=False)
+
+    class Meta:
+        abstract = True
+
+    def save(self, *args, **kwargs):
+        now_ = now()
+        self.created = self.created or now_
+        self.updated = now_
+        return super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return f'{self.get_status_display()} {self.amount} via {self.vendor}'
+
+
+class SubscriptionPayment(AbstractTransaction):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='%(class)ss')
+    subscription = models.ForeignKey(Subscription, on_delete=models.PROTECT, blank=True, null=True, related_name='%(class)ss')
+    subscription_charge_date = models.DateTimeField()
+
+
+class SubscriptionPaymentRefund(AbstractTransaction):
+    original_payment = models.ForeignKey(SubscriptionPayment, on_delete=models.PROTECT, related_name='refunds')
+
+
+class Tax(models.Model):
+    subscription_payment = models.ForeignKey(SubscriptionPayment, on_delete=models.PROTECT, related_name='taxes')
+    amount = MoneyField()
+
+    def __str__(self) -> str:
+        return f'{self.amount}'
