@@ -10,3 +10,7 @@ class NoQuotaApplied(Exception):
 
 class InconsistentQuotaCache(Exception):
     pass
+
+
+class ProviderNotFound(Exception):
+    pass

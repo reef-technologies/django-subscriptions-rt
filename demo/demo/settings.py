@@ -76,6 +76,14 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'demo.wsgi.application'
 
+PAYMENT_PROVIDERS = {
+    'stripe-main': {
+        'class': 'payments.providers.stripe.StripeProvider',
+    },
+    'stripe-secondary': {
+        'class': 'payments.providers.stripe.StripeProvider',
+    },
+}
 
 # Database
 # https://docs.djangoproject.com/en/4.0/ref/settings/#databases
