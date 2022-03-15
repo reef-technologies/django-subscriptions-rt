@@ -137,7 +137,6 @@ class SubscriptionQuerySet(models.QuerySet):
 class Subscription(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='subscriptions')
     plan = models.ForeignKey(Plan, on_delete=models.PROTECT, related_name='subscriptions')
-    # amount = MoneyField()  # should match plan.charge_amount
     start = models.DateTimeField(blank=True)
     end = models.DateTimeField(blank=True)
 
@@ -159,23 +158,12 @@ class Subscription(models.Model):
     def get_expiring(cls, within: timedelta) -> QuerySet:
         return cls.objects.active().expiring(within)
 
-    def may_be_prolonged(self, at: Optional[datetime] = None) -> bool:
-        at = at or now()
-        next_charge_dates = islice(self.iter_charge_dates(since=at), 2)
-        if not next_charge_dates:
-            return False
-
-        if len(next_charge_dates) == 2 and next_charge_dates[1] <= self.end:
-            return False
-
-        return next_charge_dates[0] <= self.end
-
     def prolong(self, for_: Optional[relativedelta] = None):
         if for_:
             self.end += for_
         else:
             max_end = self.start + self.plan.max_duration
-            next_charge_dates = islice(self.iter_charge_dates(since=self.end), 2)
+            next_charge_dates = list(islice(self.iter_charge_dates(since=self.end), 2))
             next_charge_date = next_charge_dates[1] if next_charge_dates[0] == self.end else next_charge_dates[0]
             self.end = min(max_end, next_charge_date)
 
@@ -229,6 +217,20 @@ class Subscription(models.Model):
             yield charge_date
             if charge_period == INFINITY:
                 break
+
+    @property
+    def payment_url(self) -> Optional[str]:
+        charge_dates = list(islice(self.iter_charge_dates(since=self.end), 1))
+        if not charge_dates:
+            return
+
+        provider = get_provider(self.provider_name)
+        return provider.generate_payment_url(
+            charge_date=charge_dates[0],
+            subscription_id=self.id,
+            amount=self.plan.charge_amount,
+            user=self.user,
+        )
 
 
 class Quota(models.Model):

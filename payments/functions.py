@@ -8,7 +8,7 @@ from django.db.models import Prefetch
 from django.utils.timezone import now
 from more_itertools import spy
 
-from payments.exceptions import NoQuotaApplied, QuotaLimitExceeded
+from payments.exceptions import QuotaLimitExceeded
 from payments.models import Quota, QuotaCache, QuotaChunk, Resource, Subscription, Usage
 from payments.utils import merge_iter
 
@@ -84,7 +84,7 @@ def get_remaining_chunks(
 
     first_quota_chunks, quota_chunks = spy(quota_chunks, 1)
     if not first_quota_chunks:
-        raise NoQuotaApplied()
+        return []
 
     assert first_quota_chunks[0].start <= at
 
