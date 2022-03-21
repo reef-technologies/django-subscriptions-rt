@@ -1,0 +1,8 @@
+Plan: {{ plan }}<br>
+Provider instance: {{ view.payment_provider }}<br>
+Payment form:
+<form method="POST">
+    {{ view.form.as_p }}
+    {% csrf_token %}
+    <button type="submit">Submit</button>
+</form>

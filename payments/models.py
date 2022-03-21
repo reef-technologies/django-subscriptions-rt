@@ -1,42 +1,26 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from functools import lru_cache
 from itertools import count, islice, zip_longest
 from operator import attrgetter
-from typing import Iterable, Iterator, List, Optional
+from typing import TYPE_CHECKING, Iterable, Iterator, List, Optional
 
 from dateutil.relativedelta import relativedelta
 from django.conf import settings
 from django.db import models
 from django.db.models import Index, QuerySet, UniqueConstraint
 from django.urls import reverse
-from django.utils.module_loading import import_string
 from django.utils.timezone import now
 
-from .exceptions import InconsistentQuotaCache, ProviderNotFound, QuotaLimitExceeded
+from .exceptions import InconsistentQuotaCache, QuotaLimitExceeded
 from .fields import MoneyField, RelativeDurationField
-from .providers import Provider
 from .utils import merge_iter
 
+if TYPE_CHECKING:
+    from .providers import Provider
+
 INFINITY = relativedelta(days=365 * 1000)
-
-
-@lru_cache
-def get_provider(provider_name: str) -> Provider:
-    try:
-        info = settings.PAYMENT_PROVIDERS[provider_name]
-    except KeyError as exc:
-        raise ProviderNotFound(f'Provider "{provider_name}" not found in settings.PAYMENT_PROVIDERS') from exc
-
-    module_path, class_name = info['class'].rpslit('.', maxsplit=1)
-    module = import_string(module_path)
-    try:
-        class_ = getattr(module, class_name)
-    except AttributeError as exc:
-        raise ProviderNotFound(f'Provider "{provider_name}" not found: module "{module_path}" has no class "{class_name}"') from exc
-
-    kwargs = {k: v for k, v in info.items() if k != 'class'}
-    return class_(**kwargs)
 
 
 class Resource(models.Model):
@@ -63,7 +47,8 @@ class Plan(models.Model):
 
     class Meta:
         constraints = [
-            UniqueConstraint(fields=['codename'], name='unique_plan'),
+            UniqueConstraint(fields=['codename'], name='unique_plan_codename'),
+            UniqueConstraint(fields=['slug'], name='unique_plan_slug'),
         ]
 
     def __str__(self) -> str:
@@ -218,19 +203,18 @@ class Subscription(models.Model):
             if charge_period == INFINITY:
                 break
 
-    @property
-    def payment_url(self) -> Optional[str]:
-        charge_dates = list(islice(self.iter_charge_dates(since=self.end), 1))
-        if not charge_dates:
-            return
+    # def get_payment_url(self) -> Optional[str]:
+    #     charge_dates = list(islice(self.iter_charge_dates(since=self.end), 1))
+    #     if not charge_dates:
+    #         return
 
-        provider = get_provider(self.provider_name)
-        return provider.generate_payment_url(
-            charge_date=charge_dates[0],
-            subscription_id=self.id,
-            amount=self.plan.charge_amount,
-            user=self.user,
-        )
+    #     provider = get_provider(self.provider_name)
+    #     return provider.generate_payment_url(
+    #         charge_date=charge_dates[0],
+    #         subscription_id=self.id,
+    #         amount=self.plan.charge_amount,
+    #         user=self.user,
+    #     )
 
 
 class Quota(models.Model):
@@ -308,10 +292,11 @@ class AbstractTransaction(models.Model):
         return super().save(*args, **kwargs)
 
     def __str__(self) -> str:
-        return f'{self.get_status_display()} {self.amount} via {self.vendor}'
+        return f'{self.get_status_display()} {self.amount} via {self.provider_name}'
 
     @property
     def provider(self) -> Provider:
+        from .providers import get_provider
         return get_provider(self.provider_name)
 
 

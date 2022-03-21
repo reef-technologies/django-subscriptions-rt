@@ -84,8 +84,13 @@ TEMPLATES = [
 WSGI_APPLICATION = 'demo.wsgi.application'
 
 PAYMENT_PROVIDERS = {
+    'dummy': {
+        'class': 'payments.providers.dummy.DummyProvider',
+        'description': 'Dummy provider that doesn\'t really charge anything',
+    },
     'stripe-main': {
         'class': 'payments.providers.stripe.StripeProvider',
+        'description': 'Pay via Stripe (credit cards)',
     },
     'stripe-secondary': {
         'class': 'payments.providers.stripe.StripeProvider',

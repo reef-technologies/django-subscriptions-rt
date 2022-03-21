@@ -10,3 +10,8 @@ class InconsistentQuotaCache(Exception):
 
 class ProviderNotFound(Exception):
     pass
+
+
+class PaymentError(Exception):
+    user_message: str = 'unknown error'
+    code = 'unknown'

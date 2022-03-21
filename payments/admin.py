@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Plan, Quota, Resource, Subscription, Usage
+from .models import Plan, Quota, Resource, Subscription, SubscriptionPayment, SubscriptionPaymentRefund, Tax, Usage
 
 
 @admin.register(Plan)
@@ -39,4 +39,13 @@ class UsageAdmin(admin.ModelAdmin):
     list_display = 'user', 'resource', 'amount', 'datetime',
     list_filter = 'datetime', 'resource',
     search_fields = 'user',
+    ordering = '-pk',
+
+
+@admin.register(SubscriptionPayment)
+class SubscriptionPaymentAdmin(admin.ModelAdmin):
+    list_display = 'pk', 'status', 'created', 'updated', 'amount', 'user', 'subscription', 'subscription_charge_date', 'provider_name',
+    list_filter = 'subscription__plan', 'status', 'created', 'updated', 'provider_name',
+    search_fields = 'user', 'amount',
+    queryset = SubscriptionPayment.objects.select_related('subscription__plan')
     ordering = '-pk',
