@@ -1,10 +1,10 @@
 from decimal import Decimal
 from typing import Optional
 
-from rest_framework.serializers import ModelSerializer, ReadOnlyField, SerializerMethodField
+from rest_framework.serializers import ModelSerializer, Serializer, SerializerMethodField
 
-from ..models import Plan, Subscription
 from ..fields import relativedelta_to_dict
+from ..models import Plan, Subscription
 
 
 class PlanSerializer(ModelSerializer):
@@ -32,3 +32,7 @@ class SubscriptionSerializer(ModelSerializer):
     class Meta:
         model = Subscription
         fields = 'id', 'plan', 'start', 'end',
+
+
+class PaymentSerializer(Serializer):
+    pass  # TODO

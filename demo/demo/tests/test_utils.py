@@ -1,5 +1,5 @@
 import pytest
-from payments.utils import merge_iter, NonMonothonicSequence
+from subscriptions.utils import merge_iter, NonMonothonicSequence
 
 
 def test_merge_iter():

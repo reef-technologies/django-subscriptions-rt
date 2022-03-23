@@ -8,9 +8,9 @@ from django.db.models import Prefetch
 from django.utils.timezone import now
 from more_itertools import spy
 
-from payments.exceptions import QuotaLimitExceeded
-from payments.models import Quota, QuotaCache, QuotaChunk, Resource, Subscription, Usage
-from payments.utils import merge_iter
+from subscriptions.exceptions import QuotaLimitExceeded
+from subscriptions.models import Quota, QuotaCache, QuotaChunk, Resource, Subscription, Usage
+from subscriptions.utils import merge_iter
 
 log = getLogger(__name__)
 

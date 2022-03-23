@@ -7,7 +7,7 @@ import djmoney.models.fields
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('payments', '0002_alter_subscription_begin'),
+        ('subscriptions', '0002_alter_subscription_begin'),
     ]
 
     operations = [

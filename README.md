@@ -1,3 +1,15 @@
+# Django-subscriptions-rt: subscriptions and payments for your Django app
+
+# Features
+
+TODO
+
+# Usage
+
+## Subscriptions
+
+\
+
 
 ```
 |--------subscription-------------------------------------------->
@@ -13,3 +25,9 @@ quota   (quota lifetime)       quota burned
 #
 (quota recharge period) (quota recharge period) |----------------->
 ```
+
+# Cases
+
+# Cache
+
+# Humanize

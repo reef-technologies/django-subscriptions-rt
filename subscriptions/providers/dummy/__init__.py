@@ -3,6 +3,8 @@ from uuid import uuid4
 from django.db import transaction
 from django.http import HttpRequest
 from django.utils.timezone import now
+from rest_framework.request import Request
+from rest_framework.response import Response
 
 from ...models import Plan, Subscription, SubscriptionPayment
 from .. import Provider
@@ -30,3 +32,6 @@ class DummyProvider(Provider):
             subscription=subscription,
             subscription_charge_date=subscription.start,
         )
+
+    def handle_webhook(self, request: Request) -> Response:
+        return Response(request.data)

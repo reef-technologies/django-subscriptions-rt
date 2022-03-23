@@ -9,7 +9,7 @@ from rest_framework.views import APIView
 from ..exceptions import ProviderNotFound
 from ..models import Plan, Subscription
 from ..providers import get_provider
-from .serializers import PlanSerializer, SubscriptionSerializer
+from .serializers import PaymentSerializer, PlanSerializer, SubscriptionSerializer
 
 
 class PlanListView(ListAPIView):
@@ -24,7 +24,7 @@ class PaymentProviderListView(APIView):
     permission_classes = AllowAny,
     exposed_info_keys = 'description',
 
-    def get(self, request, format=None):
+    def get(self, request, *args, **kwargs) -> Response:
         providers = {
             provider: {key: info.get(key) for key in self.exposed_info_keys}
             for provider, info in settings.PAYMENT_PROVIDERS.items()
@@ -40,10 +40,19 @@ class SubscriptionListView(ListCreateAPIView):
     ordering = '-end', '-id',
 
 
+class PaymentView(APIView):
+    permission_classes = IsAuthenticated,
+    serializer_class = PaymentSerializer
+    schema = AutoSchema()
+
+    def post(self, request, *args, **kwargs) -> Response:
+        raise NotImplementedError()
+
+
 class PaymentWebhookView(APIView):
     permission_classes = AllowAny,
 
-    def dispatch(self, request, *args, **kwargs):
+    def dispatch(self, request, *args, **kwargs) -> Response:
         try:
             self.provider = get_provider(kwargs['payment_provider_name'])
         except ProviderNotFound:
@@ -51,5 +60,5 @@ class PaymentWebhookView(APIView):
 
         return super().dispatch(request, *args, **kwargs)
 
-    def post(self, request, *args, **kwargs):
+    def post(self, request, *args, **kwargs) -> Response:
         return self.provider.handle_webhook(request=request)

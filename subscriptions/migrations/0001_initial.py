@@ -51,7 +51,7 @@ class Migration(migrations.Migration):
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('amount', models.PositiveIntegerField(default=1)),
                 ('datetime', models.DateTimeField(auto_now_add=True)),
-                ('resource', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='usages', to='payments.resource')),
+                ('resource', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='usages', to='subscriptions.resource')),
                 ('user', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='usages', to=settings.AUTH_USER_MODEL)),
             ],
         ),
@@ -61,7 +61,7 @@ class Migration(migrations.Migration):
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('begin', models.DateTimeField(auto_now_add=True)),
                 ('end', models.DateTimeField(blank=True)),
-                ('plan', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='subscriptions', to='payments.plan')),
+                ('plan', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='subscriptions', to='subscriptions.plan')),
                 ('user', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='subscriptions', to=settings.AUTH_USER_MODEL)),
             ],
         ),
@@ -72,12 +72,12 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='quota',
             name='plan',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='quotas', to='payments.plan'),
+            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='quotas', to='subscriptions.plan'),
         ),
         migrations.AddField(
             model_name='quota',
             name='resource',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='quotas', to='payments.resource'),
+            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='quotas', to='subscriptions.resource'),
         ),
         migrations.AddConstraint(
             model_name='plan',
@@ -85,7 +85,7 @@ class Migration(migrations.Migration):
         ),
         migrations.AddIndex(
             model_name='usage',
-            index=models.Index(fields=['user', 'resource'], name='payments_us_user_id_40fe43_idx'),
+            index=models.Index(fields=['user', 'resource'], name='subscriptions_us_user_id_40fe43_idx'),
         ),
         migrations.AddConstraint(
             model_name='quota',

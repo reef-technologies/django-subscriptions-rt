@@ -3,9 +3,9 @@ from itertools import product
 from operator import attrgetter
 
 import pytest
-from payments.exceptions import InconsistentQuotaCache
-from payments.functions import iter_subscriptions_involved
-from payments.models import INFINITY, Quota, QuotaCache, QuotaChunk, Usage
+from subscriptions.exceptions import InconsistentQuotaCache
+from subscriptions.functions import iter_subscriptions_involved
+from subscriptions.models import INFINITY, Quota, QuotaCache, QuotaChunk, Usage
 
 
 def test_subscriptions_involved(five_subscriptions, user, plan, now, days):

@@ -7,8 +7,8 @@ from dateutil.relativedelta import relativedelta
 
 import pytest
 from django.contrib.auth import get_user_model
-from payments.functions import get_remaining_amount, get_remaining_chunks
-from payments.models import Plan, Quota, QuotaCache, Resource, Subscription, Usage
+from subscriptions.functions import get_remaining_amount, get_remaining_chunks
+from subscriptions.models import Plan, Quota, QuotaCache, Resource, Subscription, Usage
 
 
 @pytest.fixture

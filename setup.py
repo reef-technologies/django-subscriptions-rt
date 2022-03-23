@@ -6,12 +6,12 @@ ROOT = Path(__file__).parent
 
 
 setup(
-    name='django-payments',
+    name='django-subscriptions-rt',
     version='0.1',
     author='Aleksandr Goncharov',
     author_email='aleksandr.goncharov@reef.pl',
-    # url='https://github.com/reef-technologies/payments',
-    # download_url="http://pypi.python.org/pypi/django-payments/",
+    url='https://github.com/reef-technologies/django-subscriptions-rt',
+    download_url="http://pypi.python.org/pypi/django-subscriptions-rt/",
     description="Subscriptions and payments for your django app",
     long_description=(ROOT / 'README.md').read_text(),
     # license='',
@@ -30,5 +30,7 @@ setup(
         'Programming Language :: Python :: 3 :: Only',
         'Programming Language :: Python :: 3.7',
         'Programming Language :: Python :: 3.8',
+        'Programming Language :: Python :: 3.9',
+        'Programming Language :: Python :: 3.10',
     ],
 )

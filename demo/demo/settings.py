@@ -43,7 +43,7 @@ INSTALLED_APPS = [
     'rest_framework',
 
     'demo',
-    'payments',
+    'subscriptions',
 ]
 
 MIDDLEWARE = [
@@ -54,7 +54,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'payments.middleware.SubscriptionsMiddleware',
+    'subscriptions.middleware.SubscriptionsMiddleware',
 ]
 
 REST_FRAMEWORK = {
@@ -85,15 +85,15 @@ WSGI_APPLICATION = 'demo.wsgi.application'
 
 PAYMENT_PROVIDERS = {
     'dummy': {
-        'class': 'payments.providers.dummy.DummyProvider',
+        'class': 'subscriptions.providers.dummy.DummyProvider',
         'description': 'Dummy provider that doesn\'t really charge anything',
     },
     'stripe-main': {
-        'class': 'payments.providers.stripe.StripeProvider',
+        'class': 'subscriptions.providers.stripe.StripeProvider',
         'description': 'Pay via Stripe (credit cards)',
     },
     'stripe-secondary': {
-        'class': 'payments.providers.stripe.StripeProvider',
+        'class': 'subscriptions.providers.stripe.StripeProvider',
     },
 }
 

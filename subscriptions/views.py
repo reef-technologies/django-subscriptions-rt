@@ -11,13 +11,13 @@ from .providers import get_provider
 
 
 class PlanListView(ListView):
-    template_name = 'payments/plans.html'
+    template_name = 'subscriptions/plans.html'
     queryset = Plan.objects.all()
     context_object_name = 'plans'
 
 
 class PlanView(DetailView):
-    template_name = 'payments/plan.html'
+    template_name = 'subscriptions/plan.html'
     model = Plan
 
     def get_object(self):
@@ -25,7 +25,7 @@ class PlanView(DetailView):
 
 
 class PlanPaymentView(LoginRequiredMixin, PlanView):
-    template_name = 'payments/pay.html'
+    template_name = 'subscriptions/pay.html'
     success_url = reverse_lazy('plan_payment_success')
 
     def dispatch(self, request, *args, **kwargs):
@@ -57,4 +57,4 @@ class PlanPaymentView(LoginRequiredMixin, PlanView):
 
 
 class PlanPaymentSuccessView(TemplateView):
-    template_name = 'payments/payment-success.html'
+    template_name = 'subscriptions/payment-success.html'

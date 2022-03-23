@@ -49,3 +49,21 @@ class SubscriptionPaymentAdmin(admin.ModelAdmin):
     search_fields = 'user', 'amount',
     queryset = SubscriptionPayment.objects.select_related('subscription__plan')
     ordering = '-pk',
+
+
+@admin.register(SubscriptionPaymentRefund)
+class SubscriptionPaymentRefundAdmin(admin.ModelAdmin):
+    list_display = 'pk', 'status', 'original_payment', 'created', 'updated', 'amount'
+    list_filter = 'status', 'created', 'updated',
+    search_fieds = 'original_payment__user'
+    queryset = SubscriptionPaymentRefund.objects.select_related('original_payment__user')
+    ordering = '-pk',
+
+
+@admin.register(Tax)
+class TaxAdmin(admin.ModelAdmin):
+    list_display = 'subscription_payment', 'amount',
+    list_filter = 'subscription_payment__status',
+    search_fields = 'subscription_payment',
+    queryset = Tax.objects.select_related('subscription_payment')
+    ordering = '-pk',

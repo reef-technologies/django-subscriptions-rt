@@ -3,7 +3,7 @@ from datetime import timezone as tz
 from itertools import islice
 
 from dateutil.relativedelta import relativedelta
-from payments.models import Quota, QuotaChunk, Subscription
+from subscriptions.models import Quota, QuotaChunk, Subscription
 
 
 def test_limited_plan_duration(db, user, plan, now, days):

@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from functools import lru_cache
+from logging import getLogger
 from typing import Optional
 
 from django.conf import settings
@@ -7,9 +8,12 @@ from django.forms import Form
 from django.http import HttpRequest
 from django.utils.module_loading import import_string
 from rest_framework.request import Request
+from rest_framework.response import Response
 
 from ..exceptions import ProviderNotFound
 from ..models import Plan, SubscriptionPayment
+
+log = getLogger(__name__)
 
 
 class Provider(ABC):
@@ -25,9 +29,9 @@ class Provider(ABC):
     def process_payment(self, form_data: dict, request: Optional[HttpRequest], plan: Plan) -> SubscriptionPayment:
         ...
 
-    @abstractmethod
-    def handle_webhook(self, request: Request):
-        ...
+    def handle_webhook(self, request: Request) -> Response:
+        log.warning(f'Webhook for "{self.name}" triggered without explicit handler')
+        return Response({})
 
 
 @lru_cache

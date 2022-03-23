@@ -1,7 +1,7 @@
 from datetime import timedelta
 
 import pytest
-from payments.models import INFINITY, Quota
+from subscriptions.models import INFINITY, Quota
 
 
 def test_quota_without_subscription(db, plan, resource, remains, now):
