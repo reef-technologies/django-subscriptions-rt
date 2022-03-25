@@ -1,7 +1,8 @@
 from decimal import Decimal
 from typing import Optional
 
-from rest_framework.serializers import ModelSerializer, Serializer, SerializerMethodField
+from rest_framework.serializers import CharField, ModelSerializer, Serializer, SerializerMethodField, \
+                                       URLField, PrimaryKeyRelatedField
 
 from ..fields import relativedelta_to_dict
 from ..models import Plan, Subscription
@@ -34,5 +35,18 @@ class SubscriptionSerializer(ModelSerializer):
         fields = 'id', 'plan', 'start', 'end',
 
 
+class PaymentProviderSerializer(Serializer):
+    name = CharField(read_only=True)
+
+
+class PaymentProviderListSerializer(Serializer):
+    providers = PaymentProviderSerializer(read_only=True, many=True)
+
+
 class PaymentSerializer(Serializer):
-    pass  # TODO
+    redirect_url = URLField(read_only=True)
+    plan = PrimaryKeyRelatedField(queryset=Plan.objects.filter(is_enabled=True))
+
+
+class WebhookSerializer(Serializer):
+    pass

@@ -3,6 +3,11 @@ from django.contrib import admin
 from .models import Plan, Quota, Resource, Subscription, SubscriptionPayment, SubscriptionPaymentRefund, Tax, Usage
 
 
+class QuotaInline(admin.TabularInline):
+    model = Quota
+    extra = 0
+
+
 @admin.register(Plan)
 class PlanAdmin(admin.ModelAdmin):
     list_display = 'codename', 'name', 'charge_amount', 'charge_period', 'max_duration', 'is_enabled',
@@ -10,6 +15,7 @@ class PlanAdmin(admin.ModelAdmin):
     search_fields = 'codename', 'name',
     ordering = '-pk',
     prepopulated_fields = {'slug': ('name',)}
+    inlines = QuotaInline,
 
 
 @admin.register(Subscription)

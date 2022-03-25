@@ -1,4 +1,4 @@
-from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from functools import lru_cache
 from logging import getLogger
 from typing import Optional
@@ -9,44 +9,41 @@ from django.http import HttpRequest
 from django.utils.module_loading import import_string
 from rest_framework.request import Request
 from rest_framework.response import Response
+from rest_framework.serializers import Serializer
 
+from ..api.serializers import PaymentSerializer, WebhookSerializer
 from ..exceptions import ProviderNotFound
-from ..models import Plan, SubscriptionPayment
 
 log = getLogger(__name__)
 
 
-class Provider(ABC):
+@dataclass
+class Provider:
     name: Optional[str] = None
     form: Optional[Form] = None
     redirect_url: Optional[str] = None
+    payment_serializer_class: Serializer = PaymentSerializer
+    webhook_serializer_class: Serializer = WebhookSerializer
 
-    def __init__(self, **kwargs):
-        for k, v in kwargs.items():
-            setattr(self, k, v)
+    def process_payment(self, request: Optional[HttpRequest], serializer: PaymentSerializer) -> Response:
+        log.warning(f'Processing for "{self.name}" triggered without explicit handler')
+        return Response(serializer.data)
 
-    @abstractmethod
-    def process_payment(self, form_data: dict, request: Optional[HttpRequest], plan: Plan) -> SubscriptionPayment:
-        ...
-
-    def handle_webhook(self, request: Request) -> Response:
+    def handle_webhook(self, request: Request, serializer: WebhookSerializer) -> Response:
         log.warning(f'Webhook for "{self.name}" triggered without explicit handler')
-        return Response({})
+        return Response(serializer.data)
 
 
 @lru_cache
 def get_provider(provider_name: str) -> Provider:
     try:
-        info = settings.PAYMENT_PROVIDERS[provider_name]
+        class_path = settings.PAYMENT_PROVIDERS[provider_name]
     except KeyError as exc:
         raise ProviderNotFound(f'Provider "{provider_name}" not found in settings.PAYMENT_PROVIDERS') from exc
 
     try:
-        class_ = import_string(info['class'])
+        class_ = import_string(class_path)
     except ImportError as exc:
-        raise ProviderNotFound(f'Provider "{provider_name}" not found: cannot import module "{info["class"]}"') from exc
+        raise ProviderNotFound(f'Provider "{provider_name}" not found: cannot import module "{class_path}"') from exc
 
-    kwargs = {k: v for k, v in info.items() if k != 'class'}
-    assert 'name' not in kwargs
-    kwargs['name'] = provider_name
-    return class_(**kwargs)
+    return class_(name=provider_name)

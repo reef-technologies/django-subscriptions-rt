@@ -1,7 +1,7 @@
 from django.utils.deprecation import MiddlewareMixin
 
-from subscriptions.functions import get_remaining_amount
-from subscriptions.models import Subscription
+from .functions import get_remaining_amount
+from .models import Subscription
 
 
 class SubscriptionsMiddleware(MiddlewareMixin):
