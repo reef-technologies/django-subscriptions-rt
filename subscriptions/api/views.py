@@ -1,12 +1,10 @@
-from django.conf import settings
-from drf_braces.serializers.form_serializer import FormSerializer
 from rest_framework.generics import GenericAPIView, ListAPIView, ListCreateAPIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.schemas.openapi import AutoSchema
 
 from ..models import Plan, Subscription
-from ..providers import get_provider
+from ..providers import Provider, get_provider, get_providers
 from .serializers import PaymentProviderListSerializer, PlanSerializer, SubscriptionSerializer
 
 
@@ -26,9 +24,10 @@ class PaymentProviderListView(GenericAPIView):
     def get(self, request, *args, **kwargs) -> Response:
         serializer = self.serializer_class({
             'providers': [
-                {'name': provider_name}
-                for provider_name in settings.PAYMENT_PROVIDERS.keys()
-            ]
+                {'name': provider.codename}
+                for provider in get_providers()
+                if provider.is_enabled
+            ],
         })
 
         return Response(serializer.data)
@@ -57,11 +56,13 @@ class PaymentView(GenericAPIView):
         )
 
 
-def build_payment_view(provider_name: str) -> GenericAPIView:
+def build_payment_view(provider: Provider) -> GenericAPIView:
+    codename = provider.codename
+
     class _PaymentView(PaymentView):
-        schema = AutoSchema(operation_id_base=f'_{provider_name}')
-        serializer_class = get_provider(provider_name).payment_serializer_class
-        provider = get_provider(provider_name)
+        schema = AutoSchema(operation_id_base=f'_{codename}')
+        serializer_class = get_provider(codename).payment_serializer_class
+        provider = get_provider(codename)
 
     return _PaymentView
 
@@ -76,10 +77,12 @@ class PaymentWebhookView(GenericAPIView):
     get = post
 
 
-def build_payment_webhook_view(provider_name: str) -> GenericAPIView:
+def build_payment_webhook_view(provider: Provider) -> GenericAPIView:
+    codename = provider.codename
+
     class _PaymentWebhookView(PaymentWebhookView):
-        schema = AutoSchema(operation_id_base=f'_{provider_name}_webhook')
-        provider = get_provider(provider_name)
-        serializer_class = provider.webhook_serializer_class
+        schema = AutoSchema(operation_id_base=f'_{codename}_webhook')
+        provider = get_provider(codename)
+        serializer_class = get_provider(codename).webhook_serializer_class
 
     return _PaymentWebhookView

@@ -50,8 +50,8 @@ class UsageAdmin(admin.ModelAdmin):
 
 @admin.register(SubscriptionPayment)
 class SubscriptionPaymentAdmin(admin.ModelAdmin):
-    list_display = 'pk', 'status', 'created', 'updated', 'amount', 'user', 'subscription', 'subscription_charge_date', 'provider_name',
-    list_filter = 'subscription__plan', 'status', 'created', 'updated', 'provider_name',
+    list_display = 'pk', 'status', 'created', 'updated', 'amount', 'user', 'subscription', 'subscription_charge_date', 'provider_codename',
+    list_filter = 'subscription__plan', 'status', 'created', 'updated', 'provider_codename',
     search_fields = 'user', 'amount',
     queryset = SubscriptionPayment.objects.select_related('subscription__plan')
     ordering = '-pk',

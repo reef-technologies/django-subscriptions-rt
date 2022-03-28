@@ -266,7 +266,7 @@ class AbstractTransaction(models.Model):
         CANCELED = 3
         ERROR = 4
 
-    provider_name = models.CharField(max_length=255)
+    provider_codename = models.CharField(max_length=255)
     provider_transaction_id = models.CharField(max_length=255)
     status = models.PositiveSmallIntegerField(choices=Status.choices, default=Status.PENDING)
     amount = MoneyField()
@@ -285,12 +285,12 @@ class AbstractTransaction(models.Model):
         return super().save(*args, **kwargs)
 
     def __str__(self) -> str:
-        return f'{self.get_status_display()} {self.amount} via {self.provider_name}'
+        return f'{self.get_status_display()} {self.amount} via {self.provider_codename}'
 
     @property
     def provider(self) -> Provider:
         from .providers import get_provider
-        return get_provider(self.provider_name)
+        return get_provider(self.provider_codename)
 
 
 class SubscriptionPayment(AbstractTransaction):

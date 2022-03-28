@@ -83,19 +83,10 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'demo.wsgi.application'
 
-PAYMENT_PROVIDERS = {
-    'dummy': {
-        'class': 'subscriptions.providers.dummy.DummyProvider',
-        'description': 'Dummy provider that doesn\'t really charge anything',
-    },
-    'stripe-main': {
-        'class': 'subscriptions.providers.stripe.StripeProvider',
-        'description': 'Pay via Stripe (credit cards)',
-    },
-    'stripe-secondary': {
-        'class': 'subscriptions.providers.stripe.StripeProvider',
-    },
-}
+PAYMENT_PROVIDERS = [
+    'subscriptions.providers.dummy.DummyPayloadProvider',
+    'subscriptions.providers.dummy.DummyRedirectProvider',
+]
 
 # Database
 # https://docs.djangoproject.com/en/4.0/ref/settings/#databases

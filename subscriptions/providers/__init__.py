@@ -1,7 +1,6 @@
-from dataclasses import dataclass
 from functools import lru_cache
 from logging import getLogger
-from typing import Optional
+from typing import List, Optional
 
 from django.conf import settings
 from django.forms import Form
@@ -17,33 +16,45 @@ from ..exceptions import ProviderNotFound
 log = getLogger(__name__)
 
 
-@dataclass
 class Provider:
-    name: Optional[str] = None
+    codename: str = 'default'
+    is_enabled: bool = True
     form: Optional[Form] = None
-    redirect_url: Optional[str] = None
     payment_serializer_class: Serializer = PaymentSerializer
     webhook_serializer_class: Serializer = WebhookSerializer
 
     def process_payment(self, request: Optional[HttpRequest], serializer: PaymentSerializer) -> Response:
-        log.warning(f'Processing for "{self.name}" triggered without explicit handler')
+        log.warning(f'Processing for "{self.codename}" triggered without explicit handler')
         return Response(serializer.data)
 
     def handle_webhook(self, request: Request, serializer: WebhookSerializer) -> Response:
-        log.warning(f'Webhook for "{self.name}" triggered without explicit handler')
+        log.warning(f'Webhook for "{self.codename}" triggered without explicit handler')
         return Response(serializer.data)
 
 
 @lru_cache
-def get_provider(provider_name: str) -> Provider:
-    try:
-        class_path = settings.PAYMENT_PROVIDERS[provider_name]
-    except KeyError as exc:
-        raise ProviderNotFound(f'Provider "{provider_name}" not found in settings.PAYMENT_PROVIDERS') from exc
+def get_providers() -> List[Provider]:  # codename -> Provider() instance
+    providers = []
+    seen_codenames = set()
+
+    for class_path in settings.PAYMENT_PROVIDERS:
+        provider = import_string(class_path)()
+        assert provider.codename not in seen_codenames, f'Duplicate codename "{provider.codename}"'
+        providers.append(provider)
+        seen_codenames.add(provider.codename)
+
+    return providers
+
+
+@lru_cache
+def get_provider(codename: Optional[str] = None) -> Provider:
+    if not (providers := get_providers()):
+        raise ProviderNotFound('No providers defined in settings.PAYMENT_PROVIDERS')
+
+    if not codename:
+        return providers[0]
 
     try:
-        class_ = import_string(class_path)
-    except ImportError as exc:
-        raise ProviderNotFound(f'Provider "{provider_name}" not found: cannot import module "{class_path}"') from exc
-
-    return class_(name=provider_name)
+        return next(provider for provider in providers if provider.codename == codename)
+    except StopIteration as exc:
+        raise ProviderNotFound(f'Provider with codename "{codename}" not found in settings.PAYMENT_PROVIDERS') from exc

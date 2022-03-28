@@ -1,8 +1,8 @@
-from django.conf import settings
 from django.urls import re_path
 
-from .views import PaymentProviderListView, PaymentWebhookView, PlanListView, SubscriptionListView, \
-                   build_payment_view, build_payment_webhook_view
+from ..providers import get_providers
+from .views import PaymentProviderListView, PlanListView, SubscriptionListView, build_payment_view, \
+                   build_payment_webhook_view
 
 urlpatterns = [
     re_path(r'^plans/?$', PlanListView.as_view(), name='plans'),
@@ -10,16 +10,19 @@ urlpatterns = [
     re_path(r'^subscriptions/?$', SubscriptionListView.as_view(), name='subscriptions'),
 ]
 
-for payment_provider_name in settings.PAYMENT_PROVIDERS.keys():
+for provider in get_providers():
+    if not provider.is_enabled:
+        continue
+
     urlpatterns += [
         re_path(
-            f'^webhook/{payment_provider_name}/?$',
-            build_payment_webhook_view(payment_provider_name).as_view(),
-            name=f'payment_webhook_{payment_provider_name}',
+            f'^webhook/{provider.codename}/?$',
+            build_payment_webhook_view(provider).as_view(),
+            name=f'payment_webhook_{provider.codename}',
         ),
         re_path(
-            f'^pay/{payment_provider_name}/?$',
-            build_payment_view(payment_provider_name).as_view(),
-            name=f'payment_{payment_provider_name}',
+            f'^pay/{provider.codename}/?$',
+            build_payment_view(provider).as_view(),
+            name=f'payment_{provider.codename}',
         )
     ]

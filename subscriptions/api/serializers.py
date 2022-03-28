@@ -44,7 +44,6 @@ class PaymentProviderListSerializer(Serializer):
 
 
 class PaymentSerializer(Serializer):
-    redirect_url = URLField(read_only=True)
     plan = PrimaryKeyRelatedField(queryset=Plan.objects.all())
 
 
