@@ -1,15 +1,13 @@
 from django.conf import settings
 from drf_braces.serializers.form_serializer import FormSerializer
-from rest_framework.exceptions import NotFound
 from rest_framework.generics import GenericAPIView, ListAPIView, ListCreateAPIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.schemas.openapi import AutoSchema
 
-from ..exceptions import ProviderNotFound
 from ..models import Plan, Subscription
 from ..providers import get_provider
-from .serializers import PlanSerializer, SubscriptionSerializer, PaymentProviderListSerializer
+from .serializers import PaymentProviderListSerializer, PlanSerializer, SubscriptionSerializer
 
 
 class PlanListView(ListAPIView):
@@ -38,10 +36,12 @@ class PaymentProviderListView(GenericAPIView):
 
 class SubscriptionListView(ListCreateAPIView):
     permission_classes = IsAuthenticated,
-    queryset = Subscription.objects.active().select_related('plan')
     serializer_class = SubscriptionSerializer
     schema = AutoSchema()
     ordering = '-end', '-id',
+
+    def get_queryset(self):
+        return Subscription.objects.active().select_related('plan').filter(user=self.request.user)
 
 
 class PaymentView(GenericAPIView):

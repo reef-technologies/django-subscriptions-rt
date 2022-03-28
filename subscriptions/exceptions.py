@@ -12,6 +12,10 @@ class ProviderNotFound(Exception):
     pass
 
 
+class NoNextChargeDate(Exception):
+    pass
+
+
 class PaymentError(Exception):
     user_message: str = 'unknown error'
     code = 'unknown'

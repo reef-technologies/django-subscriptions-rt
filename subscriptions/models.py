@@ -13,7 +13,7 @@ from django.db.models import Index, QuerySet, UniqueConstraint
 from django.urls import reverse
 from django.utils.timezone import now
 
-from .exceptions import InconsistentQuotaCache, QuotaLimitExceeded
+from .exceptions import InconsistentQuotaCache, NoNextChargeDate, QuotaLimitExceeded
 from .fields import MoneyField, RelativeDurationField
 from .utils import merge_iter
 
@@ -130,9 +130,13 @@ class Subscription(models.Model):
     def __str__(self) -> str:
         return f'{self.user} @ {self.plan}, {self.start} - {self.end}'
 
+    @property
+    def max_end(self) -> datetime:
+        return self.start + self.plan.max_duration
+
     def save(self, *args, **kwargs):
         self.start = self.start or now()
-        self.end = self.end or (self.start + self.plan.max_duration)
+        self.end = self.end or min(self.start + self.plan.charge_period, self.max_end)
         return super().save(*args, **kwargs)
 
     def stop(self):
@@ -147,10 +151,9 @@ class Subscription(models.Model):
         if for_:
             self.end += for_
         else:
-            max_end = self.start + self.plan.max_duration
-            next_charge_dates = list(islice(self.iter_charge_dates(since=self.end), 2))
+            next_charge_dates = list(islice(self.iter_charge_dates(since=self.end, within_lifetime=False), 2))
             next_charge_date = next_charge_dates[1] if next_charge_dates[0] == self.end else next_charge_dates[0]
-            self.end = min(max_end, next_charge_date)
+            self.end = min(next_charge_date, self.max_end)
 
         self.save()
 
@@ -188,7 +191,7 @@ class Subscription(models.Model):
                 remains=quota.limit,
             )
 
-    def iter_charge_dates(self, since: Optional[datetime] = None) -> Iterator[datetime]:
+    def iter_charge_dates(self, since: Optional[datetime] = None, within_lifetime: bool = True) -> Iterator[datetime]:
         """ Including first charge (i.e. charge to create subscription) """
         charge_period = self.plan.charge_period
         since = since or self.start
@@ -199,22 +202,12 @@ class Subscription(models.Model):
             if charge_date < since:
                 continue
 
+            if charge_date > self.end and within_lifetime:
+                raise NoNextChargeDate()
+
             yield charge_date
             if charge_period == INFINITY:
-                break
-
-    # def get_payment_url(self) -> Optional[str]:
-    #     charge_dates = list(islice(self.iter_charge_dates(since=self.end), 1))
-    #     if not charge_dates:
-    #         return
-
-    #     provider = get_provider(self.provider_name)
-    #     return provider.generate_payment_url(
-    #         charge_date=charge_dates[0],
-    #         subscription_id=self.id,
-    #         amount=self.plan.charge_amount,
-    #         user=self.user,
-    #     )
+                raise NoNextChargeDate()
 
 
 class Quota(models.Model):
