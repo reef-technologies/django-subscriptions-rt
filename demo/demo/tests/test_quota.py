@@ -1,6 +1,5 @@
 from datetime import timedelta
 
-import pytest
 from subscriptions.models import INFINITY, Quota
 
 

@@ -12,7 +12,7 @@ class ProviderNotFound(Exception):
     pass
 
 
-class NoNextChargeDate(Exception):
+class ProlongationImpossible(Exception):
     pass
 
 

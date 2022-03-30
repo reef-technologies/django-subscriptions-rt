@@ -13,7 +13,7 @@ from django.db.models import Index, QuerySet, UniqueConstraint
 from django.urls import reverse
 from django.utils.timezone import now
 
-from .exceptions import InconsistentQuotaCache, NoNextChargeDate, QuotaLimitExceeded
+from .exceptions import InconsistentQuotaCache, ProlongationImpossible, QuotaLimitExceeded
 from .fields import MoneyField, RelativeDurationField
 from .utils import merge_iter
 
@@ -151,10 +151,22 @@ class Subscription(models.Model):
         if for_:
             self.end += for_
         else:
-            next_charge_dates = list(islice(self.iter_charge_dates(since=self.end, within_lifetime=False), 2))
-            next_charge_date = next_charge_dates[1] if next_charge_dates[0] == self.end else next_charge_dates[0]
-            self.end = min(next_charge_date, self.max_end)
+            next_charge_dates = islice(self.iter_charge_dates(since=self.end), 2)
+            if (first_charge_date := next(next_charge_dates)) and self.end == first_charge_date:
+                try:
+                    end = next(next_charge_dates)
+                except StopIteration as exc:
+                    raise ProlongationImpossible('No next charge date') from exc
+            else:
+                end = first_charge_date
 
+            if end > (max_end := self.max_end):
+                if self.end == max_end:
+                    raise ProlongationImpossible('Current subscription end is already the maximum end')
+
+                end = max_end
+
+        self.end = end
         self.save()
 
     def iter_quota_chunks(
@@ -191,7 +203,7 @@ class Subscription(models.Model):
                 remains=quota.limit,
             )
 
-    def iter_charge_dates(self, since: Optional[datetime] = None, within_lifetime: bool = True) -> Iterator[datetime]:
+    def iter_charge_dates(self, since: Optional[datetime] = None) -> Iterator[datetime]:
         """ Including first charge (i.e. charge to create subscription) """
         charge_period = self.plan.charge_period
         since = since or self.start
@@ -202,12 +214,9 @@ class Subscription(models.Model):
             if charge_date < since:
                 continue
 
-            if charge_date > self.end and within_lifetime:
-                raise NoNextChargeDate()
-
             yield charge_date
             if charge_period == INFINITY:
-                raise NoNextChargeDate()
+                return
 
 
 class Quota(models.Model):

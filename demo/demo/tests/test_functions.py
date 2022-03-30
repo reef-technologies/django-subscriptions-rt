@@ -9,7 +9,6 @@ from subscriptions.models import INFINITY, Quota, QuotaCache, QuotaChunk, Usage
 
 
 def test_subscriptions_involved(five_subscriptions, user, plan, now, days):
-
     subscriptions_involved = iter_subscriptions_involved(user=user, at=now)
     assert sorted(subscriptions_involved, key=attrgetter('start')) == [
         five_subscriptions[1], five_subscriptions[3], five_subscriptions[0],

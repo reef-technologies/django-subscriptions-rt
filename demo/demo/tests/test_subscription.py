@@ -2,24 +2,38 @@ from datetime import datetime
 from datetime import timezone as tz
 from itertools import islice
 
+import pytest
 from dateutil.relativedelta import relativedelta
+from subscriptions.exceptions import ProlongationImpossible
 from subscriptions.models import Quota, QuotaChunk, Subscription
 
 
 def test_limited_plan_duration(db, user, plan, now, days):
     plan.max_duration = days(30)
-    plan.save(update_fields=['max_duration'])
+    plan.charge_period = days(10)
+    plan.save(update_fields=['max_duration', 'charge_period'])
 
     subscription = Subscription.objects.create(
         user=user,
         plan=plan,
         start=now,
     )
-    assert subscription.end == now + days(30)
+
+    assert subscription.end == now + plan.charge_period
+
+    subscription.prolong()
+    assert subscription.end == now + 2 * plan.charge_period
+
+    subscription.prolong()
+    assert subscription.end == now + 3 * plan.charge_period
+
+    with pytest.raises(ProlongationImpossible):
+        subscription.prolong()
 
 
 def test_unlimited_plan_duration(db, user, plan, now, days):
     plan.max_duration = None
+    plan.charge_period = days(300)
     plan.save(update_fields=['max_duration'])
 
     subscription = Subscription.objects.create(
@@ -27,7 +41,12 @@ def test_unlimited_plan_duration(db, user, plan, now, days):
         plan=plan,
         start=now,
     )
-    assert subscription.end >= now + days(365 * 10)
+
+    assert subscription.end == now + days(300)
+
+    for i in range(2, 11):
+        subscription.prolong()
+        assert subscription.end == now + i * days(300)
 
 
 def test_subscription_charge_dates(db, plan, subscription, days):
@@ -62,8 +81,7 @@ def test_subscription_iter_charge_dates_performance(db, subscription, django_ass
 def test_subscription_charge_dates_with_no_charge_period(db, plan, subscription, now):
     plan.charge_period = None
     plan.save(update_fields=['charge_period'])
-
-    assert list(islice(subscription.iter_charge_dates(), 10)) == [subscription.start]
+    assert list(subscription.iter_charge_dates()) == [subscription.start]
 
 
 def test_active_subscription_filter(db, subscription, now, days):

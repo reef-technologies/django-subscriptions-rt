@@ -8,7 +8,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from ...api.serializers import PaymentSerializer
-from ...exceptions import NoNextChargeDate
+from ...exceptions import ProlongationImpossible
 from ...models import Subscription, SubscriptionPayment
 from .. import Provider
 from .forms import DummyForm
@@ -35,8 +35,8 @@ class DummyPayloadProvider(Provider):
             )
 
         try:
-            charge_date = next(subscription.iter_charge_dates(since=now_, within_lifetime=True))
-        except NoNextChargeDate as exc:
+            charge_date = next(subscription.iter_charge_dates(since=now_))
+        except StopIteration as exc:
             raise PermissionDenied(detail='No ongoing charge dates found') from exc
 
         SubscriptionPayment.objects.create(
@@ -50,7 +50,10 @@ class DummyPayloadProvider(Provider):
         )
 
         if not created:
-            subscription.prolong()
+            try:
+                subscription.prolong()
+            except ProlongationImpossible as exc:
+                raise PermissionDenied(detail='Cannot prolong subscription') from exc
 
         result = PaymentSerializer({
             'plan': plan,

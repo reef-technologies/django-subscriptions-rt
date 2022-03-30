@@ -33,7 +33,7 @@ class Provider:
 
 
 @lru_cache
-def get_providers() -> List[Provider]:  # codename -> Provider() instance
+def get_providers() -> List[Provider]:
     providers = []
     seen_codenames = set()
 

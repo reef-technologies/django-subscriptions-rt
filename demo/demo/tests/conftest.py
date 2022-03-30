@@ -119,7 +119,7 @@ def two_subscriptions(user, now, days, resource):
 
     """
 
-    plan1 = Plan.objects.create(codename='plan1', name='Plan 1')
+    plan1 = Plan.objects.create(codename='plan1', name='Plan 1', slug='plan1')
     Subscription.objects.create(
         user=user,
         plan=plan1,
@@ -134,7 +134,7 @@ def two_subscriptions(user, now, days, resource):
         burns_in=days(7),
     )
 
-    plan2 = Plan.objects.create(codename='plan2', name='Plan 2')
+    plan2 = Plan.objects.create(codename='plan2', name='Plan 2', slug='plan2')
     Subscription.objects.create(
         user=user,
         plan=plan2,
