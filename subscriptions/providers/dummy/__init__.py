@@ -12,11 +12,13 @@ from ...exceptions import ProlongationImpossible
 from ...models import Subscription, SubscriptionPayment
 from .. import Provider
 from .forms import DummyForm
+from .serializers import DummySerializer
 
 
 class DummyPayloadProvider(Provider):
     codename = 'dummy-payload'
     form = DummyForm
+    payment_serializer_class = DummySerializer
 
     @transaction.atomic
     def process_payment(self, request: HttpRequest, serializer: PaymentSerializer) -> Response:

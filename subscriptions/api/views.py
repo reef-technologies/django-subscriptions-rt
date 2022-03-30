@@ -33,7 +33,7 @@ class PaymentProviderListView(GenericAPIView):
         return Response(serializer.data)
 
 
-class SubscriptionListView(ListCreateAPIView):
+class SubscriptionListView(ListAPIView):
     permission_classes = IsAuthenticated,
     serializer_class = SubscriptionSerializer
     schema = AutoSchema()
