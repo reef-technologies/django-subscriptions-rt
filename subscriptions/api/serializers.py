@@ -1,8 +1,8 @@
 from decimal import Decimal
 from typing import Optional
 
-from rest_framework.serializers import CharField, ModelSerializer, Serializer, SerializerMethodField, \
-                                       URLField, PrimaryKeyRelatedField
+from rest_framework.serializers import CharField, IntegerField, ModelSerializer, PrimaryKeyRelatedField, Serializer, \
+                                       SerializerMethodField, SlugRelatedField, DictField
 
 from ..fields import relativedelta_to_dict
 from ..models import Plan, Subscription
@@ -49,3 +49,7 @@ class PaymentSerializer(Serializer):
 
 class WebhookSerializer(Serializer):
     pass
+
+
+class ResourcesSerializer(Serializer):
+    resources = DictField(child=IntegerField(), read_only=True)

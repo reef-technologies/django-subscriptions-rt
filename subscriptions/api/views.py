@@ -1,11 +1,12 @@
-from rest_framework.generics import GenericAPIView, ListAPIView, ListCreateAPIView
+from rest_framework.generics import GenericAPIView, ListAPIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.schemas.openapi import AutoSchema
+from subscriptions.functions import get_remaining_amount
 
 from ..models import Plan, Subscription
 from ..providers import Provider, get_provider, get_providers
-from .serializers import PaymentProviderListSerializer, PlanSerializer, SubscriptionSerializer
+from .serializers import PaymentProviderListSerializer, PlanSerializer, ResourcesSerializer, SubscriptionSerializer
 
 
 class PlanListView(ListAPIView):
@@ -86,3 +87,15 @@ def build_payment_webhook_view(provider: Provider) -> GenericAPIView:
         serializer_class = get_provider(codename).webhook_serializer_class
 
     return _PaymentWebhookView
+
+
+class ResourcesView(GenericAPIView):
+    permission_classes = IsAuthenticated,
+    serializer_class = ResourcesSerializer
+    schema = AutoSchema()
+
+    def get(self, request, *args, **kwargs) -> Response:
+        serializer = self.serializer_class({
+            'resources': {resource.codename: amount for resource, amount in get_remaining_amount(request.user).items()},
+        })
+        return Response(serializer.data)

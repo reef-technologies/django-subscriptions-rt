@@ -150,7 +150,7 @@ def get_remaining_amount(
     at: Optional[datetime] = None,
     quota_cache: Optional[QuotaCache] = None,
 ) -> Dict[Resource, int]:
-
+    # TODO: auto-fetch cache
     amount = {}
     for chunk in get_remaining_chunks(user=user, at=at, quota_cache=quota_cache):
         amount[chunk.resource] = amount.setdefault(chunk.resource, 0) + chunk.remains
