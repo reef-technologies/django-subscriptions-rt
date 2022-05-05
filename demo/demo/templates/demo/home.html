@@ -1,0 +1,26 @@
+<table border="1">
+    <tr>
+        <th>Current user</th>
+        <td>{{ request.user }}</td>
+    </tr>
+    <tr>
+        <th>Active subscriptions</th>
+        <td>
+            <ul>
+                {% for subscription in request.user.active_subscriptions %}
+                    <li>{{ subscription }}</li>
+                {% endfor %}
+                <li><a href="{% url 'plan_list' %}">Add a subscription</a></li>
+            </ul>
+        </td>
+    </tr>
+    <tr>
+        <th colspan="2">Quotas</th>
+    </tr>
+    {% for resource, remains in request.user.quotas.items %}
+        <tr>
+            <th>{{ resource }}</th>
+            <td>{{ remains }}</td>
+        </tr>
+    {% endfor %}
+</table>
