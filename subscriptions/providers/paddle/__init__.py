@@ -11,6 +11,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from ...api.serializers import WebhookSerializer
+from ...exceptions import PaymentError
 from ...models import Plan, Subscription, SubscriptionPayment
 from .. import Provider
 from .api import Paddle
@@ -63,7 +64,7 @@ class PaddleProvider(Provider):
             metadata={
                 'transaction_id': transaction_id,
             },
-        )
+        )['url']
         SubscriptionPayment.objects.create(  # TODO: limit number of creations per day
             provider_codename=self.codename,
             provider_transaction_id=transaction_id,
@@ -74,15 +75,30 @@ class PaddleProvider(Provider):
         )
         return HttpResponseRedirect(payment_link)
 
-    # def charge_offline(self, user: AbstractBaseUser, plan: Plan, subscription: Optional[Subscription] = None):
-    #     SubscriptionPayment.objects.create(  # TODO: limit number of creations per day
-    #         provider_codename=self.codename,
-    #         provider_transaction_id=get_random_string(8),
-    #         amount=plan.charge_amount,
-    #         user=user,
-    #         plan=plan,
-    #         subscription=subscription,
-    #     )
+    def charge_offline(self, user: AbstractBaseUser, plan: Plan, subscription: Optional[Subscription] = None):
+        last_successful_payment = SubscriptionPayment.get_last_successful(user)
+        if not last_successful_payment:
+            raise PaymentError('No last successful payment to take credentials from')
+
+        subscription_id = last_successful_payment.metadata['subscription_id']
+        amount = plan.charge_amount.amount  # TODO: check that currency of last payment matches currency of this plan (paddle doesn't allow one-off charges with different currencies)
+
+        metadata = self._api.one_off_charge(
+            subscription_id=subscription_id,
+            amount=amount,
+            name=plan.name,
+        )
+
+        SubscriptionPayment.objects.create(
+            provider_codename=self.codename,
+            provider_transaction_id=get_random_string(8),
+            amount=amount,
+            status=SubscriptionPayment.Status.COMPLETED,  # TODO: will this auto-prolong subscription?
+            user=user,
+            plan=plan,
+            subscription=subscription,
+            metadata=metadata,
+        )
 
     WEBHOOK_ACTION_TO_PAYMENT_STATUS: ClassVar[dict] = {
         'subscription_payment_succeeded': SubscriptionPayment.Status.COMPLETED,

@@ -94,6 +94,10 @@ DATABASES = {
     }
 }
 
+SUBSCRIPTIONS_PAYMENT_PROVIDERS = [
+    'subscriptions.providers.paddle.PaddleProvider',
+]
+
 PADDLE_VENDOR_ID = environ.get('PADDLE_VENDOR_ID')
 PADDLE_VENDOR_AUTH_CODE = environ.get('PADDLE_VENDOR_AUTH_CODE')
 PADDLE_ENDPOINT = environ.get('PADDLE_ENDPOINT')

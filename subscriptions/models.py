@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Iterable, Iterator, List, Optional
 
 from dateutil.relativedelta import relativedelta
 from django.conf import settings
+from django.contrib.auth.models import AbstractBaseUser
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import models
 from django.db.models import Index, QuerySet, UniqueConstraint
@@ -223,13 +224,10 @@ class Subscription(models.Model):
             if charge_period == INFINITY:
                 return
 
-    def get_last_successful_payment(self) -> Optional[SubscriptionPayment]:
-        return self.payments.filter(status=SubscriptionPayment.Status.COMPLETED).order_by('created').last()
-
     def charge_offline(self):
         from .providers import get_provider
 
-        last_payment = self.get_last_successful_payment()
+        last_payment = SubscriptionPayment.get_last_successful(self.user)
         if not last_payment:
             raise PaymentError('There is no previous successful payment to take credentials from')
 
@@ -310,7 +308,7 @@ class AbstractTransaction(models.Model):
     amount = MoneyField()
     # source = models.ForeignKey(MoneyStorage, on_delete=models.PROTECT, related_name='transactions_out')
     # destination = models.ForeignKey(MoneyStorage, on_delete=models.PROTECT, related_name='transactions_in')
-    metadata = models.JSONField(default=dict, encoder=DjangoJSONEncoder)
+    metadata = models.JSONField(blank=True, default=dict, encoder=DjangoJSONEncoder)
     created = models.DateTimeField(blank=True, editable=False)
     updated = models.DateTimeField(blank=True, editable=False)
 
@@ -347,25 +345,37 @@ class SubscriptionPayment(AbstractTransaction):
         self._initial_status = self.status
 
     def save(self, *args, **kwargs):
-        if self._initial_status != self.Status.COMPLETED and self.status == self.Status.COMPLETED:
+        if self.status == self.Status.COMPLETED and any((
+            not self.id,
+            self._initial_status != self.Status.COMPLETED,
+        )):
             if (subscription := self.subscription):
                 self.subscription_start = subscription.end
                 subscription.prolong()
                 self.subscription_end = subscription.end
                 subscription.save()
             else:
-                subscription = Subscription.objects.create(
+                self.subscription = Subscription.objects.create(
                     user=self.user,
                     plan=self.plan,
                 )
-                self.subscription_start = subscription.start
-                self.subscription_end = subscription.end
+                self.subscription
+                self.subscription_start = self.subscription.start
+                self.subscription_end = self.subscription.end
 
         return super().save(*args, **kwargs)
+
+    @classmethod
+    def get_last_successful(cls, user: AbstractBaseUser) -> Optional[SubscriptionPayment]:
+        return cls.objects.filter(
+            user=user,
+            status=SubscriptionPayment.Status.COMPLETED,
+        ).order_by('created').last()
 
 
 class SubscriptionPaymentRefund(AbstractTransaction):
     original_payment = models.ForeignKey(SubscriptionPayment, on_delete=models.PROTECT, related_name='refunds')
+    # TODO: add support by providers
 
 
 class Tax(models.Model):

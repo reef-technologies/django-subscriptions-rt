@@ -1,6 +1,7 @@
 import json
 from dataclasses import dataclass
-from functools import partialmethod
+from decimal import Decimal
+from functools import partialmethod, wraps
 from logging import getLogger
 from typing import ClassVar, List, Optional
 from urllib.parse import urlencode
@@ -34,6 +35,17 @@ class PaddleAuth(AuthBase):
         return request
 
 
+def paddle_result(fn: callable) -> callable:
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        result = fn(*args, **kwargs)
+        if not result['success']:
+            raise ValueError(result)
+        return result['response']
+
+    return wrapper
+
+
 @dataclass
 class Paddle:
     vendor_id: int
@@ -41,7 +53,7 @@ class Paddle:
     endpoint: str = 'https://vendors.paddle.com/api/2.0'
 
     _session: requests.Session = None
-    TIMEOUT: ClassVar[int] = 5
+    TIMEOUT: ClassVar[int] = 30
 
     def __post_init__(self):
         self._session = requests.Session()
@@ -55,14 +67,13 @@ class Paddle:
     get = partialmethod(request, 'get')
     post = partialmethod(request, 'post')
 
+    @paddle_result
     def list_subscription_plans(self) -> List[dict]:
         response = self.get('/subscription/plans')
         response.raise_for_status()
-        result = response.json()
-        if not result['success']:
-            raise ValueError(result)
-        return result['response']
+        return response.json()
 
+    @paddle_result
     def generate_payment_link(
         self,
         product_id: int,
@@ -84,7 +95,22 @@ class Paddle:
             'passthrough': metadata_str,
         })
         response.raise_for_status()
-        result = response.json()
-        if not result['success']:
-            raise ValueError(result)
-        return result['response']['url']
+        return response.json()
+
+    @paddle_result
+    def one_off_charge(
+        self,
+        subscription_id: int,
+        amount: Decimal,
+        name: str = '',
+    ):
+        if len(name) > 50:
+            log.warning(f'Name exceeds the limit of 50 chars: {name}')
+            name = name[:50]
+
+        response = self.post(f'/subscription/{subscription_id}/charge', json={
+            'amount': str(amount),
+            'charge_name': name,
+        })
+        response.raise_for_status()
+        return response.json()
