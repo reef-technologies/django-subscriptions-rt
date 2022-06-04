@@ -1,12 +1,19 @@
+from typing import Type
+
+from django.conf import settings
+from django.http import HttpResponseRedirect
 from rest_framework.generics import GenericAPIView, ListAPIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.schemas.openapi import AutoSchema
 from subscriptions.functions import get_remaining_amount
 
+from ..defaults import DEFAULT_SUBSCRIPTIONS_SUCCESS_URL
+from ..exceptions import PaymentError
 from ..models import Plan, Subscription
 from ..providers import Provider, get_provider, get_providers
-from .serializers import PaymentProviderListSerializer, PlanSerializer, ResourcesSerializer, SubscriptionSerializer
+from ..validators import get_validators
+from .serializers import PaymentProviderListSerializer, PlanSerializer, ResourcesSerializer, SubscriptionChargeSerializer, SubscriptionSerializer
 
 
 class PlanListView(ListAPIView):
@@ -44,28 +51,35 @@ class SubscriptionListView(ListAPIView):
         return Subscription.objects.active().select_related('plan').filter(user=self.request.user)
 
 
-class PaymentView(GenericAPIView):
+class SubscriptionChargeView(GenericAPIView):
     permission_classes = IsAuthenticated,
+    serializer_class = SubscriptionChargeSerializer
     schema = AutoSchema()
+
+    @classmethod
+    def select_payment_provider(cls) -> Type[Provider]:
+        return get_provider()
 
     def post(self, request, *args, **kwargs) -> Response:
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        return self.provider.process_payment(
-            request=request,
-            serializer=serializer,
-        )
 
+        plan = serializer.validated_data['plan']
+        active_subscriptions = request.user.subscriptions.active().order_by('end')
 
-def build_payment_view(provider: Provider) -> GenericAPIView:
-    codename = provider.codename
+        for validator in get_validators():
+            validator(active_subscriptions, plan)
 
-    class _PaymentView(PaymentView):
-        schema = AutoSchema(operation_id_base=f'_{codename}')
-        serializer_class = get_provider(codename).payment_serializer_class
-        provider = get_provider(codename)
+        provider = self.select_payment_provider()
+        try:
+            provider.charge_offline(user=request.user, plan=plan)
+            return HttpResponseRedirect(
+                getattr(settings, 'SUBSCRIPTIONS_SUCCESS_URL', DEFAULT_SUBSCRIPTIONS_SUCCESS_URL)
+            )
+        except (PaymentError, NotImplementedError):
+            pass
 
-    return _PaymentView
+        return provider.charge_online(user=request.user, plan=plan)
 
 
 class PaymentWebhookView(GenericAPIView):
@@ -73,9 +87,9 @@ class PaymentWebhookView(GenericAPIView):
     schema = AutoSchema()
 
     def post(self, request, *args, **kwargs) -> Response:
-        return self.provider.handle_webhook(request=request)
-
-    get = post
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        return self.provider.webhook(request=request, serializer=serializer)
 
 
 def build_payment_webhook_view(provider: Provider) -> GenericAPIView:

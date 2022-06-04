@@ -3,19 +3,23 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from itertools import count, islice, zip_longest
+from logging import getLogger
 from operator import attrgetter
 from typing import TYPE_CHECKING, Iterable, Iterator, List, Optional
 
 from dateutil.relativedelta import relativedelta
 from django.conf import settings
+from django.core.serializers.json import DjangoJSONEncoder
 from django.db import models
 from django.db.models import Index, QuerySet, UniqueConstraint
 from django.urls import reverse
 from django.utils.timezone import now
 
-from .exceptions import InconsistentQuotaCache, ProlongationImpossible, QuotaLimitExceeded
+from .exceptions import InconsistentQuotaCache, PaymentError, ProlongationImpossible, ProviderNotFound, QuotaLimitExceeded
 from .fields import MoneyField, RelativeDurationField
 from .utils import merge_iter
+
+log = getLogger(__name__)
 
 if TYPE_CHECKING:
     from .providers import Provider
@@ -39,7 +43,6 @@ class Resource(models.Model):
 class Plan(models.Model):
     codename = models.CharField(max_length=255)
     name = models.CharField(max_length=255)
-    slug = models.SlugField()
     charge_amount = MoneyField(blank=True, null=True)
     charge_period = RelativeDurationField(blank=True, help_text='leave blank for one-time charge')
     max_duration = RelativeDurationField(blank=True, help_text='leave blank to make it an infinite subscription')
@@ -48,19 +51,21 @@ class Plan(models.Model):
     class Meta:
         constraints = [
             UniqueConstraint(fields=['codename'], name='unique_plan_codename'),
-            UniqueConstraint(fields=['slug'], name='unique_plan_slug'),
         ]
 
     def __str__(self) -> str:
         return self.name
 
     def get_absolute_url(self) -> str:
-        return reverse('plan', kwargs={'plan_slug': self.slug})
+        return reverse('plan', kwargs={'plan_id': self.id})
 
     def save(self, *args, **kwargs):
         self.charge_period = self.charge_period or INFINITY
         self.max_duration = self.max_duration or INFINITY
         return super().save(*args, **kwargs)
+
+    def is_recurring(self) -> bool:
+        return self.charge_period != INFINITY
 
 
 @dataclass
@@ -118,6 +123,10 @@ class SubscriptionQuerySet(models.QuerySet):
         from_ = from_ or now()
         return self.filter(end__gte=from_, end__lte=from_ + within)
 
+    def recurring(self, value: bool = True) -> QuerySet:
+        subscriptions = self.select_related('plan')
+        return subscriptions.exclude(plan__charge_period=INFINITY) if value else subscriptions.filter(plan__charge_period=INFINITY)
+
 
 class Subscription(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='subscriptions')
@@ -147,27 +156,23 @@ class Subscription(models.Model):
     def get_expiring(cls, within: timedelta) -> QuerySet:
         return cls.objects.active().expiring(within)
 
-    def prolong(self, for_: Optional[relativedelta] = None):
-        if for_:
-            self.end += for_
+    def prolong(self):
+        next_charge_dates = islice(self.iter_charge_dates(since=self.end), 2)
+        if (first_charge_date := next(next_charge_dates)) and self.end == first_charge_date:
+            try:
+                end = next(next_charge_dates)
+            except StopIteration as exc:
+                raise ProlongationImpossible('No next charge date') from exc
         else:
-            next_charge_dates = islice(self.iter_charge_dates(since=self.end), 2)
-            if (first_charge_date := next(next_charge_dates)) and self.end == first_charge_date:
-                try:
-                    end = next(next_charge_dates)
-                except StopIteration as exc:
-                    raise ProlongationImpossible('No next charge date') from exc
-            else:
-                end = first_charge_date
+            end = first_charge_date
 
-            if end > (max_end := self.max_end):
-                if self.end == max_end:
-                    raise ProlongationImpossible('Current subscription end is already the maximum end')
+        if end > (max_end := self.max_end):
+            if self.end == max_end:
+                raise ProlongationImpossible('Current subscription end is already the maximum end')
 
-                end = max_end
+            end = max_end
 
         self.end = end
-        self.save()
 
     def iter_quota_chunks(
         self,
@@ -217,6 +222,30 @@ class Subscription(models.Model):
             yield charge_date
             if charge_period == INFINITY:
                 return
+
+    def get_last_successful_payment(self) -> Optional[SubscriptionPayment]:
+        return self.payments.filter(status=SubscriptionPayment.Status.COMPLETED).order_by('created').last()
+
+    def charge_offline(self):
+        from .providers import get_provider
+
+        last_payment = self.get_last_successful_payment()
+        if not last_payment:
+            raise PaymentError('There is no previous successful payment to take credentials from')
+
+        provider_codename = last_payment.provider_codename
+        try:
+            provider = get_provider(provider_codename)
+        except ProviderNotFound as exc:
+            raise PaymentError(f'Could not retrieve provider "{provider_codename}"') from exc
+
+        provider.charge_offline(user=self.user, plan=self.plan, subscription=self)
+
+    def send_successful_charge_email(self):
+        raise NotImplementedError()  # TODO
+
+    def send_failed_charge_email(self):
+        raise NotImplementedError()  # TODO
 
 
 class Quota(models.Model):
@@ -281,11 +310,15 @@ class AbstractTransaction(models.Model):
     amount = MoneyField()
     # source = models.ForeignKey(MoneyStorage, on_delete=models.PROTECT, related_name='transactions_out')
     # destination = models.ForeignKey(MoneyStorage, on_delete=models.PROTECT, related_name='transactions_in')
+    metadata = models.JSONField(default=dict, encoder=DjangoJSONEncoder)
     created = models.DateTimeField(blank=True, editable=False)
     updated = models.DateTimeField(blank=True, editable=False)
 
     class Meta:
         abstract = True
+        indexes = [
+            Index(fields=('provider_codename', 'provider_transaction_id')),
+        ]
 
     def save(self, *args, **kwargs):
         now_ = now()
@@ -303,9 +336,32 @@ class AbstractTransaction(models.Model):
 
 
 class SubscriptionPayment(AbstractTransaction):
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='%(class)ss')
-    subscription = models.ForeignKey(Subscription, on_delete=models.PROTECT, blank=True, null=True, related_name='%(class)ss')
-    subscription_charge_date = models.DateTimeField()
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='payments')
+    plan = models.ForeignKey(Plan, on_delete=models.PROTECT, related_name='payments')
+    subscription = models.ForeignKey(Subscription, on_delete=models.PROTECT, blank=True, null=True, related_name='payments')
+    subscription_start = models.DateTimeField(blank=True, null=True)
+    subscription_end = models.DateTimeField(blank=True, null=True)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._initial_status = self.status
+
+    def save(self, *args, **kwargs):
+        if self._initial_status != self.Status.COMPLETED and self.status == self.Status.COMPLETED:
+            if (subscription := self.subscription):
+                self.subscription_start = subscription.end
+                subscription.prolong()
+                self.subscription_end = subscription.end
+                subscription.save()
+            else:
+                subscription = Subscription.objects.create(
+                    user=self.user,
+                    plan=self.plan,
+                )
+                self.subscription_start = subscription.start
+                self.subscription_end = subscription.end
+
+        return super().save(*args, **kwargs)
 
 
 class SubscriptionPaymentRefund(AbstractTransaction):

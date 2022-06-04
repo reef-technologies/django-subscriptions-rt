@@ -1,7 +1,7 @@
 from rest_framework import serializers
 
-from ...api.serializers import PaymentSerializer
+from ...api.serializers import WebhookSerializer
 
 
-class DummySerializer(PaymentSerializer):
-    agreed = serializers.BooleanField(required=True)
+class DummyWebhookSerializer(WebhookSerializer):
+    transaction_id = serializers.CharField(required=True)

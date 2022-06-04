@@ -1,8 +1,7 @@
 from decimal import Decimal
 from typing import Optional
 
-from rest_framework.serializers import CharField, IntegerField, ModelSerializer, PrimaryKeyRelatedField, Serializer, \
-                                       SerializerMethodField, SlugRelatedField, DictField
+from rest_framework.serializers import CharField, DictField, IntegerField, ModelSerializer, PrimaryKeyRelatedField, Serializer, SerializerMethodField
 
 from ..fields import relativedelta_to_dict
 from ..models import Plan, Subscription
@@ -15,7 +14,7 @@ class PlanSerializer(ModelSerializer):
 
     class Meta:
         model = Plan
-        fields = 'id', 'codename', 'name', 'charge_amount', 'charge_amount_currency', 'charge_period', 'max_duration',
+        fields = 'id', 'codename', 'name', 'charge_amount', 'charge_amount_currency', 'charge_period', 'max_duration', 'is_recurring',
 
     def get_charge_amount(self, obj) -> Optional[Decimal]:
         return obj.charge_amount and obj.charge_amount.amount
@@ -43,7 +42,7 @@ class PaymentProviderListSerializer(Serializer):
     providers = PaymentProviderSerializer(read_only=True, many=True)
 
 
-class PaymentSerializer(Serializer):
+class SubscriptionChargeSerializer(Serializer):
     plan = PrimaryKeyRelatedField(queryset=Plan.objects.all())
 
 

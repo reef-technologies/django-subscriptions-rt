@@ -3,19 +3,20 @@ from datetime import timezone as tz
 from decimal import Decimal
 from functools import wraps
 from typing import List
-from dateutil.relativedelta import relativedelta
 
 import pytest
+from dateutil.relativedelta import relativedelta
 from django.contrib.auth import get_user_model
+from django.test import Client
+from djmoney.money import Money
 from subscriptions.functions import get_remaining_amount, get_remaining_chunks
-from subscriptions.models import Plan, Quota, QuotaCache, Resource, Subscription, Usage
+from subscriptions.models import INFINITY, Plan, Quota, QuotaCache, Resource, Subscription, SubscriptionPayment, Usage
+from subscriptions.providers import get_provider, get_providers
 
 
 @pytest.fixture
 def days():
-    def fn(n: int) -> relativedelta:
-        return relativedelta(days=n)
-    return fn
+    return lambda n: relativedelta(days=n)
 
 
 @pytest.fixture
@@ -38,12 +39,62 @@ def resource(db) -> Resource:
 
 
 @pytest.fixture
-def plan(db, days) -> Plan:
+def plan(db, days, resource) -> Plan:
     return Plan.objects.create(
         codename='plan',
         name='Plan',
         charge_amount=Decimal(100),
         charge_period=days(30),
+        max_duration=days(90),
+    )
+
+
+@pytest.fixture
+def quota(db, plan, resource) -> Quota:
+    return Quota.objects.create(
+        plan=plan,
+        resource=resource,
+        limit=100,
+    )
+
+
+@pytest.fixture
+def bigger_plan(db, days, resource) -> Plan:
+    return Plan.objects.create(
+        codename='bigger-plan',
+        name='Bigger plan',
+        charge_amount=Decimal(200),
+        charge_period=days(30),
+    )
+
+
+@pytest.fixture
+def bigger_quota(db, bigger_plan, resource) -> Quota:
+    return Quota.objects.create(
+        plan=bigger_plan,
+        resource=resource,
+        limit=300,
+    )
+
+
+@pytest.fixture
+def recharge_plan(db, days, resource) -> Plan:
+    # $10 for 10 resources, expires in 14 days
+    return Plan.objects.create(
+        codename='recharge-plan',
+        name='Recharge plan',
+        charge_amount=Decimal(10),
+        charge_period=INFINITY,
+        max_duration=days(14),
+    )
+
+
+@pytest.fixture
+def recharge_quota(db, recharge_plan, resource) -> Quota:
+    return Quota.objects.create(
+        plan=recharge_plan,
+        resource=resource,
+        limit=10,
     )
 
 
@@ -54,11 +105,6 @@ def subscription(db, now, user, plan) -> Subscription:
         plan=plan,
         start=now,
     )
-
-
-@pytest.fixture
-def quota(db, resource, subscription) -> Quota:
-    return Quota.calculate_remaining(user)
 
 
 @pytest.fixture
@@ -92,7 +138,7 @@ def get_cache(remaining_chunks) -> callable:
 
 
 @pytest.fixture
-def two_subscriptions(user, now, days, resource):
+def two_subscriptions(user, now, days, resource) -> List[Subscription]:
     """
                          Subscription 1
     --------------[========================]------------> time
@@ -119,8 +165,8 @@ def two_subscriptions(user, now, days, resource):
 
     """
 
-    plan1 = Plan.objects.create(codename='plan1', name='Plan 1', slug='plan1')
-    Subscription.objects.create(
+    plan1 = Plan.objects.create(codename='plan1', name='Plan 1')
+    subscription1 = Subscription.objects.create(
         user=user,
         plan=plan1,
         start=now,
@@ -134,8 +180,8 @@ def two_subscriptions(user, now, days, resource):
         burns_in=days(7),
     )
 
-    plan2 = Plan.objects.create(codename='plan2', name='Plan 2', slug='plan2')
-    Subscription.objects.create(
+    plan2 = Plan.objects.create(codename='plan2', name='Plan 2', charge_amount=Money(10, 'EUR'))
+    subscription2 = Subscription.objects.create(
         user=user,
         plan=plan2,
         start=now + days(4),
@@ -155,6 +201,8 @@ def two_subscriptions(user, now, days, resource):
         Usage(user=user, resource=resource, amount=50, datetime=now + days(12)),
     ])
 
+    return [subscription1, subscription2]
+
 
 @pytest.fixture
 def five_subscriptions(db, plan, user, now, days) -> List[Subscription]:
@@ -173,3 +221,72 @@ def five_subscriptions(db, plan, user, now, days) -> List[Subscription]:
     sub3 = Subscription.objects.create(user=user, plan=plan, start=sub1.start + days(1), end=sub0.start - days(1))
     sub4 = Subscription.objects.create(user=user, plan=plan, start=sub2.start - days(5), end=sub2.start - days(1))
     return [sub0, sub1, sub2, sub3, sub4]
+
+
+@pytest.fixture
+def user_client(client, user) -> Client:
+    client.force_login(user)
+    return client
+
+
+@pytest.fixture
+def paddle(settings):
+    settings.SUBSCRIPTIONS_PAYMENT_PROVIDERS = [
+        'subscriptions.providers.paddle.PaddleProvider',
+    ]
+    get_provider.cache_clear()
+    get_providers.cache_clear()
+
+
+@pytest.fixture
+def unconfirmed_payment(db, paddle, plan, user) -> SubscriptionPayment:
+    return SubscriptionPayment.objects.create(
+        user=user,
+        plan=plan,
+        subscription=None,
+        provider_codename='paddle',
+        provider_transaction_id='12345',
+        amount=Money(100, 'USD'),
+    )
+
+
+@pytest.fixture
+def paddle_webhook_payload(db, paddle, unconfirmed_payment) -> dict:
+    return {
+        'alert_id': 970811351,
+        'alert_name': 'subscription_payment_succeeded',
+        'balance_currency': 'USD',
+        'balance_earnings': '80.00',
+        'balance_fee': '20.00',
+        'balance_gross': '100.00',
+        'balance_tax': '33.00',
+        'checkout_id': '2-6cad1ee6f850e26-243da69933',
+        'country': 'DE',
+        'coupon': 'Coupon 8',
+        'currency': 'USD',
+        'customer_name': 'customer_name',
+        'earnings': '577.96',
+        'email': 'feil.jackson@example.net',
+        'event_time': '2022-06-03 18:20:23',
+        'fee': '0.28',
+        'initial_payment': False,
+        'instalments': 4,
+        'marketing_consent': 1,
+        'next_bill_date': '2022-06-24',
+        'next_payment_amount': '200.00',
+        'order_id': 6,
+        'passthrough': f'{{"transaction_id": "{unconfirmed_payment.provider_transaction_id}"}}',
+        'payment_method': 'paypal',
+        'payment_tax': '0.94',
+        'plan_name': 'Example String',
+        'quantity': 9,
+        'receipt_url': 'https://sandbox-my.paddle.com/receipt/5/93efff2bc9436b9-4fbe55cfe6',
+        'sale_gross': '328.85',
+        'status': 'active',
+        'subscription_id': 4,
+        'subscription_payment_id': 2,
+        'subscription_plan_id': 8,
+        'unit_price': 'unit_price',
+        'user_id': 3,
+        'p_signature': 'abracadabra',
+    }

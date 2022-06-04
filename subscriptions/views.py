@@ -1,7 +1,6 @@
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import ValidationError
-from django.http import Http404, HttpResponseRedirect
-from django.urls import reverse_lazy
+from django.http import Http404
 from django.views.generic import DetailView, ListView, TemplateView
 
 from .exceptions import PaymentError, ProviderNotFound
@@ -20,11 +19,11 @@ class PlanView(DetailView):
     model = Plan
 
     def get_object(self):
-        return self.model.objects.get(slug=self.kwargs['plan_slug'])
+        return self.model.objects.get(id=self.kwargs['id'])
 
 
-class PlanPaymentView(LoginRequiredMixin, PlanView):
-    template_name = 'subscriptions/pay.html'
+class PlanSubscriptionView(LoginRequiredMixin, PlanView):
+    template_name = 'subscriptions/subscribe.html'
 
     def dispatch(self, request, *args, **kwargs):
         self.provider_codename = request.GET.get('provider')
@@ -33,7 +32,7 @@ class PlanPaymentView(LoginRequiredMixin, PlanView):
         except ProviderNotFound:
             raise Http404()
 
-        self.plan = Plan.objects.get(slug=kwargs['plan_slug'])
+        self.plan = Plan.objects.get(id=kwargs['id'])
         self.form = form(request.POST or None) if (form := self.payment_provider.form) else None
 
         return super().dispatch(request, *args, **kwargs)
@@ -42,12 +41,12 @@ class PlanPaymentView(LoginRequiredMixin, PlanView):
 
         if self.form.is_valid():
             try:
-                return self.payment_provider.process_payment(request=request)
+                return self.payment_provider.process_subscription_request(request=request)
             except PaymentError as exc:
                 self.form.add_error(None, ValidationError(exc.user_message, code=exc.code))
 
         return super().get(request, *args, **kwargs)
 
 
-class PlanPaymentSuccessView(TemplateView):
-    template_name = 'subscriptions/payment-success.html'
+class PlanSubscriptionSuccessView(TemplateView):
+    template_name = 'subscriptions/subscribe-success.html'
