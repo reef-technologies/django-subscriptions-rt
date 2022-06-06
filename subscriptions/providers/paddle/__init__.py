@@ -56,9 +56,7 @@ class PaddleProvider(Provider):
 
         payment_link = self._api.generate_payment_link(
             product_id=self._plan['id'],
-            prices=[
-                plan.charge_amount,
-            ],
+            prices=[plan.charge_amount] if plan.charge_amount else [],
             email=user.email,
             metadata={
                 'transaction_id': transaction_id,
