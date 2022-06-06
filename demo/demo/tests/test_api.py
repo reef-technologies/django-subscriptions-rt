@@ -53,6 +53,7 @@ def test_subscriptions(user_client, two_subscriptions, now):
             'id': subscription.id,
             'start': datetime_to_api(subscription.start),
             'end': datetime_to_api(subscription.end),
+            'quantity': 1,
             'plan': {
                 'id': subscription.plan.id,
                 'codename': subscription.plan.codename,
@@ -77,6 +78,7 @@ def test_subscribe(client, user_client, plan, now):
         assert response.status_code == 200, response.content
         assert response.json() == {
             'plan': plan.id,
+            'quantity': 1,
             'redirect_url': '/subscribe/success',
         }
 
@@ -145,6 +147,7 @@ def test_recharge_plan_subscription(client, user_client, subscription, quota, re
         assert response.status_code == 200, response.content
         assert response.json() == {
             'plan': recharge_plan.id,
+            'quantity': 1,
             'redirect_url': '/subscribe/success',
         }
 

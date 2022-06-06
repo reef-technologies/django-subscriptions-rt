@@ -132,6 +132,7 @@ class SubscriptionQuerySet(models.QuerySet):
 class Subscription(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='subscriptions')
     plan = models.ForeignKey(Plan, on_delete=models.PROTECT, related_name='subscriptions')
+    quantity = models.PositiveIntegerField(default=1)  # TODO: add real support
     start = models.DateTimeField(blank=True)
     end = models.DateTimeField(blank=True)
 

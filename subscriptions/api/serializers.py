@@ -31,7 +31,7 @@ class SubscriptionSerializer(ModelSerializer):
 
     class Meta:
         model = Subscription
-        fields = 'id', 'plan', 'start', 'end',
+        fields = 'id', 'plan', 'quantity', 'start', 'end',
 
 
 class PaymentProviderSerializer(Serializer):
@@ -44,6 +44,7 @@ class PaymentProviderListSerializer(Serializer):
 
 class SubscriptionSelectSerializer(Serializer):
     plan = PrimaryKeyRelatedField(queryset=Plan.objects.all())
+    quantity = IntegerField(default=1)
     redirect_url = CharField(read_only=True)
 
 

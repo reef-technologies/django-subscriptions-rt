@@ -63,6 +63,7 @@ class SubscriptionSelectView(GenericAPIView):
     def post(self, request, *args, **kwargs) -> Response:
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        # TODO: handle quantity
 
         plan = serializer.validated_data['plan']
         active_subscriptions = request.user.subscriptions.active().order_by('end')
@@ -82,6 +83,7 @@ class SubscriptionSelectView(GenericAPIView):
 
         return Response(self.serializer_class({
             'redirect_url': redirect_url,
+            'quantity': 1,
             'plan': plan,
         }).data)
 
