@@ -93,9 +93,7 @@ class PaymentWebhookView(GenericAPIView):
     schema = AutoSchema()
 
     def post(self, request, *args, **kwargs) -> Response:
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        return self.provider.webhook(request=request, serializer=serializer)
+        return self.provider.webhook(request=request, payload=request.data)
 
 
 def build_payment_webhook_view(provider: Provider) -> GenericAPIView:
@@ -104,7 +102,6 @@ def build_payment_webhook_view(provider: Provider) -> GenericAPIView:
     class _PaymentWebhookView(PaymentWebhookView):
         schema = AutoSchema(operation_id_base=f'_{codename}_webhook')
         provider = get_provider(codename)
-        serializer_class = get_provider(codename).webhook_serializer_class
 
     return _PaymentWebhookView
 

@@ -6,14 +6,11 @@ from typing import ClassVar, List, Optional
 from django.conf import settings
 from django.contrib.auth.models import AbstractBaseUser
 from django.forms import Form
-from django.http import HttpResponseRedirect
 from django.utils.module_loading import import_string
 from more_itertools import first, one
 from rest_framework.request import Request
 from rest_framework.response import Response
-from rest_framework.serializers import Serializer
 
-from ..api.serializers import WebhookSerializer
 from ..defaults import DEFAULT_SUBSCRIPTIONS_PAYMENT_PROVIDERS
 from ..exceptions import ProviderNotFound
 from ..models import Plan, Subscription
@@ -26,7 +23,6 @@ class Provider:
     codename: ClassVar[str] = 'default'
     is_enabled: ClassVar[bool] = True
     form: ClassVar[Optional[Form]] = None
-    webhook_serializer_class: ClassVar[Serializer] = WebhookSerializer
 
     def charge_online(self, user: AbstractBaseUser, plan: Plan, subscription: Optional[Subscription] = None) -> str:
         raise NotImplementedError()
@@ -34,9 +30,9 @@ class Provider:
     def charge_offline(self, user: AbstractBaseUser, plan: Plan, subscription: Optional[Subscription] = None):
         raise NotImplementedError()
 
-    def webhook(self, request: Request, serializer: WebhookSerializer) -> Response:
+    def webhook(self, request: Request, payload: dict) -> Response:
         log.warning(f'Webhook for "{self.codename}" triggered without explicit handler')
-        return Response(serializer.data)
+        return Response(payload)
 
     # TODO: what to do with this?
     # def process_subscription_request(self, request: Request, serializer: PaymentSerializer) -> Response:

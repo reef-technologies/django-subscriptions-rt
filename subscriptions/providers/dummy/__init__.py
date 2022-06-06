@@ -1,24 +1,21 @@
 from dataclasses import dataclass
-from typing import ClassVar, Optional, Type
+from typing import ClassVar, Optional
 
 from django.contrib.auth.models import AbstractBaseUser
-from django.db import transaction
 from django.forms import Form
 from django.utils.crypto import get_random_string
 from rest_framework.request import Request
 from rest_framework.response import Response
 
 from ...models import Plan, Subscription, SubscriptionPayment
-from .. import Provider, WebhookSerializer
+from .. import Provider
 from .forms import DummyForm
-from .serializers import DummyWebhookSerializer
 
 
 @dataclass  # TODO: not needed?
 class DummyProvider(Provider):
     codename: ClassVar[str] = 'dummy'
     form: ClassVar[Form] = DummyForm
-    webhook_serializer_class: ClassVar[Type[WebhookSerializer]] = DummyWebhookSerializer
 
     _payment_url: ClassVar[str] = '/payment/{}/'
 
@@ -44,8 +41,8 @@ class DummyProvider(Provider):
             subscription=subscription,
         )
 
-    def webhook(self, request: Request, serializer: DummyWebhookSerializer) -> Response:
-        payment = SubscriptionPayment.objects.get(provider_transaction_id=serializer.validated_data['transaction_id'])
+    def webhook(self, request: Request, payload: dict) -> Response:
+        payment = SubscriptionPayment.objects.get(provider_transaction_id=payload['transaction_id'])
         if payment.status != payment.Status.PENDING:
             return
 

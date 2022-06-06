@@ -14,7 +14,6 @@ from ...exceptions import PaymentError
 from ...models import Plan, Subscription, SubscriptionPayment
 from .. import Provider
 from .api import Paddle
-from .serializers import PaddleWebhookSerializer
 
 log = getLogger(__name__)
 
@@ -22,7 +21,6 @@ log = getLogger(__name__)
 @dataclass
 class PaddleProvider(Provider):
     codename: ClassVar[str] = 'paddle'
-    webhook_serializer_class: ClassVar[Type[WebhookSerializer]] = PaddleWebhookSerializer
 
     vendor_id: ClassVar[str] = settings.PADDLE_VENDOR_ID
     vendor_auth_code: ClassVar[str] = settings.PADDLE_VENDOR_AUTH_CODE
@@ -102,14 +100,13 @@ class PaddleProvider(Provider):
         'subscription_payment_failed': SubscriptionPayment.Status.ERROR,
     }
 
-    def webhook(self, request: Request, serializer: PaddleWebhookSerializer) -> Response:
-        data = serializer.validated_data
-        if (action := data['alert_name']) not in self.WEBHOOK_ACTION_TO_PAYMENT_STATUS:
+    def webhook(self, request: Request, payload: dict) -> Response:
+        if (action := payload['alert_name']) not in self.WEBHOOK_ACTION_TO_PAYMENT_STATUS:
             log.warning(f'No handler for {action=}')
-            return
+            return Response()
 
         try:
-            passthrough = json.loads(data['passthrough'])
+            passthrough = json.loads(payload['passthrough'])
         except (json.JSONDecodeError, KeyError) as exc:
             raise ValueError('Could not decode `passthrough`') from exc
 
@@ -120,7 +117,7 @@ class PaddleProvider(Provider):
             provider_transaction_id=transaction_id,
         )
 
-        payment.metadata = data
+        payment.metadata = payload
         payment.status = self.WEBHOOK_ACTION_TO_PAYMENT_STATUS[action]
         payment.save()
 
