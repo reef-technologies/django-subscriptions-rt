@@ -136,6 +136,7 @@ def test_recurring_plan_switch(user_client, subscription, bigger_plan, now, days
     with freeze_time(now + days(2)):
         response = user_client.post('/api/subscribe/', {'plan': bigger_plan.id})
         assert response.status_code == 403, response.content
+        assert response.json() == {'detail': 'Too many recurring subscriptions'}
 
 
 def test_recharge_plan_subscription(client, user_client, subscription, quota, recharge_plan, recharge_quota, now, days, resource):

@@ -81,7 +81,7 @@ class SubscriptionSelectView(GenericAPIView):
             try:
                 validator(active_subscriptions, plan)
             except SubscriptionError as exc:
-                raise PermissionDenied() from exc  # TODO: descriptive error message
+                raise PermissionDenied(detail=str(exc)) from exc
 
         provider = self.select_payment_provider()
         try:
