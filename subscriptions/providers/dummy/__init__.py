@@ -50,6 +50,7 @@ class DummyProvider(Provider):
         if payment.status != payment.Status.PENDING:
             return
 
+        payment.status = SubscriptionPayment.Status.COMPLETED
         payment.save()
         return Response()
 

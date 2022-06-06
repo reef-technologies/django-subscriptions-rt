@@ -42,7 +42,7 @@ class PaymentProviderListSerializer(Serializer):
     providers = PaymentProviderSerializer(read_only=True, many=True)
 
 
-class SubscriptionChargeSerializer(Serializer):
+class SubscriptionSelectSerializer(Serializer):
     plan = PrimaryKeyRelatedField(queryset=Plan.objects.all())
 
 
@@ -51,4 +51,5 @@ class WebhookSerializer(Serializer):
 
 
 class ResourcesSerializer(Serializer):
-    resources = DictField(child=IntegerField(), read_only=True)
+    codename = CharField(read_only=True)
+    amount = IntegerField(read_only=True)

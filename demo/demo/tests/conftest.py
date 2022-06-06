@@ -230,6 +230,15 @@ def user_client(client, user) -> Client:
 
 
 @pytest.fixture
+def dummy(settings):
+    settings.SUBSCRIPTIONS_PAYMENT_PROVIDERS = [
+        'subscriptions.providers.dummy.DummyProvider',
+    ]
+    get_provider.cache_clear()
+    get_providers.cache_clear()
+
+
+@pytest.fixture
 def paddle(settings):
     settings.SUBSCRIPTIONS_PAYMENT_PROVIDERS = [
         'subscriptions.providers.paddle.PaddleProvider',

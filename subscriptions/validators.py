@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import List
+from typing import List, ClassVar
 
 from django.conf import settings
 from django.db.models import QuerySet
@@ -31,16 +31,16 @@ class AtLeastOneRecurringSubscription(SubscriptionValidator):
             raise SubscriptionError('Need any recurring subscription first')
 
 
-# @dataclass(frozen=True)
-# class SimultaneousRecurringSubscriptions(SubscriptionValidator):
-#     MAX_NUMBER: ClassVar[int] = 1
+@dataclass(frozen=True)
+class SimultaneousRecurringSubscriptions(SubscriptionValidator):
+    MAX_NUMBER: ClassVar[int] = 1
 
-#     def __call__(self, active_subscriptions: QuerySet, requested_plan: Plan):
-#         if not requested_plan.is_recurring():
-#             return
+    def __call__(self, active_subscriptions: QuerySet, requested_plan: Plan):
+        if not requested_plan.is_recurring():
+            return
 
-#         if active_subscriptions.recurring().count() > self.MAX_NUMBER - 1:
-#             raise SubscriptionError('Too many recurring subscriptions')
+        if active_subscriptions.recurring().count() > self.MAX_NUMBER - 1:
+            raise SubscriptionError('Too many recurring subscriptions')
 
 
 @lru_cache(maxsize=1)

@@ -95,6 +95,7 @@ DATABASES = {
 }
 
 SUBSCRIPTIONS_PAYMENT_PROVIDERS = [
+    'subscriptions.providers.dummy.DummyProvider',
     'subscriptions.providers.paddle.PaddleProvider',
 ]
 

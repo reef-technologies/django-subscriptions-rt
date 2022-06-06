@@ -2,6 +2,7 @@ from typing import Type
 
 from django.conf import settings
 from django.http import HttpResponseRedirect
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.generics import GenericAPIView, ListAPIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -9,11 +10,11 @@ from rest_framework.schemas.openapi import AutoSchema
 from subscriptions.functions import get_remaining_amount
 
 from ..defaults import DEFAULT_SUBSCRIPTIONS_SUCCESS_URL
-from ..exceptions import PaymentError
+from ..exceptions import PaymentError, SubscriptionError
 from ..models import Plan, Subscription
 from ..providers import Provider, get_provider, get_providers
 from ..validators import get_validators
-from .serializers import PaymentProviderListSerializer, PlanSerializer, ResourcesSerializer, SubscriptionChargeSerializer, SubscriptionSerializer
+from .serializers import PaymentProviderListSerializer, PlanSerializer, SubscriptionSelectSerializer, SubscriptionSerializer
 
 
 class PlanListView(ListAPIView):
@@ -51,10 +52,20 @@ class SubscriptionListView(ListAPIView):
         return Subscription.objects.active().select_related('plan').filter(user=self.request.user)
 
 
-class SubscriptionChargeView(GenericAPIView):
+class SubscriptionSelectSchema(AutoSchema):
+    def get_operation(self, *args, **kwargs):
+        return {
+            **super().get_operation(*args, **kwargs),
+            'responses': {'302': {
+                'description': 'Redirect to checkout page',
+            }},
+        }
+
+
+class SubscriptionSelectView(GenericAPIView):
     permission_classes = IsAuthenticated,
-    serializer_class = SubscriptionChargeSerializer
-    schema = AutoSchema()
+    serializer_class = SubscriptionSelectSerializer
+    schema = SubscriptionSelectSchema()
 
     @classmethod
     def select_payment_provider(cls) -> Type[Provider]:
@@ -68,7 +79,10 @@ class SubscriptionChargeView(GenericAPIView):
         active_subscriptions = request.user.subscriptions.active().order_by('end')
 
         for validator in get_validators():
-            validator(active_subscriptions, plan)
+            try:
+                validator(active_subscriptions, plan)
+            except SubscriptionError as exc:
+                raise PermissionDenied() from exc  # TODO: descriptive error message
 
         provider = self.select_payment_provider()
         try:
@@ -105,11 +119,12 @@ def build_payment_webhook_view(provider: Provider) -> GenericAPIView:
 
 class ResourcesView(GenericAPIView):
     permission_classes = IsAuthenticated,
-    serializer_class = ResourcesSerializer
+    # serializer_class = ResourcesSerializer
+    pagination_class = None
     schema = AutoSchema()
 
     def get(self, request, *args, **kwargs) -> Response:
-        serializer = self.serializer_class({
-            'resources': {resource.codename: amount for resource, amount in get_remaining_amount(request.user).items()},
+        return Response({
+            resource.codename: amount for resource, amount
+            in get_remaining_amount(request.user).items()
         })
-        return Response(serializer.data)

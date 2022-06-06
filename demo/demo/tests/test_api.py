@@ -29,14 +29,14 @@ def test_plans(plan, client):
     ]
 
 
-def test_payment_providers(client):
-    response = client.get('/api/payment-providers/')
-    assert response.status_code == 200
-    assert response.json() == {
-        'providers': [
-            {'name': 'dummy'},
-        ],
-    }
+# def test_payment_providers(client):
+#     response = client.get('/api/payment-providers/')
+#     assert response.status_code == 200
+#     assert response.json() == {
+#         'providers': [
+#             {'name': 'dummy'},
+#         ],
+#     }
 
 
 def test_unauthorized_subscriptions(client, two_subscriptions):
@@ -99,9 +99,7 @@ def test_resources(user_client, subscription, resource, quota, now):
     with freeze_time(now):
         response = user_client.get('/api/resources/')
         assert response.status_code == 200, response.content
-        assert response.json() == {'resources': {
-            resource.codename: quota.limit,
-        }}
+        assert response.json() == {resource.codename: quota.limit}
 
 
 def test_resources_usage(user, user_client, subscription, resource, quota, now, days):
@@ -115,23 +113,19 @@ def test_resources_usage(user, user_client, subscription, resource, quota, now, 
     with freeze_time(now + days(2)):
         response = user_client.get('/api/resources')
         assert response.status_code == 200, response.content
-        assert response.json() == {'resources': {
-            resource.codename: quota.limit - 20,
-        }}
+        assert response.json() == {resource.codename: quota.limit - 20}
 
 
 def test_resources_expiration(user_client, subscription, resource, now, quota, days):
     with freeze_time(now + quota.burns_in - days(1)):
         response = user_client.get('/api/resources')
         assert response.status_code == 200, response.content
-        assert response.json() == {'resources': {
-            resource.codename: quota.limit,
-        }}
+        assert response.json() == {resource.codename: quota.limit}
 
     with freeze_time(now + quota.burns_in):
         response = user_client.get('/api/resources/')
         assert response.status_code == 200, response.content
-        assert response.json() == {'resources': {}}
+        assert response.json() == {}
 
 
 def test_recurring_plan_switch(user_client, subscription, bigger_plan, now, days):
@@ -152,9 +146,9 @@ def test_recharge_plan_subscription(client, user_client, subscription, quota, re
     with freeze_time(now + days(3)):
         response = user_client.get('/api/resources/')
         assert response.status_code == 200, response.content
-        assert response.json() == {'resources': {
+        assert response.json() == {
             resource.codename: subscription.plan.quotas.last().limit + recharge_quota.limit,
-        }}
+        }
 
 
 def test_background_charge(subscription, days, now):

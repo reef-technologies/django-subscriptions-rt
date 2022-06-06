@@ -1,13 +1,13 @@
 from django.urls import re_path
 
 from ..providers import get_providers
-from .views import PaymentProviderListView, PlanListView, ResourcesView, SubscriptionListView, SubscriptionChargeView, build_payment_webhook_view
+from .views import PlanListView, ResourcesView, SubscriptionListView, SubscriptionSelectView, build_payment_webhook_view
 
 urlpatterns = [
     re_path(r'plans/?$', PlanListView.as_view(), name='plans'),
-    re_path(r'payment-providers/?$', PaymentProviderListView.as_view(), name='payment_providers'),
+    # re_path(r'payment-providers/?$', PaymentProviderListView.as_view(), name='payment_providers'),
     re_path(r'subscriptions/?$', SubscriptionListView.as_view(), name='subscriptions'),
-    re_path(r'subscribe/?$', SubscriptionChargeView.as_view(), name='subscribe'),
+    re_path(r'subscribe/?$', SubscriptionSelectView.as_view(), name='subscribe'),
     re_path(r'resources/?$', ResourcesView.as_view(), name='resources'),
 ]
 
