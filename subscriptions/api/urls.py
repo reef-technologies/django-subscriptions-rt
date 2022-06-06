@@ -1,4 +1,5 @@
 from django.urls import re_path
+from django.views.decorators.csrf import csrf_exempt
 
 from ..providers import get_providers
 from .views import PlanListView, ResourcesView, SubscriptionListView, SubscriptionSelectView, build_payment_webhook_view
@@ -18,7 +19,9 @@ for provider in get_providers():
     urlpatterns += [
         re_path(
             f'webhook/{provider.codename}/?$',
-            build_payment_webhook_view(provider).as_view(),
+            csrf_exempt(
+                build_payment_webhook_view(provider).as_view()
+            ),
             name=f'payment_webhook_{provider.codename}',
         ),
     ]
