@@ -13,7 +13,7 @@ from ..exceptions import PaymentError, SubscriptionError
 from ..models import Plan, Subscription
 from ..providers import Provider, get_provider, get_providers
 from ..validators import get_validators
-from .serializers import PaymentProviderListSerializer, PlanSerializer, ResourcesSerializer, SubscriptionSelectSerializer, SubscriptionSerializer
+from .serializers import PaymentProviderListSerializer, PlanSerializer, ResourcesSerializer, SubscriptionSelectSerializer, SubscriptionSerializer, WebhookSerializer
 
 
 class PlanListView(ListAPIView):
@@ -91,6 +91,7 @@ class SubscriptionSelectView(GenericAPIView):
 class PaymentWebhookView(GenericAPIView):
     permission_classes = AllowAny,
     schema = AutoSchema()
+    serializer_class = WebhookSerializer
 
     def post(self, request, *args, **kwargs) -> Response:
         return self.provider.webhook(request=request, payload=request.data)
