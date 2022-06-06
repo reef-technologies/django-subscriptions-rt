@@ -108,7 +108,11 @@ class PaddleProvider(Provider):
             log.warning(f'No handler for {action=}')
             return
 
-        passthrough = json.loads(data['passthrough'])
+        try:
+            passthrough = json.loads(data['passthrough'])
+        except (json.JSONDecodeError, KeyError) as exc:
+            raise ValueError('Could not decode `passthrough`') from exc
+
         transaction_id = passthrough['transaction_id']
 
         payment = SubscriptionPayment.objects.get(
