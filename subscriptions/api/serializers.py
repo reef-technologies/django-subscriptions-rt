@@ -44,6 +44,7 @@ class PaymentProviderListSerializer(Serializer):
 
 class SubscriptionSelectSerializer(Serializer):
     plan = PrimaryKeyRelatedField(queryset=Plan.objects.all())
+    redirect_url = CharField(read_only=True)
 
 
 class WebhookSerializer(Serializer):

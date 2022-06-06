@@ -13,9 +13,8 @@ def test_provider(paddle):
 
 def test_subscription(paddle, plan, user_client):
     response = user_client.post('/api/subscribe/', {'plan': plan.id})
-    assert response.status_code == 302, response.content
-    checkout_url = response.headers['Location']
-    assert 'paddle.com' in checkout_url
+    assert response.status_code == 200, response.content
+    assert 'paddle.com' in response.json()['redirect_url']
 
 
 def test_webhook(paddle, client, user_client, unconfirmed_payment, paddle_webhook_payload):

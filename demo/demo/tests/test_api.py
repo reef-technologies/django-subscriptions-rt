@@ -74,7 +74,11 @@ def test_unauthorized_subscribe(client, plan):
 def test_subscribe(client, user_client, plan, now):
     with freeze_time(now):
         response = user_client.post('/api/subscribe/', {'plan': plan.id})
-        assert response.status_code == 302, response.content
+        assert response.status_code == 200, response.content
+        assert response.json() == {
+            'plan': plan.id,
+            'redirect_url': '/subscribe/success',
+        }
 
         response = user_client.get('/api/subscriptions/')
         assert response.status_code == 200, response.content
@@ -137,7 +141,11 @@ def test_recurring_plan_switch(user_client, subscription, bigger_plan, now, days
 def test_recharge_plan_subscription(client, user_client, subscription, quota, recharge_plan, recharge_quota, now, days, resource):
     with freeze_time(now + days(2)):
         response = user_client.post('/api/subscribe/', {'plan': recharge_plan.id})
-        assert response.status_code == 302, response.content
+        assert response.status_code == 200, response.content
+        assert response.json() == {
+            'plan': recharge_plan.id,
+            'redirect_url': '/subscribe/success',
+        }
 
         transaction_id = SubscriptionPayment.objects.last().provider_transaction_id
         response = client.post('/api/webhook/dummy/', {'transaction_id': transaction_id})

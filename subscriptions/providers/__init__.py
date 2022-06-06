@@ -28,7 +28,7 @@ class Provider:
     form: ClassVar[Optional[Form]] = None
     webhook_serializer_class: ClassVar[Serializer] = WebhookSerializer
 
-    def charge_online(self, user: AbstractBaseUser, plan: Plan, subscription: Optional[Subscription] = None) -> HttpResponseRedirect:
+    def charge_online(self, user: AbstractBaseUser, plan: Plan, subscription: Optional[Subscription] = None) -> str:
         raise NotImplementedError()
 
     def charge_offline(self, user: AbstractBaseUser, plan: Plan, subscription: Optional[Subscription] = None):

@@ -4,7 +4,6 @@ from typing import ClassVar, Optional, Type
 from django.contrib.auth.models import AbstractBaseUser
 from django.db import transaction
 from django.forms import Form
-from django.http import HttpResponseRedirect
 from django.utils.crypto import get_random_string
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -23,7 +22,7 @@ class DummyProvider(Provider):
 
     _payment_url: ClassVar[str] = '/payment/{}/'
 
-    def charge_online(self, user: AbstractBaseUser, plan: Plan, subscription: Optional[Subscription] = None) -> HttpResponseRedirect:
+    def charge_online(self, user: AbstractBaseUser, plan: Plan, subscription: Optional[Subscription] = None) -> str:
         transaction_id = get_random_string(8)
         SubscriptionPayment.objects.create(  # TODO: limit number of creations per day
             provider_codename=self.codename,
@@ -33,7 +32,7 @@ class DummyProvider(Provider):
             plan=plan,
             subscription=subscription,
         )
-        return HttpResponseRedirect(self._payment_url.format(transaction_id))
+        return self._payment_url.format(transaction_id)
 
     def charge_offline(self, user: AbstractBaseUser, plan: Plan, subscription: Optional[Subscription] = None):
         SubscriptionPayment.objects.create(  # TODO: limit number of creations per day

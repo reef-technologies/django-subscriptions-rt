@@ -1,7 +1,6 @@
 from typing import Type
 
 from django.conf import settings
-from django.http import HttpResponseRedirect
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.generics import GenericAPIView, ListAPIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -87,13 +86,14 @@ class SubscriptionSelectView(GenericAPIView):
         provider = self.select_payment_provider()
         try:
             provider.charge_offline(user=request.user, plan=plan)
-            return HttpResponseRedirect(
-                getattr(settings, 'SUBSCRIPTIONS_SUCCESS_URL', DEFAULT_SUBSCRIPTIONS_SUCCESS_URL)
-            )
+            redirect_url = getattr(settings, 'SUBSCRIPTIONS_SUCCESS_URL', DEFAULT_SUBSCRIPTIONS_SUCCESS_URL)
         except (PaymentError, NotImplementedError):
-            pass
+            redirect_url = provider.charge_online(user=request.user, plan=plan)
 
-        return provider.charge_online(user=request.user, plan=plan)
+        return Response(self.serializer_class({
+            'redirect_url': redirect_url,
+            'plan': plan,
+        }).data)
 
 
 class PaymentWebhookView(GenericAPIView):

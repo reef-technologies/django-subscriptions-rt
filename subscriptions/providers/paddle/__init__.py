@@ -5,7 +5,6 @@ from typing import ClassVar, Optional, Type
 
 from django.conf import settings
 from django.contrib.auth.models import AbstractBaseUser
-from django.http import HttpResponseRedirect
 from django.utils.crypto import get_random_string
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -44,7 +43,7 @@ class PaddleProvider(Provider):
             f'There should be exactly one subscription plan, but there are {num_plans}: {plans}'
         self._plan = plans[0]
 
-    def charge_online(self, user: AbstractBaseUser, plan: Plan, subscription: Optional[Subscription] = None) -> HttpResponseRedirect:
+    def charge_online(self, user: AbstractBaseUser, plan: Plan, subscription: Optional[Subscription] = None) -> str:
         for _ in range(10):
             transaction_id = get_random_string(16)
             if not SubscriptionPayment.objects.filter(
@@ -73,7 +72,7 @@ class PaddleProvider(Provider):
             plan=plan,
             subscription=subscription,
         )
-        return HttpResponseRedirect(payment_link)
+        return payment_link
 
     def charge_offline(self, user: AbstractBaseUser, plan: Plan, subscription: Optional[Subscription] = None):
         last_successful_payment = SubscriptionPayment.get_last_successful(user)
