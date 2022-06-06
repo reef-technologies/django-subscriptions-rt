@@ -51,20 +51,10 @@ class SubscriptionListView(ListAPIView):
         return Subscription.objects.active().select_related('plan').filter(user=self.request.user)
 
 
-class SubscriptionSelectSchema(AutoSchema):
-    def get_operation(self, *args, **kwargs):
-        return {
-            **super().get_operation(*args, **kwargs),
-            'responses': {'302': {
-                'description': 'Redirect to checkout page',
-            }},
-        }
-
-
 class SubscriptionSelectView(GenericAPIView):
     permission_classes = IsAuthenticated,
     serializer_class = SubscriptionSelectSerializer
-    schema = SubscriptionSelectSchema()
+    schema = AutoSchema()
 
     @classmethod
     def select_payment_provider(cls) -> Type[Provider]:
