@@ -14,7 +14,7 @@ from ..exceptions import PaymentError, SubscriptionError
 from ..models import Plan, Subscription
 from ..providers import Provider, get_provider, get_providers
 from ..validators import get_validators
-from .serializers import PaymentProviderListSerializer, PlanSerializer, SubscriptionSelectSerializer, SubscriptionSerializer
+from .serializers import PaymentProviderListSerializer, PlanSerializer, ResourcesSerializer, SubscriptionSelectSerializer, SubscriptionSerializer
 
 
 class PlanListView(ListAPIView):
@@ -119,7 +119,7 @@ def build_payment_webhook_view(provider: Provider) -> GenericAPIView:
 
 class ResourcesView(GenericAPIView):
     permission_classes = IsAuthenticated,
-    # serializer_class = ResourcesSerializer
+    serializer_class = ResourcesSerializer
     pagination_class = None
     schema = AutoSchema()
 

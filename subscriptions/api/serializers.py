@@ -51,5 +51,4 @@ class WebhookSerializer(Serializer):
 
 
 class ResourcesSerializer(Serializer):
-    codename = CharField(read_only=True)
-    amount = IntegerField(read_only=True)
+    pass  # TODO
