@@ -75,7 +75,11 @@ class PaddleProvider(Provider):
         if not last_successful_payment:
             raise PaymentError('No last successful payment to take credentials from')
 
-        subscription_id = last_successful_payment.metadata['subscription_id']
+        try:
+            subscription_id = last_successful_payment.metadata['subscription_id']
+        except KeyError:
+            log.warning(f'Last successful payment ({last_successful_payment}) metadata has no "subscription_id" field')
+            raise PaymentError('Last successful payment metadata has no "subscription_id" field')
         amount = plan.charge_amount.amount  # TODO: check that currency of last payment matches currency of this plan (paddle doesn't allow one-off charges with different currencies)
 
         metadata = self._api.one_off_charge(
