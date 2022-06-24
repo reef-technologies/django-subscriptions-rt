@@ -1,3 +1,4 @@
+from logging import getLogger
 from typing import Type
 
 from django.conf import settings
@@ -14,6 +15,8 @@ from ..models import Plan, Subscription
 from ..providers import Provider, get_provider, get_providers
 from ..validators import get_validators
 from .serializers import PaymentProviderListSerializer, PlanSerializer, ResourcesSerializer, SubscriptionSelectSerializer, SubscriptionSerializer, WebhookSerializer
+
+log = getLogger(__name__)
 
 
 class PlanListView(ListAPIView):
@@ -78,7 +81,9 @@ class SubscriptionSelectView(GenericAPIView):
         try:
             provider.charge_offline(user=request.user, plan=plan)
             redirect_url = getattr(settings, 'SUBSCRIPTIONS_SUCCESS_URL', DEFAULT_SUBSCRIPTIONS_SUCCESS_URL)
-        except (PaymentError, NotImplementedError):
+        except Exception as exc:
+            if not isinstance(exc, (PaymentError, NotImplementedError)):
+                log.exception('Offline charge error')
             redirect_url = provider.charge_online(user=request.user, plan=plan)
 
         return Response(self.serializer_class({

@@ -304,7 +304,7 @@ class AbstractTransaction(models.Model):
         ERROR = 4
 
     provider_codename = models.CharField(max_length=255)
-    provider_transaction_id = models.CharField(max_length=255)
+    provider_transaction_id = models.CharField(max_length=255, blank=True, null=True)
     status = models.PositiveSmallIntegerField(choices=Status.choices, default=Status.PENDING)
     amount = MoneyField()
     # source = models.ForeignKey(MoneyStorage, on_delete=models.PROTECT, related_name='transactions_out')

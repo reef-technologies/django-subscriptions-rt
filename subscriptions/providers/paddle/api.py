@@ -1,9 +1,10 @@
 import json
 from dataclasses import dataclass
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from functools import partialmethod, wraps
 from logging import getLogger
-from typing import ClassVar, List, Optional
+from typing import ClassVar, Iterator, List, Optional
 from urllib.parse import urlencode
 
 import requests
@@ -103,7 +104,7 @@ class Paddle:
         subscription_id: int,
         amount: Decimal,
         name: str = '',
-    ):
+    ) -> dict:
         if len(name) > 50:
             log.warning(f'Name exceeds the limit of 50 chars: {name}')
             name = name[:50]
@@ -114,3 +115,78 @@ class Paddle:
         })
         response.raise_for_status()
         return response.json()
+
+    @paddle_result
+    def get_payments(
+        self,
+        subscription_id: Optional[int] = None,
+        plans: List[int] = None,
+        is_paid: Optional[bool] = None,
+        from_: Optional[date] = None,
+        to: Optional[date] = None,
+        is_one_off_charge: Optional[bool] = None,
+    ) -> List[dict]:
+        params = {}
+
+        if subscription_id is not None:
+            params['subscription_id'] = subscription_id
+
+        if plans is not None:
+            params['plan'] = ','.join(map(str, plans))
+
+        if is_paid is not None:
+            params['is_paid'] = int(is_paid)
+
+        if from_:
+            params['from'] = from_.strftime('%Y-%m-%D')
+
+        if to:
+            params['to'] = to.strftime('%Y-%m-%D')
+
+        if is_one_off_charge is not None:
+            params['is_one_off_charge'] = int(is_one_off_charge)
+
+        response = self.post('/subscription/payments', json=params)
+        response.raise_for_status()
+        return response.json()
+
+    @paddle_result
+    def get_webhook_history(
+        self,
+        page: Optional[int] = None,
+        alerts_per_page: Optional[int] = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+    ) -> dict:
+        params = {}
+
+        if page is not None:
+            assert page > 0
+            params['page'] = page
+
+        if alerts_per_page is not None:
+            assert alerts_per_page > 0
+            params['alerts_per_page'] = alerts_per_page
+
+        if start_date:
+            params['query_tail'] = start_date.astimezone(timezone.utc).strftime('%Y-%m-%D %H:%M:%S')
+
+        if end_date:
+            params['query_head'] = end_date.astimezone(timezone.utc).strftime('%Y-%m-%D %H:%M:%S')
+
+        response = self.post('/alert/webhooks', json=params)
+        response.raise_for_status()
+        return response.json()
+
+    def iter_webhook_history(
+        self,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        max_pages: int = 100,
+    ) -> Iterator[dict]:
+
+        for page in range(1, max_pages + 1):
+            result = self.get_webhook_history(page=page, start_date=start_date, end_date=end_date)
+            yield from result['data']
+            if page == result['total_pages']:
+                break

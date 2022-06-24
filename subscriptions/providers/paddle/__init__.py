@@ -1,15 +1,14 @@
 import json
 from dataclasses import dataclass
 from logging import getLogger
-from typing import ClassVar, Optional, Type
+from typing import ClassVar, Optional
 
 from django.conf import settings
 from django.contrib.auth.models import AbstractBaseUser
-from django.utils.crypto import get_random_string
+from rest_framework.status import HTTP_200_OK
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from ...api.serializers import WebhookSerializer
 from ...exceptions import PaymentError
 from ...models import Plan, Subscription, SubscriptionPayment
 from .. import Provider
@@ -42,32 +41,25 @@ class PaddleProvider(Provider):
         self._plan = plans[0]
 
     def charge_online(self, user: AbstractBaseUser, plan: Plan, subscription: Optional[Subscription] = None) -> str:
-        for _ in range(10):
-            transaction_id = get_random_string(16)
-            if not SubscriptionPayment.objects.filter(
-                provider_codename=self.codename,
-                provider_transaction_id=transaction_id,
-            ).exists():
-                break
-        else:
-            raise ValueError('Cannot generate unique transaction ID')
+
+        payment = SubscriptionPayment.objects.create(  # TODO: limit number of creations per day
+            provider_codename=self.codename,
+            provider_transaction_id=None,
+            amount=plan.charge_amount,
+            user=user,
+            plan=plan,
+            subscription=subscription,
+        )
 
         payment_link = self._api.generate_payment_link(
             product_id=self._plan['id'],
             prices=[plan.charge_amount] if plan.charge_amount else [],
             email=user.email,
             metadata={
-                'transaction_id': transaction_id,
+                'SubscriptionPayment.id': payment.id,
             },
         )['url']
-        SubscriptionPayment.objects.create(  # TODO: limit number of creations per day
-            provider_codename=self.codename,
-            provider_transaction_id=transaction_id,
-            amount=plan.charge_amount,
-            user=user,
-            plan=plan,
-            subscription=subscription,
-        )
+
         return payment_link
 
     def charge_offline(self, user: AbstractBaseUser, plan: Plan, subscription: Optional[Subscription] = None):
@@ -77,9 +69,9 @@ class PaddleProvider(Provider):
 
         try:
             subscription_id = last_successful_payment.metadata['subscription_id']
-        except KeyError:
+        except KeyError as exc:
             log.warning(f'Last successful payment ({last_successful_payment}) metadata has no "subscription_id" field')
-            raise PaymentError('Last successful payment metadata has no "subscription_id" field')
+            raise PaymentError('Last successful payment metadata has no "subscription_id" field') from exc
         amount = plan.charge_amount.amount  # TODO: check that currency of last payment matches currency of this plan (paddle doesn't allow one-off charges with different currencies)
 
         metadata = self._api.one_off_charge(
@@ -90,7 +82,7 @@ class PaddleProvider(Provider):
 
         SubscriptionPayment.objects.create(
             provider_codename=self.codename,
-            provider_transaction_id=get_random_string(8),
+            provider_transaction_id=metadata['subscription_payment_id'],
             amount=amount,
             status=SubscriptionPayment.Status.COMPLETED,  # TODO: will this auto-prolong subscription?
             user=user,
@@ -114,15 +106,15 @@ class PaddleProvider(Provider):
         except (json.JSONDecodeError, KeyError) as exc:
             raise ValueError('Could not decode `passthrough`') from exc
 
-        transaction_id = passthrough['transaction_id']
+        try:
+            id_ = passthrough['SubscriptionPayment.id']
+        except KeyError as exc:
+            raise ValueError('Passthrough does not contain "SubscriptionPayment.id" field') from exc
 
-        payment = SubscriptionPayment.objects.get(
-            provider_codename=self.codename,
-            provider_transaction_id=transaction_id,
-        )
-
-        payment.metadata = payload
+        payment = SubscriptionPayment.objects.get(provider_codename=self.codename, id=id_)
+        payment.provider_transaction_id = payload['subscription_payment_id']
+        payment.metadata.update(payload)
         payment.status = self.WEBHOOK_ACTION_TO_PAYMENT_STATUS[action]
         payment.save()
 
-        return Response()
+        return Response(status=HTTP_200_OK)
