@@ -2,7 +2,7 @@ from datetime import datetime
 from datetime import timezone as tz
 from decimal import Decimal
 from functools import wraps
-from typing import List
+from typing import Callable, List
 
 import pytest
 from dateutil.relativedelta import relativedelta
@@ -109,7 +109,7 @@ def subscription(db, now, user, plan) -> Subscription:
 
 
 @pytest.fixture
-def remaining_chunks(user) -> callable:
+def remaining_chunks(user) -> Callable:
     @wraps(get_remaining_chunks)
     def wrapped(**kwargs):
         return get_remaining_chunks(user=user, **kwargs)
@@ -118,7 +118,7 @@ def remaining_chunks(user) -> callable:
 
 
 @pytest.fixture
-def remains(user, resource) -> callable:
+def remains(user, resource) -> Callable:
     @wraps(get_remaining_amount)
     def wrapped(**kwargs):
         return get_remaining_amount(user=user, **kwargs).get(resource, 0)
@@ -127,7 +127,7 @@ def remains(user, resource) -> callable:
 
 
 @pytest.fixture
-def get_cache(remaining_chunks) -> callable:
+def get_cache(remaining_chunks) -> Callable:
 
     def fn(at: datetime) -> QuotaCache:
         return QuotaCache(

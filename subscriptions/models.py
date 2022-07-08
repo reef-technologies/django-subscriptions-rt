@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from itertools import count, islice, zip_longest
 from logging import getLogger
 from operator import attrgetter
-from typing import TYPE_CHECKING, Iterable, Iterator, List, Optional
+from typing import TYPE_CHECKING, Callable, Iterable, Iterator, List, Optional
 
 from dateutil.relativedelta import relativedelta
 from django.conf import settings
@@ -180,7 +180,7 @@ class Subscription(models.Model):
         self,
         since: Optional[datetime] = None,
         until: Optional[datetime] = None,
-        sort_by: callable = attrgetter('start'),
+        sort_by: Callable = attrgetter('start'),
     ) -> Iterator[QuotaChunk]:
 
         quotas = self.plan.quotas.all()

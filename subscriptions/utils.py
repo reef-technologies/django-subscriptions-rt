@@ -1,4 +1,4 @@
-from typing import Dict, Iterable, Iterator, TypeVar
+from typing import Callable, Dict, Iterable, Iterator, TypeVar
 
 T = TypeVar('T')
 
@@ -7,10 +7,12 @@ class NonMonothonicSequence(Exception):
     pass
 
 
-def merge_iter(*iterables: Iterable[T], key: callable = lambda x: x) -> Iterator[T]:
+def merge_iter(*iterables: Iterable[T], key: Callable = lambda x: x) -> Iterator[T]:
     values: Dict[Iterable[T], T] = {}
-    iterables = [iter(it) for it in iterables]
+
+    # accumulate first value from each iterable
     for iterable in iterables:
+        iterable = iter(iterable)
         try:
             values[iterable] = next(iterable)
         except StopIteration:

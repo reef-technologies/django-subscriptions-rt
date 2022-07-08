@@ -1,7 +1,7 @@
 from datetime import datetime
 from logging import getLogger
 from operator import attrgetter
-from typing import Dict, Iterable, Iterator, List, Optional
+from typing import Callable, Dict, Iterable, Iterator, List, Optional
 
 from django.contrib.auth.models import AbstractUser
 from django.db.models import Prefetch
@@ -41,7 +41,7 @@ def iter_subscriptions_quota_chunks(
     subscriptions: Iterable[Subscription],
     since: datetime,
     until: datetime,
-    sort_by: callable = attrgetter('start'),
+    sort_by: Callable = attrgetter('start'),
 ) -> Iterator[QuotaChunk]:
     return merge_iter(
         *(

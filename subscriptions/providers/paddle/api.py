@@ -4,7 +4,7 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 from functools import partialmethod, wraps
 from logging import getLogger
-from typing import ClassVar, Iterator, List, Optional
+from typing import Callable, ClassVar, Iterator, List, Optional
 from urllib.parse import urlencode
 
 import requests
@@ -36,7 +36,7 @@ class PaddleAuth(AuthBase):
         return request
 
 
-def paddle_result(fn: callable) -> callable:
+def paddle_result(fn: Callable) -> Callable:
     @wraps(fn)
     def wrapper(*args, **kwargs):
         result = fn(*args, **kwargs)

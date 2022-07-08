@@ -14,7 +14,7 @@ nox.options.reuse_existing_virtualenvs = True
 
 @nox.session(python=PYTHON_VERSIONS)
 def lint(session):
-    session.install('flake8', 'mypy', 'django-stubs', '.')
+    session.install('flake8', 'mypy', 'django-stubs', 'types-requests', '.')
     session.run('flake8', '--ignore', 'E501', str(DEMO_APP_DIR))
     session.run('mypy', str(DEMO_APP_DIR))
 
