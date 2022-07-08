@@ -54,7 +54,7 @@ def quota(db, plan, resource) -> Quota:
     return Quota.objects.create(
         plan=plan,
         resource=resource,
-        limit=100,
+        limit=50,
     )
 
 
@@ -104,6 +104,7 @@ def subscription(db, now, user, plan) -> Subscription:
         user=user,
         plan=plan,
         start=now,
+        quantity=2,  # so limit = 50 * 2 = 100 in total
     )
 
 

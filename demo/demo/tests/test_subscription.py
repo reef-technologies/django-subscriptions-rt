@@ -112,7 +112,7 @@ def test_iter_quota_chunks(db, subscription, resource, days):
     Quota.objects.create(
         plan=subscription.plan,
         resource=resource,
-        limit=100,
+        limit=50,  # but quantity == 2 -> real limit == 100
         recharge_period=days(5),
         burns_in=days(7),
     )

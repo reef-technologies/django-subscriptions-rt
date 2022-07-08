@@ -25,7 +25,7 @@ def test_quota_without_usage(db, subscription, resource, remains, days):
     Quota.objects.create(
         plan=subscription.plan,
         resource=resource,
-        limit=100,
+        limit=50,  # but quantity == 2 -> real limit == 100
     )
 
     assert remains(at=subscription.start - timedelta(seconds=1)) == 0
@@ -49,7 +49,7 @@ def test_quota_recharge(db, subscription, resource, remains, days):
     Quota.objects.create(
         plan=subscription.plan,
         resource=resource,
-        limit=100,
+        limit=50,  # but quantity == 2 -> real limit == 100
         recharge_period=days(9),
         burns_in=INFINITY,
     )
@@ -80,7 +80,7 @@ def test_quota_burn(db, subscription, resource, remains, days):
     Quota.objects.create(
         plan=subscription.plan,
         resource=resource,
-        limit=100,
+        limit=50,  # but quantity == 2 -> real limit == 100
         recharge_period=days(5),
         burns_in=days(7),
     )

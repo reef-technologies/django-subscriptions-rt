@@ -71,7 +71,7 @@ def test_usage_with_simple_quota(db, subscription, resource, remains, days):
     Quota.objects.create(
         plan=subscription.plan,
         resource=resource,
-        limit=100,
+        limit=50,  # but quantity == 2 -> real limit == 100
         recharge_period=INFINITY,
     )
 
@@ -106,7 +106,7 @@ def test_usage_with_recharging_quota(db, subscription, resource, remains, days):
     Quota.objects.create(
         plan=subscription.plan,
         resource=resource,
-        limit=100,
+        limit=50,  # but quantity == 2 -> real limit == 100
         recharge_period=days(5),
         burns_in=days(7),
     )
@@ -150,7 +150,7 @@ def test_subtraction_priority(db, subscription, resource, remains, days):
     Quota.objects.create(
         plan=subscription.plan,
         resource=resource,
-        limit=100,
+        limit=50,  # but quantity == 2 -> real limit == 100
         recharge_period=days(5),
         burns_in=days(7),
     )

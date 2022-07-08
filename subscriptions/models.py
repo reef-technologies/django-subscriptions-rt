@@ -132,7 +132,7 @@ class SubscriptionQuerySet(models.QuerySet):
 class Subscription(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='subscriptions')
     plan = models.ForeignKey(Plan, on_delete=models.PROTECT, related_name='subscriptions')
-    quantity = models.PositiveIntegerField(default=1)  # TODO: add real support
+    quantity = models.PositiveIntegerField(default=1)
     start = models.DateTimeField(blank=True)
     end = models.DateTimeField(blank=True)
 
@@ -207,7 +207,7 @@ class Subscription(models.Model):
                 resource=quota.resource,
                 start=start,
                 end=min(start + quota.burns_in, self.end),
-                remains=quota.limit,
+                remains=quota.limit * self.quantity,
             )
 
     def iter_charge_dates(self, since: Optional[datetime] = None) -> Iterator[datetime]:
