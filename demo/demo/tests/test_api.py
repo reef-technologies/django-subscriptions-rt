@@ -80,6 +80,7 @@ def test_subscribe(client, user_client, plan, now):
             'plan': plan.id,
             'quantity': 2,
             'redirect_url': '/subscribe/success',
+            'background_charge_succeeded': True,
         }
 
         response = user_client.get('/api/subscriptions/')
@@ -150,6 +151,7 @@ def test_recharge_plan_subscription(client, user_client, subscription, quota, re
             'plan': recharge_plan.id,
             'quantity': 1,
             'redirect_url': '/subscribe/success',
+            'background_charge_succeeded': True,
         }
 
         transaction_id = SubscriptionPayment.objects.last().provider_transaction_id

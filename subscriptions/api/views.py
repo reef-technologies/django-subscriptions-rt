@@ -84,8 +84,10 @@ class SubscriptionSelectView(GenericAPIView):
             plan=plan,
             quantity=quantity,
         )
+        background_charge_succeeded = False
         try:
             provider.charge_offline(**charge_params)
+            background_charge_succeeded = True
             redirect_url = getattr(settings, 'SUBSCRIPTIONS_SUCCESS_URL', DEFAULT_SUBSCRIPTIONS_SUCCESS_URL)
         except Exception as exc:
             if not isinstance(exc, (PaymentError, NotImplementedError)):
@@ -94,6 +96,7 @@ class SubscriptionSelectView(GenericAPIView):
 
         return Response(self.serializer_class({
             'redirect_url': redirect_url,
+            'background_charge_succeeded': background_charge_succeeded,
             'quantity': quantity,
             'plan': plan,
         }).data)

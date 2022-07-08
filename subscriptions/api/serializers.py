@@ -1,7 +1,7 @@
 from decimal import Decimal
 from typing import Optional
 
-from rest_framework.serializers import CharField, IntegerField, ModelSerializer, PrimaryKeyRelatedField, Serializer, SerializerMethodField
+from rest_framework.serializers import BooleanField, CharField, IntegerField, ModelSerializer, PrimaryKeyRelatedField, Serializer, SerializerMethodField
 
 from ..fields import relativedelta_to_dict
 from ..models import Plan, Subscription
@@ -47,6 +47,7 @@ class SubscriptionSelectSerializer(Serializer):
     plan = PrimaryKeyRelatedField(queryset=Plan.objects.all())
     quantity = IntegerField(default=1)
     redirect_url = CharField(read_only=True)
+    background_charge_succeeded = BooleanField(default=False)
 
 
 class WebhookSerializer(Serializer):
