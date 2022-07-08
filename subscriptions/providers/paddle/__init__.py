@@ -1,13 +1,14 @@
 import json
 from dataclasses import dataclass
+from functools import cached_property
 from logging import getLogger
 from typing import ClassVar, Optional
 
 from django.conf import settings
 from django.contrib.auth.models import AbstractBaseUser
-from rest_framework.status import HTTP_200_OK
 from rest_framework.request import Request
 from rest_framework.response import Response
+from rest_framework.status import HTTP_200_OK
 
 from ...exceptions import PaymentError
 from ...models import Plan, Subscription, SubscriptionPayment
@@ -26,7 +27,6 @@ class PaddleProvider(Provider):
     endpoint: ClassVar[str] = settings.PADDLE_ENDPOINT
 
     _api: Paddle = None
-    _plan: dict = None
 
     def __post_init__(self):
         self._api = Paddle(
@@ -35,10 +35,12 @@ class PaddleProvider(Provider):
             endpoint=self.endpoint,
         )
 
+    @cached_property
+    def _plan(self) -> dict:
         plans = self._api.list_subscription_plans()
         assert (num_plans := len(plans)) == 1, \
             f'There should be exactly one subscription plan, but there are {num_plans}: {plans}'
-        self._plan = plans[0]
+        return plans[0]
 
     def charge_online(self, user: AbstractBaseUser, plan: Plan, subscription: Optional[Subscription] = None) -> str:
 
