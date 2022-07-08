@@ -1,9 +1,11 @@
+from contextlib import contextmanager
 from datetime import datetime
 from logging import getLogger
 from operator import attrgetter
 from typing import Callable, Dict, Iterable, Iterator, List, Optional
 
 from django.contrib.auth.models import AbstractUser
+from django.db import transaction
 from django.db.models import Prefetch
 from django.utils.timezone import now
 from more_itertools import spy
@@ -156,3 +158,18 @@ def get_remaining_amount(
         amount[chunk.resource] = amount.setdefault(chunk.resource, 0) + chunk.remains
 
     return amount
+
+
+@contextmanager
+def use_resource(user: AbstractUser, resource: Resource, amount: int = 1):
+    with transaction.atomic():
+        remains = get_remaining_amount(user).get(resource, 0)  # TODO: auto-fetch cache
+        if remains < amount:
+            raise QuotaLimitExceeded(f'Not enough {resource}: tried to use {amount}, but only {remains} is available')
+
+        Usage.objects.create(
+            user=user,
+            resource=resource,
+            amount=amount,
+        )
+        yield

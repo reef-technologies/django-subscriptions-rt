@@ -3,8 +3,9 @@ from itertools import product
 from operator import attrgetter
 
 import pytest
-from subscriptions.exceptions import InconsistentQuotaCache
-from subscriptions.functions import iter_subscriptions_involved
+from freezegun import freeze_time
+from subscriptions.exceptions import InconsistentQuotaCache, QuotaLimitExceeded
+from subscriptions.functions import iter_subscriptions_involved, use_resource
 from subscriptions.models import INFINITY, Quota, QuotaCache, QuotaChunk, Usage
 
 
@@ -193,3 +194,26 @@ def test_cache(db, two_subscriptions, now, remains, remaining_chunks, get_cache,
 
         assert remains(at=now + days(test_day / 2), quota_cache=get_cache(at=now + days(cache_day / 2))) == remains(at=now + days(test_day / 2))  # "middle" cases
         assert remains(at=now + days(test_day), quota_cache=get_cache(at=now + days(cache_day))) == remains(at=now + days(test_day))  # corner cases
+
+
+def test_use_resource(db, user, subscription, quota, resource, remains, now, days):
+    with freeze_time(now):
+        assert remains() == 100
+        with use_resource(user, resource, 10):
+            assert remains() == 90
+
+        assert remains() == 90
+
+    with freeze_time(now + days(1)):
+        try:
+            with use_resource(user, resource, 10):
+                assert remains() == 80
+                raise ValueError()
+        except ValueError:
+            pass
+        assert remains() == 90
+
+    with freeze_time(now + days(2)):
+        with pytest.raises(QuotaLimitExceeded):
+            with use_resource(user, resource, 100):
+                pass
