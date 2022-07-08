@@ -50,10 +50,12 @@ class PaddleProvider(Provider):
         quantity: int = 1,
     ) -> str:
 
+        amount = plan.charge_amount and plan.charge_amount * quantity
+
         payment = SubscriptionPayment.objects.create(  # TODO: limit number of creations per day
             provider_codename=self.codename,
             provider_transaction_id=None,
-            amount=plan.charge_amount * quantity,
+            amount=amount,
             user=user,
             plan=plan,
             subscription=subscription,
@@ -62,7 +64,7 @@ class PaddleProvider(Provider):
 
         payment_link = self._api.generate_payment_link(
             product_id=self._plan['id'],
-            prices=[plan.charge_amount] if plan.charge_amount else [],
+            prices=[amount] if amount else [],
             email=user.email,
             metadata={
                 'SubscriptionPayment.id': payment.id,
@@ -87,13 +89,15 @@ class PaddleProvider(Provider):
         except KeyError as exc:
             log.warning(f'Last successful payment ({last_successful_payment}) metadata has no "subscription_id" field')
             raise PaymentError('Last successful payment metadata has no "subscription_id" field') from exc
-        amount = plan.charge_amount.amount * quantity  # TODO: check that currency of last payment matches currency of this plan (paddle doesn't allow one-off charges with different currencies)
+
+        # TODO: check that currency of last payment matches currency of this plan (paddle doesn't allow one-off charges with different currencies)s
+        amount = plan.charge_amount and plan.charge_amount * quantity
 
         metadata = self._api.one_off_charge(
             subscription_id=subscription_id,
             amount=amount,
             name=plan.name,
-        )
+        ) if amount else {}
 
         SubscriptionPayment.objects.create(
             provider_codename=self.codename,
