@@ -161,11 +161,12 @@ def get_remaining_amount(
 
 
 @contextmanager
-def use_resource(user: AbstractUser, resource: Resource, amount: int = 1):
+def use_resource(user: AbstractUser, resource: Resource, amount: int = 1, raises: bool = True):
     with transaction.atomic():
-        remains = get_remaining_amount(user).get(resource, 0)  # TODO: auto-fetch cache
-        if remains < amount:
-            raise QuotaLimitExceeded(f'Not enough {resource}: tried to use {amount}, but only {remains} is available')
+        if raises:
+            remains = get_remaining_amount(user).get(resource, 0)  # TODO: auto-fetch cache
+            if remains < amount:
+                raise QuotaLimitExceeded(f'Not enough {resource}: tried to use {amount}, but only {remains} is available')
 
         Usage.objects.create(
             user=user,

@@ -217,3 +217,7 @@ def test_use_resource(db, user, subscription, quota, resource, remains, now, day
         with pytest.raises(QuotaLimitExceeded):
             with use_resource(user, resource, 100):
                 pass
+
+    with freeze_time(now + days(2)):
+        with use_resource(user, resource, 100, raises=False):
+            pass

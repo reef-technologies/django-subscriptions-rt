@@ -288,14 +288,7 @@ class Usage(models.Model):
         return f'{self.amount:,}{self.resource.units} {self.resource} at {self.datetime}'
 
     def save(self, *args, **kwargs):
-        from .functions import get_remaining_amount
-
         self.datetime = self.datetime or now()
-
-        remains = get_remaining_amount(user=self.user, at=self.datetime).get(self.resource, 0)
-        if remains < self.amount:
-            raise QuotaLimitExceeded(f'Tried to use {self.amount} {self.resource}(s) while only {remains} is allowed')
-
         return super().save(*args, **kwargs)
 
 
