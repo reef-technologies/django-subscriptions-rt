@@ -19,26 +19,39 @@ class DummyProvider(Provider):
 
     _payment_url: ClassVar[str] = '/payment/{}/'
 
-    def charge_online(self, user: AbstractBaseUser, plan: Plan, subscription: Optional[Subscription] = None) -> str:
+    def charge_online(
+        self,
+        user: AbstractBaseUser,
+        plan: Plan,
+        subscription: Optional[Subscription] = None,
+        quantity: int = 1,
+    ) -> str:
         transaction_id = get_random_string(8)
         SubscriptionPayment.objects.create(  # TODO: limit number of creations per day
             provider_codename=self.codename,
             provider_transaction_id=transaction_id,
-            amount=plan.charge_amount,
+            amount=plan.charge_amount * quantity,
             user=user,
             plan=plan,
             subscription=subscription,
+            quantity=quantity,
         )
         return self._payment_url.format(transaction_id)
 
-    def charge_offline(self, user: AbstractBaseUser, plan: Plan, subscription: Optional[Subscription] = None):
+    def charge_offline(
+        self,
+        user: AbstractBaseUser,
+        plan: Plan, subscription: Optional[Subscription] = None,
+        quantity: int = 1,
+    ):
         SubscriptionPayment.objects.create(  # TODO: limit number of creations per day
             provider_codename=self.codename,
             provider_transaction_id=get_random_string(8),
-            amount=plan.charge_amount,
+            amount=plan.charge_amount * quantity,
             user=user,
             plan=plan,
             subscription=subscription,
+            quantity=quantity,
         )
 
     def webhook(self, request: Request, payload: dict) -> Response:

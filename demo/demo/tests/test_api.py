@@ -74,11 +74,11 @@ def test_unauthorized_subscribe(client, plan):
 
 def test_subscribe(client, user_client, plan, now):
     with freeze_time(now):
-        response = user_client.post('/api/subscribe/', {'plan': plan.id})
+        response = user_client.post('/api/subscribe/', {'plan': plan.id, 'quantity': 2})
         assert response.status_code == 200, response.content
         assert response.json() == {
             'plan': plan.id,
-            'quantity': 1,
+            'quantity': 2,
             'redirect_url': '/subscribe/success',
         }
 
@@ -99,6 +99,7 @@ def test_subscribe(client, user_client, plan, now):
         subscription = subscriptions[0]
         assert subscription['start'] == datetime_to_api(now)
         assert subscription['end'] == datetime_to_api(now + plan.charge_period)
+        assert subscription['quantity'] == 2
 
 
 def test_resources(user_client, subscription, resource, quota, now):

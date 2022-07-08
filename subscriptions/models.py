@@ -238,7 +238,12 @@ class Subscription(models.Model):
         except ProviderNotFound as exc:
             raise PaymentError(f'Could not retrieve provider "{provider_codename}"') from exc
 
-        provider.charge_offline(user=self.user, plan=self.plan, subscription=self)
+        provider.charge_offline(
+            user=self.user,
+            plan=self.plan,
+            subscription=self,
+            quantity=self.quantity,
+        )
 
     def send_successful_charge_email(self):
         raise NotImplementedError()  # TODO
@@ -338,6 +343,7 @@ class SubscriptionPayment(AbstractTransaction):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='payments')
     plan = models.ForeignKey(Plan, on_delete=models.PROTECT, related_name='payments')
     subscription = models.ForeignKey(Subscription, on_delete=models.PROTECT, blank=True, null=True, related_name='payments')
+    quantity = models.PositiveIntegerField(default=1)
     subscription_start = models.DateTimeField(blank=True, null=True)
     subscription_end = models.DateTimeField(blank=True, null=True)
 
@@ -359,6 +365,7 @@ class SubscriptionPayment(AbstractTransaction):
                 self.subscription = Subscription.objects.create(
                     user=self.user,
                     plan=self.plan,
+                    quantity=self.quantity,
                 )
                 self.subscription
                 self.subscription_start = self.subscription.start

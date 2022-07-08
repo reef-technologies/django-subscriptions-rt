@@ -78,17 +78,23 @@ class SubscriptionSelectView(GenericAPIView):
                 raise PermissionDenied(detail=str(exc)) from exc
 
         provider = self.select_payment_provider()
+        quantity = serializer.validated_data['quantity']
+        charge_params = dict(
+            user=request.user,
+            plan=plan,
+            quantity=quantity,
+        )
         try:
-            provider.charge_offline(user=request.user, plan=plan)
+            provider.charge_offline(**charge_params)
             redirect_url = getattr(settings, 'SUBSCRIPTIONS_SUCCESS_URL', DEFAULT_SUBSCRIPTIONS_SUCCESS_URL)
         except Exception as exc:
             if not isinstance(exc, (PaymentError, NotImplementedError)):
                 log.exception('Offline charge error')
-            redirect_url = provider.charge_online(user=request.user, plan=plan)
+            redirect_url = provider.charge_online(**charge_params)
 
         return Response(self.serializer_class({
             'redirect_url': redirect_url,
-            'quantity': 1,
+            'quantity': quantity,
             'plan': plan,
         }).data)
 

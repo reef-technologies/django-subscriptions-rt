@@ -42,15 +42,22 @@ class PaddleProvider(Provider):
             f'There should be exactly one subscription plan, but there are {num_plans}: {plans}'
         return plans[0]
 
-    def charge_online(self, user: AbstractBaseUser, plan: Plan, subscription: Optional[Subscription] = None) -> str:
+    def charge_online(
+        self,
+        user: AbstractBaseUser,
+        plan: Plan,
+        subscription: Optional[Subscription] = None,
+        quantity: int = 1,
+    ) -> str:
 
         payment = SubscriptionPayment.objects.create(  # TODO: limit number of creations per day
             provider_codename=self.codename,
             provider_transaction_id=None,
-            amount=plan.charge_amount,
+            amount=plan.charge_amount * quantity,
             user=user,
             plan=plan,
             subscription=subscription,
+            quantity=quantity,
         )
 
         payment_link = self._api.generate_payment_link(
@@ -64,7 +71,13 @@ class PaddleProvider(Provider):
 
         return payment_link
 
-    def charge_offline(self, user: AbstractBaseUser, plan: Plan, subscription: Optional[Subscription] = None):
+    def charge_offline(
+        self,
+        user: AbstractBaseUser,
+        plan: Plan,
+        subscription: Optional[Subscription] = None,
+        quantity: int = 1,
+    ):
         last_successful_payment = SubscriptionPayment.get_last_successful(user)
         if not last_successful_payment:
             raise PaymentError('No last successful payment to take credentials from')
@@ -74,7 +87,7 @@ class PaddleProvider(Provider):
         except KeyError as exc:
             log.warning(f'Last successful payment ({last_successful_payment}) metadata has no "subscription_id" field')
             raise PaymentError('Last successful payment metadata has no "subscription_id" field') from exc
-        amount = plan.charge_amount.amount  # TODO: check that currency of last payment matches currency of this plan (paddle doesn't allow one-off charges with different currencies)
+        amount = plan.charge_amount.amount * quantity  # TODO: check that currency of last payment matches currency of this plan (paddle doesn't allow one-off charges with different currencies)
 
         metadata = self._api.one_off_charge(
             subscription_id=subscription_id,
@@ -90,6 +103,7 @@ class PaddleProvider(Provider):
             user=user,
             plan=plan,
             subscription=subscription,
+            quantity=quantity,
             metadata=metadata,
         )
 

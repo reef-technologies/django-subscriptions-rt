@@ -24,10 +24,22 @@ class Provider:
     is_enabled: ClassVar[bool] = True
     form: ClassVar[Optional[Form]] = None
 
-    def charge_online(self, user: AbstractBaseUser, plan: Plan, subscription: Optional[Subscription] = None) -> str:
+    def charge_online(
+        self,
+        user: AbstractBaseUser,
+        plan: Plan,
+        subscription: Optional[Subscription] = None,
+        quantity: int = 1,
+    ) -> str:
         raise NotImplementedError()
 
-    def charge_offline(self, user: AbstractBaseUser, plan: Plan, subscription: Optional[Subscription] = None):
+    def charge_offline(
+        self,
+        user: AbstractBaseUser,
+        plan: Plan,
+        subscription: Optional[Subscription] = None,
+        quantity: int = 1,
+    ):
         raise NotImplementedError()
 
     def webhook(self, request: Request, payload: dict) -> Response:
