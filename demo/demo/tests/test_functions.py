@@ -199,15 +199,16 @@ def test_cache(db, two_subscriptions, now, remains, remaining_chunks, get_cache,
 def test_use_resource(db, user, subscription, quota, resource, remains, now, days):
     with freeze_time(now):
         assert remains() == 100
-        with use_resource(user, resource, 10):
+        with use_resource(user, resource, 10) as left:
+            assert left == 90
             assert remains() == 90
 
         assert remains() == 90
 
     with freeze_time(now + days(1)):
         try:
-            with use_resource(user, resource, 10):
-                assert remains() == 80
+            with use_resource(user, resource, 10) as left:
+                assert remains() == left == 80
                 raise ValueError()
         except ValueError:
             pass
