@@ -300,3 +300,8 @@ def paddle_webhook_payload(db, paddle, unconfirmed_payment) -> dict:
         'user_id': 3,
         'p_signature': 'abracadabra',
     }
+
+
+@pytest.fixture
+def card_number() -> str:
+    return ' '.join(['4242'] * 4)

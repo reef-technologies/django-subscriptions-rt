@@ -16,7 +16,7 @@ from django.db.models import Index, QuerySet, UniqueConstraint
 from django.urls import reverse
 from django.utils.timezone import now
 
-from .exceptions import InconsistentQuotaCache, PaymentError, ProlongationImpossible, ProviderNotFound, QuotaLimitExceeded
+from .exceptions import InconsistentQuotaCache, PaymentError, ProlongationImpossible, ProviderNotFound
 from .fields import MoneyField, RelativeDurationField
 from .utils import merge_iter
 

@@ -2,19 +2,39 @@ from datetime import datetime, timedelta
 
 from django.utils.timezone import now
 from freezegun import freeze_time
-from subscriptions.models import Subscription
+from subscriptions.models import Subscription, SubscriptionPayment
 from subscriptions.providers import get_provider
 from subscriptions.providers.paddle import PaddleProvider
+from subscriptions.tasks import check_unfinished_payments
 
 
 def test_provider(paddle):
     assert isinstance(get_provider(), PaddleProvider)
 
 
-def test_subscription(paddle, plan, user_client):
+def test_check_payments(paddle, client, user_client, plan, card_number):
     response = user_client.post('/api/subscribe/', {'plan': plan.id})
     assert response.status_code == 200, response.content
-    assert 'paddle.com' in response.json()['redirect_url']
+
+    result = response.json()
+
+    redirect_url = result.pop('redirect_url')
+    assert 'paddle.com' in redirect_url
+
+    assert result == {
+        'plan': plan.id,
+        'quantity': 1,
+        'background_charge_succeeded': False,
+    }
+
+    # TODO: automate this
+    input(f'Use card {card_number} to pay here: {redirect_url}\nThen press Enter')
+
+    # ensure that status didn't change because webhook didn't go through
+    assert SubscriptionPayment.objects.last().status == SubscriptionPayment.Status.PENDING
+
+    check_unfinished_payments(within=timedelta(hours=1))
+    assert SubscriptionPayment.objects.last().status == SubscriptionPayment.Status.COMPLETED
 
 
 def test_webhook(paddle, client, user_client, unconfirmed_payment, paddle_webhook_payload):

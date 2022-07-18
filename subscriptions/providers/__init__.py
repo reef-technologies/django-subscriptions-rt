@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from functools import lru_cache
 from logging import getLogger
-from typing import ClassVar, List, Optional
+from typing import ClassVar, Iterable, List, Optional
 
 from django.conf import settings
 from django.contrib.auth.models import AbstractBaseUser
@@ -13,7 +13,7 @@ from rest_framework.response import Response
 
 from ..defaults import DEFAULT_SUBSCRIPTIONS_PAYMENT_PROVIDERS
 from ..exceptions import ProviderNotFound
-from ..models import Plan, Subscription
+from ..models import Plan, Subscription, SubscriptionPayment
 
 log = getLogger(__name__)
 
@@ -45,6 +45,9 @@ class Provider:
     def webhook(self, request: Request, payload: dict) -> Response:
         log.warning(f'Webhook for "{self.codename}" triggered without explicit handler')
         return Response(payload)
+
+    def check_payments(self, payments: Iterable[SubscriptionPayment]):
+        raise NotImplementedError()
 
     # TODO: what to do with this?
     # def process_subscription_request(self, request: Request, serializer: PaymentSerializer) -> Response:

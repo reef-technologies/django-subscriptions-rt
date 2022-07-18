@@ -1,11 +1,14 @@
 import json
 from dataclasses import dataclass
+from datetime import timedelta
 from functools import cached_property
 from logging import getLogger
-from typing import ClassVar, Optional
+from operator import itemgetter
+from typing import ClassVar, Iterable, Optional
 
 from django.conf import settings
 from django.contrib.auth.models import AbstractBaseUser
+from more_itertools import unique_everseen
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.status import HTTP_200_OK
@@ -27,6 +30,8 @@ class PaddleProvider(Provider):
     endpoint: ClassVar[str] = settings.PADDLE_ENDPOINT
 
     _api: Paddle = None
+
+    WEBHOOK_LOOKUP_PERIOD = timedelta(hours=6)  # we assume that first webhook will arrive within this period after payment
 
     def __post_init__(self):
         self._api = Paddle(
@@ -116,13 +121,46 @@ class PaddleProvider(Provider):
         'subscription_payment_failed': SubscriptionPayment.Status.ERROR,
     }
 
-    def webhook(self, request: Request, payload: dict) -> Response:
+    def webhook(self, request: Optional[Request], payload: dict) -> Response:
         if (action := payload['alert_name']) not in self.WEBHOOK_ACTION_TO_PAYMENT_STATUS:
             log.warning(f'No handler for {action=}')
             return Response()
 
+        payment = SubscriptionPayment.objects.get(
+            provider_codename=self.codename,
+            id=self.extract_payment_id(payload),
+        )
+        payment.provider_transaction_id = payload['subscription_payment_id']
+        payment.metadata.update(payload)
+        payment.status = self.WEBHOOK_ACTION_TO_PAYMENT_STATUS[action]
+        payment.save()
+
+        return Response(status=HTTP_200_OK)
+
+    def check_payments(self, payments: Iterable[SubscriptionPayment]):
+        payment_ids = {payment.id for payment in payments}
+
+        alerts = self._api.iter_webhook_history(
+            start_date=min(payment.created for payment in payments),
+            end_date=max(payment.created for payment in payments) + self.WEBHOOK_LOOKUP_PERIOD,
+        )
+
+        # don't process alerts with same `id`
+        for alert in unique_everseen(alerts, key=itemgetter('id')):
+            alert.update(**alert.pop('fields'))  # flatten alert structure
+
+            try:
+                if self.extract_payment_id(alert) not in payment_ids:
+                    continue
+
+                self.webhook(None, alert)
+            except Exception:
+                log.exception(f'Could not process alert {alert}')
+
+    @classmethod
+    def extract_payment_id(cls, alert: dict) -> int:
         try:
-            passthrough = json.loads(payload['passthrough'])
+            passthrough = json.loads(alert['passthrough'])
         except (json.JSONDecodeError, KeyError) as exc:
             raise ValueError('Could not decode `passthrough`') from exc
 
@@ -131,10 +169,4 @@ class PaddleProvider(Provider):
         except KeyError as exc:
             raise ValueError('Passthrough does not contain "SubscriptionPayment.id" field') from exc
 
-        payment = SubscriptionPayment.objects.get(provider_codename=self.codename, id=id_)
-        payment.provider_transaction_id = payload['subscription_payment_id']
-        payment.metadata.update(payload)
-        payment.status = self.WEBHOOK_ACTION_TO_PAYMENT_STATUS[action]
-        payment.save()
-
-        return Response(status=HTTP_200_OK)
+        return id_

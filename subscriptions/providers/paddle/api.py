@@ -28,11 +28,11 @@ class PaddleAuth(AuthBase):
             request.prepare_url(request.url, params)
         else:
             if isinstance(request.body, bytes):
-                payload = json.loads(request.body.decode('utf8'))
+                payload = json.loads(request.body.decode('utf8')) if request.body else {}
                 payload.update(params)
                 request.body = json.dumps(payload).encode('utf8')
             else:
-                request.body += (request.body and '&') + urlencode(params, doseq=False)
+                request.body = (f'{request.body}&' if request.body else '') + urlencode(params, doseq=False)
         return request
 
 
@@ -138,10 +138,10 @@ class Paddle:
             params['is_paid'] = int(is_paid)
 
         if from_:
-            params['from'] = from_.strftime('%Y-%m-%D')
+            params['from'] = from_.strftime('%Y-%m-%d')
 
         if to:
-            params['to'] = to.strftime('%Y-%m-%D')
+            params['to'] = to.strftime('%Y-%m-%d')
 
         if is_one_off_charge is not None:
             params['is_one_off_charge'] = int(is_one_off_charge)
@@ -169,10 +169,10 @@ class Paddle:
             params['alerts_per_page'] = alerts_per_page
 
         if start_date:
-            params['query_tail'] = start_date.astimezone(timezone.utc).strftime('%Y-%m-%D %H:%M:%S')
+            params['query_tail'] = start_date.astimezone(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
 
         if end_date:
-            params['query_head'] = end_date.astimezone(timezone.utc).strftime('%Y-%m-%D %H:%M:%S')
+            params['query_head'] = end_date.astimezone(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
 
         response = self.post('/alert/webhooks', json=params)
         response.raise_for_status()

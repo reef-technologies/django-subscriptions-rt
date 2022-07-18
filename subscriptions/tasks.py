@@ -7,12 +7,18 @@ from django.db.models import Prefetch
 from django.utils.timezone import now
 from more_itertools import first, pairwise, spy
 
+from .defaults import DEFAULT_SUBSCRIPTIONS_OFFLINE_CHARGE_ATTEMPTS_SCHEDULE
 from .exceptions import PaymentError, ProlongationImpossible
 from .models import Subscription, SubscriptionPayment
+from .providers import get_provider
 
 
 def charge_recurring_subscriptions(
-    charge_attempts_schedule: Iterable[timedelta] = settings.SUBSCRIPTIONS_OFFLINE_CHARGE_ATTEMPTS_SCHEDULE,
+    charge_attempts_schedule: Iterable[timedelta] = getattr(
+        settings,
+        'SUBSCRIPTIONS_OFFLINE_CHARGE_ATTEMPTS_SCHEDULE',
+        DEFAULT_SUBSCRIPTIONS_OFFLINE_CHARGE_ATTEMPTS_SCHEDULE,
+    ),
 ):
     charge_attempts_schedule = sorted(
         delta for delta in charge_attempts_schedule if delta < timedelta(0)
@@ -57,8 +63,24 @@ def charge_recurring_subscriptions(
         subscription.save()
 
 
-def check_unfinished_payments(within: timedelta = timedelta(hours=6)):
-    raise NotImplementedError()  # TODO
+def check_unfinished_payments(within: timedelta = timedelta(hours=12)):
+    """
+    Reverse-check payment status: if payment webhook didn't pass through
+    for some reason, ask payment provider about payment status, and
+    update SubscriptionPayment status if needed.
+    """
+    now_ = now()
+    unfinished_payments = SubscriptionPayment.objects.filter(
+        created__gte=now_ - within,
+        status=SubscriptionPayment.Status.PENDING,
+    )
+
+    codenames = set(unfinished_payments.order_by('provider_codename').values_list('provider_codename', flat=True))
+
+    for codename in codenames:
+        get_provider(codename).check_payments(
+            unfinished_payments.filter(provider_codename=codename)
+        )
 
 
 # TODO: check for concurrency issues, probably add transactions

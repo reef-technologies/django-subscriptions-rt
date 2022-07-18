@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import ClassVar, Optional
+from typing import ClassVar, Iterable, Optional
 
 from django.contrib.auth.models import AbstractBaseUser
 from django.forms import Form
@@ -62,6 +62,9 @@ class DummyProvider(Provider):
         payment.status = SubscriptionPayment.Status.COMPLETED
         payment.save()
         return Response()
+
+    def check_payments(self, payments: Iterable[SubscriptionPayment]):
+        pass
 
     # TODO: what to do with this?
     # @transaction.atomic
