@@ -249,7 +249,7 @@ def paddle(settings):
 
 
 @pytest.fixture
-def unconfirmed_payment(db, paddle, plan, user) -> SubscriptionPayment:
+def paddle_unconfirmed_payment(db, paddle, plan, user) -> SubscriptionPayment:
     return SubscriptionPayment.objects.create(
         user=user,
         plan=plan,
@@ -261,7 +261,23 @@ def unconfirmed_payment(db, paddle, plan, user) -> SubscriptionPayment:
 
 
 @pytest.fixture
-def paddle_webhook_payload(db, paddle, unconfirmed_payment) -> dict:
+def payment(db, plan, user) -> SubscriptionPayment:
+    return SubscriptionPayment.objects.create(
+        user=user,
+        plan=plan,
+        subscription=None,
+        provider_codename='dummy',
+        provider_transaction_id='12345',
+        amount=Money(100, 'USD'),
+        status=SubscriptionPayment.Status.COMPLETED,
+        metadata={
+            'subscription_id': 'some-dummy-uid',
+        },
+    )
+
+
+@pytest.fixture
+def paddle_webhook_payload(db, paddle, paddle_unconfirmed_payment) -> dict:
     return {
         'alert_id': 970811351,
         'alert_name': 'subscription_payment_succeeded',
@@ -285,7 +301,7 @@ def paddle_webhook_payload(db, paddle, unconfirmed_payment) -> dict:
         'next_bill_date': '2022-06-24',
         'next_payment_amount': '200.00',
         'order_id': 6,
-        'passthrough': f'{{"SubscriptionPayment.id": "{unconfirmed_payment.id}"}}',
+        'passthrough': f'{{"SubscriptionPayment.id": "{paddle_unconfirmed_payment.id}"}}',
         'payment_method': 'paypal',
         'payment_tax': '0.94',
         'plan_name': 'Example String',

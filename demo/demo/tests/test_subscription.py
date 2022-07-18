@@ -4,8 +4,8 @@ from itertools import islice
 
 import pytest
 from dateutil.relativedelta import relativedelta
-from subscriptions.exceptions import ProlongationImpossible
-from subscriptions.models import Quota, QuotaChunk, Subscription
+from subscriptions.exceptions import PaymentError, ProlongationImpossible
+from subscriptions.models import Quota, QuotaChunk, Subscription, SubscriptionPayment
 
 
 def test_limited_plan_duration(db, user, plan, now, days):
@@ -135,3 +135,27 @@ def test_iter_quota_chunks(db, subscription, resource, days):
 def test_subscription_get_expiring_performance(django_assert_num_queries, two_subscriptions, days):
     with django_assert_num_queries(1):
         list(Subscription.get_expiring(within=days(5)))
+
+
+def test_subscription_charge_offline_without_prev_payments(db, subscription):
+    with pytest.raises(PaymentError):
+        subscription.charge_offline()
+
+
+def test_subscription_charge_offline_with_unconfirmed_payment(db, subscription, paddle_unconfirmed_payment):
+    with pytest.raises(PaymentError):
+        subscription.charge_offline()
+
+
+def test_subscription_charge_offline(db, subscription, payment):
+    assert SubscriptionPayment.objects.all().count() == 1
+    subscription.charge_offline()
+    assert SubscriptionPayment.objects.all().count() == 2
+
+    last_payment = SubscriptionPayment.objects.order_by('id').last()
+    assert last_payment.provider_codename == payment.provider_codename
+    assert last_payment.amount == subscription.plan.charge_amount
+    assert last_payment.quantity == subscription.quantity
+    assert last_payment.user == subscription.user
+    assert last_payment.subscription == subscription
+    assert last_payment.plan == subscription.plan

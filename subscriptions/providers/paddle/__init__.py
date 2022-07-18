@@ -54,13 +54,10 @@ class PaddleProvider(Provider):
         subscription: Optional[Subscription] = None,
         quantity: int = 1,
     ) -> str:
-
-        amount = plan.charge_amount and plan.charge_amount * quantity
-
         payment = SubscriptionPayment.objects.create(  # TODO: limit number of creations per day
             provider_codename=self.codename,
             provider_transaction_id=None,
-            amount=amount,
+            amount=plan.charge_amount,
             user=user,
             plan=plan,
             subscription=subscription,
@@ -69,7 +66,7 @@ class PaddleProvider(Provider):
 
         payment_link = self._api.generate_payment_link(
             product_id=self._plan['id'],
-            prices=[amount] if amount else [],
+            prices=[plan.charge_amount * quantity] if plan.charge_amount else [],
             email=user.email,
             metadata={
                 'SubscriptionPayment.id': payment.id,
@@ -95,19 +92,17 @@ class PaddleProvider(Provider):
             log.warning(f'Last successful payment ({last_successful_payment}) metadata has no "subscription_id" field')
             raise PaymentError('Last successful payment metadata has no "subscription_id" field') from exc
 
-        # TODO: check that currency of last payment matches currency of this plan (paddle doesn't allow one-off charges with different currencies)s
-        amount = plan.charge_amount and plan.charge_amount * quantity
-
+        # TODO: check that currency of last payment matches currency of this plan (paddle doesn't allow one-off charges with different currencies
         metadata = self._api.one_off_charge(
             subscription_id=subscription_id,
-            amount=amount,
+            amount=plan.charge_amount.amount * quantity,
             name=plan.name,
-        ) if amount else {}
+        ) if plan.charge_amount else {}
 
         SubscriptionPayment.objects.create(
             provider_codename=self.codename,
-            provider_transaction_id=metadata['subscription_payment_id'],
-            amount=amount,
+            provider_transaction_id=None,  # paddle doesn't return anything
+            amount=plan.charge_amount,
             status=SubscriptionPayment.Status.COMPLETED,  # TODO: will this auto-prolong subscription?
             user=user,
             plan=plan,

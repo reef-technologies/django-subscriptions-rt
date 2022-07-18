@@ -12,7 +12,7 @@ def test_provider(paddle):
     assert isinstance(get_provider(), PaddleProvider)
 
 
-def test_check_payments(paddle, client, user_client, plan, card_number):
+def test_check_payments_and_charge_offline(paddle, user_client, plan, card_number):
     response = user_client.post('/api/subscribe/', {'plan': plan.id})
     assert response.status_code == 200, response.content
 
@@ -34,10 +34,28 @@ def test_check_payments(paddle, client, user_client, plan, card_number):
     assert SubscriptionPayment.objects.last().status == SubscriptionPayment.Status.PENDING
 
     check_unfinished_payments(within=timedelta(hours=1))
-    assert SubscriptionPayment.objects.last().status == SubscriptionPayment.Status.COMPLETED
+    payment = SubscriptionPayment.objects.last()
+    assert payment.status == SubscriptionPayment.Status.COMPLETED
+
+    # TODO: unsplit these tests once payment simulation is automated
+    payment.subscription.charge_offline()
+    assert SubscriptionPayment.objects.count() == 2
+
+    last_payment = SubscriptionPayment.objects.last()
+    subscription = last_payment.subscription
+
+    assert last_payment.provider_codename == payment.provider_codename
+    assert last_payment.amount == plan.charge_amount
+    assert last_payment.quantity == subscription.quantity
+    assert last_payment.user == subscription.user
+    assert last_payment.subscription == subscription
+    assert last_payment.plan == plan
+
+    # check subsequent offline charge
+    payment.subscription.charge_offline()
 
 
-def test_webhook(paddle, client, user_client, unconfirmed_payment, paddle_webhook_payload):
+def test_webhook(paddle, client, user_client, paddle_unconfirmed_payment, paddle_webhook_payload):
     response = user_client.get('/api/subscriptions/')
     assert response.status_code == 200, response.content
     assert len(response.json()) == 0
@@ -60,10 +78,10 @@ def test_webhook(paddle, client, user_client, unconfirmed_payment, paddle_webhoo
 
         # check that subscription lasts as much as stated in plan description
         end = datetime.fromisoformat(subscription['end'].replace('Z', '+00:00'))
-        assert start + unconfirmed_payment.plan.charge_period == end
+        assert start + paddle_unconfirmed_payment.plan.charge_period == end
 
 
-def test_webhook_idempotence(paddle, client, unconfirmed_payment, paddle_webhook_payload):
+def test_webhook_idempotence(paddle, client, paddle_unconfirmed_payment, paddle_webhook_payload):
     assert not Subscription.objects.all().exists()
 
     response = client.post('/api/webhook/paddle/', paddle_webhook_payload)
