@@ -301,6 +301,7 @@ class AbstractTransaction(models.Model):
         CANCELED = 3
         ERROR = 4
 
+    # uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False)  # TODO
     provider_codename = models.CharField(max_length=255)
     provider_transaction_id = models.CharField(max_length=255, blank=True, null=True)
     status = models.PositiveSmallIntegerField(choices=Status.choices, default=Status.PENDING)

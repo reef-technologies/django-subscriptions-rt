@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from functools import lru_cache
 from logging import getLogger
-from typing import ClassVar, Iterable, List, Optional
+from typing import ClassVar, Iterable, List, Optional, Tuple
 
 from django.conf import settings
 from django.contrib.auth.models import AbstractBaseUser
@@ -30,7 +30,7 @@ class Provider:
         plan: Plan,
         subscription: Optional[Subscription] = None,
         quantity: int = 1,
-    ) -> str:
+    ) -> Tuple[SubscriptionPayment, str]:
         raise NotImplementedError()
 
     def charge_offline(
@@ -39,7 +39,7 @@ class Provider:
         plan: Plan,
         subscription: Optional[Subscription] = None,
         quantity: int = 1,
-    ):
+    ) -> SubscriptionPayment:
         raise NotImplementedError()
 
     def webhook(self, request: Request, payload: dict) -> Response:

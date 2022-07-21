@@ -3,7 +3,7 @@ from typing import Type
 
 from django.conf import settings
 from rest_framework.exceptions import PermissionDenied
-from rest_framework.generics import GenericAPIView, ListAPIView
+from rest_framework.generics import GenericAPIView, ListAPIView, RetrieveAPIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.schemas.openapi import AutoSchema
@@ -11,10 +11,10 @@ from subscriptions.functions import get_remaining_amount
 
 from ..defaults import DEFAULT_SUBSCRIPTIONS_SUCCESS_URL
 from ..exceptions import PaymentError, SubscriptionError
-from ..models import Plan, Subscription
+from ..models import Plan, Subscription, SubscriptionPayment
 from ..providers import Provider, get_provider, get_providers
 from ..validators import get_validators
-from .serializers import PaymentProviderListSerializer, PlanSerializer, ResourcesSerializer, SubscriptionSelectSerializer, SubscriptionSerializer, WebhookSerializer
+from .serializers import PaymentProviderListSerializer, PlanSerializer, ResourcesSerializer, SubscriptionPaymentSerializer, SubscriptionSelectSerializer, SubscriptionSerializer, WebhookSerializer
 
 log = getLogger(__name__)
 
@@ -86,19 +86,20 @@ class SubscriptionSelectView(GenericAPIView):
         )
         background_charge_succeeded = False
         try:
-            provider.charge_offline(**charge_params)
+            payment = provider.charge_offline(**charge_params)
             background_charge_succeeded = True
             redirect_url = getattr(settings, 'SUBSCRIPTIONS_SUCCESS_URL', DEFAULT_SUBSCRIPTIONS_SUCCESS_URL)
         except Exception as exc:
             if not isinstance(exc, (PaymentError, NotImplementedError)):
                 log.exception('Offline charge error')
-            redirect_url = provider.charge_online(**charge_params)
+            payment, redirect_url = provider.charge_online(**charge_params)
 
         return Response(self.serializer_class({
             'redirect_url': redirect_url,
             'background_charge_succeeded': background_charge_succeeded,
             'quantity': quantity,
             'plan': plan,
+            'payment_id': payment.id,
         }).data)
 
 
@@ -132,3 +133,20 @@ class ResourcesView(GenericAPIView):
             resource.codename: amount for resource, amount
             in get_remaining_amount(request.user).items()
         })
+
+
+class PaymentView(RetrieveAPIView):
+    permission_classes = IsAuthenticated,
+    serializer_class = SubscriptionPaymentSerializer
+    schema = AutoSchema()
+    queryset = SubscriptionPayment.objects.all()
+    lookup_url_kwarg = 'id'
+
+    def post(self, request, *args, **kwargs):
+        """ Fetch payment status from the provider and update status if needed """
+        payment = self.get_object()
+        if payment.status == SubscriptionPayment.Status.PENDING:
+            provider = get_provider(payment.provider_codename)
+            provider.check_payments([payment])
+
+        return self.get(request, *args, **kwargs)

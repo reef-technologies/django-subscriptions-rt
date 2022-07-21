@@ -4,7 +4,7 @@ from typing import Optional
 from rest_framework.serializers import BooleanField, CharField, IntegerField, ModelSerializer, PrimaryKeyRelatedField, Serializer, SerializerMethodField
 
 from ..fields import relativedelta_to_dict
-from ..models import Plan, Subscription
+from ..models import Plan, Subscription, SubscriptionPayment
 
 
 class PlanSerializer(ModelSerializer):
@@ -48,6 +48,7 @@ class SubscriptionSelectSerializer(Serializer):
     quantity = IntegerField(default=1)
     redirect_url = CharField(read_only=True)
     background_charge_succeeded = BooleanField(default=False)
+    payment_id = IntegerField(read_only=True)
 
 
 class WebhookSerializer(Serializer):
@@ -56,3 +57,9 @@ class WebhookSerializer(Serializer):
 
 class ResourcesSerializer(Serializer):
     pass  # TODO
+
+
+class SubscriptionPaymentSerializer(ModelSerializer):
+    class Meta:
+        model = SubscriptionPayment
+        fields = 'id', 'status',

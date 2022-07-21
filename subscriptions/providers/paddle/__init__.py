@@ -4,7 +4,7 @@ from datetime import timedelta
 from functools import cached_property
 from logging import getLogger
 from operator import itemgetter
-from typing import ClassVar, Iterable, Optional
+from typing import ClassVar, Iterable, Optional, Tuple
 
 from django.conf import settings
 from django.contrib.auth.models import AbstractBaseUser
@@ -53,7 +53,7 @@ class PaddleProvider(Provider):
         plan: Plan,
         subscription: Optional[Subscription] = None,
         quantity: int = 1,
-    ) -> str:
+    ) -> Tuple[SubscriptionPayment, str]:
         payment = SubscriptionPayment.objects.create(  # TODO: limit number of creations per day
             provider_codename=self.codename,
             provider_transaction_id=None,
@@ -73,7 +73,12 @@ class PaddleProvider(Provider):
             },
         )['url']
 
-        return payment_link
+        payment.metadata = {
+            'payment_url': payment_link,
+        }
+        payment.save()
+
+        return payment, payment_link
 
     def charge_offline(
         self,
@@ -81,7 +86,7 @@ class PaddleProvider(Provider):
         plan: Plan,
         subscription: Optional[Subscription] = None,
         quantity: int = 1,
-    ):
+    ) -> SubscriptionPayment:
         last_successful_payment = SubscriptionPayment.get_last_successful(user)
         if not last_successful_payment:
             raise PaymentError('No last successful payment to take credentials from')
@@ -99,7 +104,7 @@ class PaddleProvider(Provider):
             name=plan.name,
         ) if plan.charge_amount else {}
 
-        SubscriptionPayment.objects.create(
+        return SubscriptionPayment.objects.create(
             provider_codename=self.codename,
             provider_transaction_id=None,  # paddle doesn't return anything
             amount=plan.charge_amount,

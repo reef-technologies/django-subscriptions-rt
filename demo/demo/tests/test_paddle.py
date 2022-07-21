@@ -12,7 +12,7 @@ def test_provider(paddle):
     assert isinstance(get_provider(), PaddleProvider)
 
 
-def test_check_payments_and_charge_offline(paddle, user_client, plan, card_number):
+def test_payment_flow(paddle, user_client, plan, card_number):
     response = user_client.post('/api/subscribe/', {'plan': plan.id})
     assert response.status_code == 200, response.content
 
@@ -21,23 +21,60 @@ def test_check_payments_and_charge_offline(paddle, user_client, plan, card_numbe
     redirect_url = result.pop('redirect_url')
     assert 'paddle.com' in redirect_url
 
+    payment = SubscriptionPayment.objects.last()
     assert result == {
         'plan': plan.id,
         'quantity': 1,
         'background_charge_succeeded': False,
+        'payment_id': payment.id,
     }
+
+    assert 'payment_url' in payment.metadata
 
     # TODO: automate this
     input(f'Use card {card_number} to pay here: {redirect_url}\nThen press Enter')
 
     # ensure that status didn't change because webhook didn't go through
-    assert SubscriptionPayment.objects.last().status == SubscriptionPayment.Status.PENDING
+    assert payment.status == SubscriptionPayment.Status.PENDING
+
+    # ---- test_payment_status_endpoint_get ----
+    if payment.status == SubscriptionPayment.Status.COMPLETED:
+        payment.status == SubscriptionPayment.Status.PENDING
+        payment.save()
+
+    response = user_client.get(f'/api/payments/{payment.id}/')
+    assert response.status_code == 200, response.content
+
+    result = response.json()
+    assert result == {
+        'id': payment.id,
+        'status': SubscriptionPayment.Status.PENDING.value,
+    }
+
+    # ---- test_payment_status_endpoint_post ----
+    if payment.status == SubscriptionPayment.Status.COMPLETED:
+        payment.status == SubscriptionPayment.Status.PENDING
+        payment.save()
+
+    response = user_client.post(f'/api/payments/{payment.id}/')
+    assert response.status_code == 200, response.content
+
+    result = response.json()
+    assert result == {
+        'id': payment.id,
+        'status': SubscriptionPayment.Status.COMPLETED.value,
+    }
+
+    # ---- test_check_unfinished_payments ----
+    if payment.status == SubscriptionPayment.Status.COMPLETED:
+        payment.status == SubscriptionPayment.Status.PENDING
+        payment.save()
 
     check_unfinished_payments(within=timedelta(hours=1))
     payment = SubscriptionPayment.objects.last()
     assert payment.status == SubscriptionPayment.Status.COMPLETED
 
-    # TODO: unsplit these tests once payment simulation is automated
+    # ---- test_charge_offline ----
     payment.subscription.charge_offline()
     assert SubscriptionPayment.objects.count() == 2
 

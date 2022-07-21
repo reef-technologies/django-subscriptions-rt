@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import ClassVar, Iterable, Optional
+from typing import ClassVar, Iterable, Optional, Tuple
 
 from django.contrib.auth.models import AbstractBaseUser
 from django.forms import Form
@@ -25,9 +25,9 @@ class DummyProvider(Provider):
         plan: Plan,
         subscription: Optional[Subscription] = None,
         quantity: int = 1,
-    ) -> str:
+    ) -> Tuple[SubscriptionPayment, str]:
         transaction_id = get_random_string(8)
-        SubscriptionPayment.objects.create(  # TODO: limit number of creations per day
+        payment = SubscriptionPayment.objects.create(  # TODO: limit number of creations per day
             provider_codename=self.codename,
             provider_transaction_id=transaction_id,
             amount=plan.charge_amount,
@@ -36,15 +36,15 @@ class DummyProvider(Provider):
             subscription=subscription,
             quantity=quantity,
         )
-        return self._payment_url.format(transaction_id)
+        return payment, self._payment_url.format(transaction_id)
 
     def charge_offline(
         self,
         user: AbstractBaseUser,
         plan: Plan, subscription: Optional[Subscription] = None,
         quantity: int = 1,
-    ):
-        SubscriptionPayment.objects.create(  # TODO: limit number of creations per day
+    ) -> SubscriptionPayment:
+        return SubscriptionPayment.objects.create(  # TODO: limit number of creations per day
             provider_codename=self.codename,
             provider_transaction_id=get_random_string(8),
             amount=plan.charge_amount,
