@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from time import sleep
 
 from django.utils.timezone import now
 from freezegun import freeze_time
@@ -48,8 +49,9 @@ def test_payment_flow(paddle, user_client, plan, card_number):
     result = response.json()
     assert result == {
         'id': payment.id,
-        'status': SubscriptionPayment.Status.PENDING.value,
+        'status': 'pending',
     }
+    sleep(2)
 
     # ---- test_payment_status_endpoint_post ----
     if payment.status == SubscriptionPayment.Status.COMPLETED:
@@ -62,7 +64,7 @@ def test_payment_flow(paddle, user_client, plan, card_number):
     result = response.json()
     assert result == {
         'id': payment.id,
-        'status': SubscriptionPayment.Status.COMPLETED.value,
+        'status': 'completed',
     }
 
     # ---- test_check_unfinished_payments ----

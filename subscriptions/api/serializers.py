@@ -60,6 +60,11 @@ class ResourcesSerializer(Serializer):
 
 
 class SubscriptionPaymentSerializer(ModelSerializer):
+    status = SerializerMethodField()
+
     class Meta:
         model = SubscriptionPayment
         fields = 'id', 'status',
+
+    def get_status(self, obj) -> str:
+        return obj.get_status_display().lower()
