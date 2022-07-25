@@ -120,9 +120,9 @@ class SubscriptionQuerySet(models.QuerySet):
         at = at or now()
         return self.filter(start__lte=at, end__gt=at)
 
-    def expiring(self, within: datetime, from_: Optional[datetime] = None) -> QuerySet:
-        from_ = from_ or now()
-        return self.filter(end__gte=from_, end__lte=from_ + within)
+    def expiring(self, within: datetime, since: Optional[datetime] = None) -> QuerySet:
+        since = since or now()
+        return self.filter(end__gte=since, end__lte=since + within)
 
     def recurring(self, value: bool = True) -> QuerySet:
         subscriptions = self.select_related('plan')
@@ -132,6 +132,7 @@ class SubscriptionQuerySet(models.QuerySet):
 class Subscription(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='subscriptions')
     plan = models.ForeignKey(Plan, on_delete=models.PROTECT, related_name='subscriptions')
+    auto_prolong = models.BooleanField(default=True)
     quantity = models.PositiveIntegerField(default=1)
     start = models.DateTimeField(blank=True)
     end = models.DateTimeField(blank=True)
@@ -152,13 +153,12 @@ class Subscription(models.Model):
 
     def stop(self):
         self.end = now()
-        self.save(update_fields=['end'])
-
-    @classmethod
-    def get_expiring(cls, within: timedelta) -> QuerySet:
-        return cls.objects.active().expiring(within)
+        self.auto_prolong = False
+        self.save(update_fields=['end', 'auto_prolong'])
 
     def prolong(self):
+        """ Sets subscription.end to next uncovered charge_date or subscription.max_end """
+
         next_charge_dates = islice(self.iter_charge_dates(since=self.end), 2)
         if (first_charge_date := next(next_charge_dates)) and self.end == first_charge_date:
             try:
@@ -169,7 +169,7 @@ class Subscription(models.Model):
             end = first_charge_date
 
         if end > (max_end := self.max_end):
-            if self.end == max_end:
+            if self.end >= max_end:
                 raise ProlongationImpossible('Current subscription end is already the maximum end')
 
             end = max_end
@@ -343,27 +343,26 @@ class SubscriptionPayment(AbstractTransaction):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._initial_status = self.status
+        self._initial_status = self.id and self.status
 
     def save(self, *args, **kwargs):
-        if self.status == self.Status.COMPLETED and any((
-            not self.id,
-            self._initial_status != self.Status.COMPLETED,
-        )):
-            if (subscription := self.subscription):
-                self.subscription_start = subscription.end
-                subscription.prolong()
-                self.subscription_end = subscription.end
-                subscription.save()
-            else:
-                self.subscription = Subscription.objects.create(
-                    user=self.user,
-                    plan=self.plan,
-                    quantity=self.quantity,
-                )
-                self.subscription
-                self.subscription_start = self.subscription.start
-                self.subscription_end = self.subscription.end
+        if self.status != self._initial_status:
+            # TODO: send email if not silent
+            if self.status == self.Status.COMPLETED:
+                if (subscription := self.subscription):
+                    self.subscription_start = subscription.end
+                    subscription.prolong()
+                    self.subscription_end = subscription.end
+                    subscription.save()
+                else:
+                    self.subscription = Subscription.objects.create(
+                        user=self.user,
+                        plan=self.plan,
+                        quantity=self.quantity,
+                    )
+                    self.subscription
+                    self.subscription_start = self.subscription.start
+                    self.subscription_end = self.subscription.end
 
         return super().save(*args, **kwargs)
 

@@ -104,11 +104,24 @@ class PaddleProvider(Provider):
             name=plan.name,
         ) if plan.charge_amount else {}
 
+        status_mapping = {
+            'success': SubscriptionPayment.Status.SUCCESS,
+            'pending': SubscriptionPayment.Status.PENDING,
+        }
+        paddle_status = metadata.get('status')
+        status = status_mapping.get(paddle_status)
+        if status is None:
+            log.error(f'Paddle one-off charge status "{paddle_status}" is unknown, should be from {set(status_mapping.keys())}')
+            status = SubscriptionPayment.Status.ERROR
+
+        # when status is PENDING, no webhook will come, so we rely on
+        # background task to search for payments not in webhook history
+
         return SubscriptionPayment.objects.create(
             provider_codename=self.codename,
             provider_transaction_id=None,  # paddle doesn't return anything
             amount=plan.charge_amount,
-            status=SubscriptionPayment.Status.COMPLETED,  # TODO: will this auto-prolong subscription?
+            status=status,
             user=user,
             plan=plan,
             subscription=subscription,

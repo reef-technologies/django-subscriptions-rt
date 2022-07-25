@@ -132,9 +132,9 @@ def test_iter_quota_chunks(db, subscription, resource, days):
     assert list(subscription.iter_quota_chunks(since=subscription.end - days(1))) == chunks[1:]
 
 
-def test_subscription_get_expiring_performance(django_assert_num_queries, two_subscriptions, days):
+def test_subscription_expiring_performance(django_assert_num_queries, two_subscriptions, days):
     with django_assert_num_queries(1):
-        list(Subscription.get_expiring(within=days(5)))
+        list(Subscription.objects.expiring(within=days(5)))
 
 
 def test_subscription_charge_offline_without_prev_payments(db, subscription):
