@@ -6,6 +6,7 @@ from functools import partialmethod, wraps
 from logging import getLogger
 from typing import Callable, ClassVar, Iterator, List, Optional
 from urllib.parse import urlencode
+from tenacity import retry, retry_base, wait_incrementing, stop_after_attempt, retry_if_result
 
 import requests
 from djmoney.money import Money
@@ -56,9 +57,24 @@ class Paddle:
     _session: requests.Session = None
     TIMEOUT: ClassVar[int] = 30
 
+    _retry: retry_base = retry(
+        retry=retry_if_result(
+            lambda response: response.status_code in {
+                requests.codes.too_many_requests,
+                requests.codes.internal_server_error,
+                requests.codes.bad_gateway,
+                requests.codes.service_unavailable,
+                requests.codes.gateway_timeout,
+            },
+        ),
+        stop=stop_after_attempt(10),
+        wait=wait_incrementing(start=1, increment=2),
+    )
+
     def __post_init__(self):
         self._session = requests.Session()
         self._session.auth = PaddleAuth(self.vendor_id, self.vendor_auth_code)
+        self.request = self._retry(self.request)
 
     def request(self, method, endpoint, *args, **kwargs) -> requests.Response:
         assert endpoint.startswith('/')
