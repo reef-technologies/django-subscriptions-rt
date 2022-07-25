@@ -81,7 +81,11 @@ def _charge_recurring_subscription(
         # to charge but something went wrong, so that subsequent task calls
         # won't try charging and sending email again withing same charge_period
         SubscriptionPayment.objects.create(
-            # TODO
+            provider_codename='',
+            status=SubscriptionPayment.Status.ERROR,
+            plan=subscription.plan,
+            subscription=subscription,
+            quantity=subscription.quantity,
         )
         return
 
