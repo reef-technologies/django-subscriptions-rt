@@ -105,7 +105,7 @@ class PaddleProvider(Provider):
         ) if plan.charge_amount else {}
 
         status_mapping = {
-            'success': SubscriptionPayment.Status.SUCCESS,
+            'success': SubscriptionPayment.Status.COMPLETED,
             'pending': SubscriptionPayment.Status.PENDING,
         }
         paddle_status = metadata.get('status')

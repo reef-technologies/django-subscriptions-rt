@@ -78,6 +78,7 @@ def test_subscribe(client, user_client, plan, now):
         assert response.status_code == 200, response.content
         assert response.json() == {
             'plan': plan.id,
+            'payment_id': 1,
             'quantity': 2,
             'redirect_url': '/subscribe/success',
             'background_charge_succeeded': True,
@@ -150,6 +151,7 @@ def test_recharge_plan_subscription(client, user_client, subscription, quota, re
         assert response.json() == {
             'plan': recharge_plan.id,
             'quantity': 1,
+            'payment_id': SubscriptionPayment.objects.last().id,
             'redirect_url': '/subscribe/success',
             'background_charge_succeeded': True,
         }

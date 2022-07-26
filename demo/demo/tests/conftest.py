@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from datetime import timezone as tz
 from decimal import Decimal
 from functools import wraps
@@ -9,6 +9,7 @@ from dateutil.relativedelta import relativedelta
 from django.contrib.auth import get_user_model
 from django.test import Client
 from djmoney.money import Money
+from freezegun import freeze_time
 from subscriptions.functions import get_remaining_amount, get_remaining_chunks
 from subscriptions.models import INFINITY, Plan, Quota, QuotaCache, Resource, Subscription, SubscriptionPayment, Usage
 from subscriptions.providers import get_provider, get_providers
@@ -231,21 +232,23 @@ def user_client(client, user) -> Client:
 
 
 @pytest.fixture
-def dummy(settings):
+def dummy(settings) -> str:
     settings.SUBSCRIPTIONS_PAYMENT_PROVIDERS = [
         'subscriptions.providers.dummy.DummyProvider',
     ]
     get_provider.cache_clear()
     get_providers.cache_clear()
+    return get_provider().codename
 
 
 @pytest.fixture
-def paddle(settings):
+def paddle(settings) -> str:
     settings.SUBSCRIPTIONS_PAYMENT_PROVIDERS = [
         'subscriptions.providers.paddle.PaddleProvider',
     ]
     get_provider.cache_clear()
     get_providers.cache_clear()
+    return get_provider().codename
 
 
 @pytest.fixture
@@ -261,14 +264,15 @@ def paddle_unconfirmed_payment(db, paddle, plan, user) -> SubscriptionPayment:
 
 
 @pytest.fixture
-def payment(db, plan, user) -> SubscriptionPayment:
+def payment(dummy, subscription) -> SubscriptionPayment:
     return SubscriptionPayment.objects.create(
-        user=user,
-        plan=plan,
-        subscription=None,
-        provider_codename='dummy',
+        user=subscription.user,
+        plan=subscription.plan,
+        subscription=subscription,
+        provider_codename=dummy,
         provider_transaction_id='12345',
-        amount=Money(100, 'USD'),
+        amount=subscription.plan.charge_amount,
+        quantity=2,  # so limit = 50 * 2 = 100 in total
         status=SubscriptionPayment.Status.COMPLETED,
         metadata={
             'subscription_id': 'some-dummy-uid',
@@ -321,3 +325,17 @@ def paddle_webhook_payload(db, paddle, paddle_unconfirmed_payment) -> dict:
 @pytest.fixture
 def card_number() -> str:
     return ' '.join(['4242'] * 4)
+
+
+@pytest.fixture
+def charge_schedule() -> List[timedelta]:
+    return [
+        timedelta(days=-7),
+        timedelta(days=-3),
+        timedelta(days=-1),
+        timedelta(hours=-1),
+        timedelta(0),
+        timedelta(days=1),
+        timedelta(days=3),
+        timedelta(days=7),
+    ]
