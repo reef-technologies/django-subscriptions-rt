@@ -21,10 +21,10 @@ def test_limited_plan_duration(db, user, plan, now, days):
 
     assert subscription.end == now + plan.charge_period
 
-    subscription.prolong()
+    subscription.end = subscription.prolong()
     assert subscription.end == now + 2 * plan.charge_period
 
-    subscription.prolong()
+    subscription.end = subscription.prolong()
     assert subscription.end == now + 3 * plan.charge_period
 
     with pytest.raises(ProlongationImpossible):
@@ -45,7 +45,7 @@ def test_unlimited_plan_duration(db, user, plan, now, days):
     assert subscription.end == now + days(300)
 
     for i in range(2, 11):
-        subscription.prolong()
+        subscription.end = subscription.prolong()
         assert subscription.end == now + i * days(300)
 
 

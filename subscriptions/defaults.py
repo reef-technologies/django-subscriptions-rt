@@ -20,4 +20,5 @@ DEFAULT_SUBSCRIPTIONS_OFFLINE_CHARGE_ATTEMPTS_SCHEDULE = (
     timedelta(hours=-12),
     timedelta(hours=-3),
     timedelta(hours=-1),
+    timedelta(0),
 )

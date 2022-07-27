@@ -39,6 +39,7 @@ class Provider:
         plan: Plan,
         subscription: Optional[Subscription] = None,
         quantity: int = 1,
+        reference_payment: Optional[SubscriptionPayment] = None,
     ) -> SubscriptionPayment:
         raise NotImplementedError()
 

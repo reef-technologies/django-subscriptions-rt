@@ -86,16 +86,22 @@ class PaddleProvider(Provider):
         plan: Plan,
         subscription: Optional[Subscription] = None,
         quantity: int = 1,
+        reference_payment: Optional[SubscriptionPayment] = None,
     ) -> SubscriptionPayment:
-        last_successful_payment = SubscriptionPayment.get_last_successful(user)
-        if not last_successful_payment:
-            raise PaymentError('No last successful payment to take credentials from')
+
+        if not reference_payment:
+            reference_payment = SubscriptionPayment.get_last_successful(user)
+
+        if not reference_payment:
+            raise PaymentError('No reference payment to take credentials from')
+
+        assert reference_payment.status == SubscriptionPayment.Status.COMPLETED
 
         try:
-            subscription_id = last_successful_payment.metadata['subscription_id']
+            subscription_id = reference_payment.metadata['subscription_id']
         except KeyError as exc:
-            log.warning(f'Last successful payment ({last_successful_payment}) metadata has no "subscription_id" field')
-            raise PaymentError('Last successful payment metadata has no "subscription_id" field') from exc
+            log.warning('Reference payment (%s) metadata has no "subscription_id" field', reference_payment)
+            raise PaymentError('Reference payment metadata has no "subscription_id" field') from exc
 
         # TODO: check that currency of last payment matches currency of this plan (paddle doesn't allow one-off charges with different currencies
         metadata = self._api.one_off_charge(

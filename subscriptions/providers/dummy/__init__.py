@@ -43,6 +43,7 @@ class DummyProvider(Provider):
         user: AbstractBaseUser,
         plan: Plan, subscription: Optional[Subscription] = None,
         quantity: int = 1,
+        reference_payment: Optional[SubscriptionPayment] = None,
     ) -> SubscriptionPayment:
         return SubscriptionPayment.objects.create(  # TODO: limit number of creations per day
             provider_codename=self.codename,

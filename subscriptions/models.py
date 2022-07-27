@@ -55,7 +55,7 @@ class Plan(models.Model):
         ]
 
     def __str__(self) -> str:
-        return self.name
+        return f'{self.id} {self.name}'
 
     def get_absolute_url(self) -> str:
         return reverse('plan', kwargs={'plan_id': self.id})
@@ -140,7 +140,7 @@ class Subscription(models.Model):
     objects = SubscriptionQuerySet.as_manager()
 
     def __str__(self) -> str:
-        return f'{self.user} @ {self.plan}, {self.start} - {self.end}'
+        return f'{self.id} {self.plan}, {self.start} - {self.end}'
 
     @property
     def max_end(self) -> datetime:
@@ -156,8 +156,8 @@ class Subscription(models.Model):
         self.auto_prolong = False
         self.save(update_fields=['end', 'auto_prolong'])
 
-    def prolong(self):
-        """ Sets subscription.end to next uncovered charge_date or subscription.max_end """
+    def prolong(self) -> datetime:
+        """ Returns next uncovered charge_date or subscription.max_end """
 
         next_charge_dates = islice(self.iter_charge_dates(since=self.end), 2)
         if (first_charge_date := next(next_charge_dates)) and self.end == first_charge_date:
@@ -174,7 +174,7 @@ class Subscription(models.Model):
 
             end = max_end
 
-        self.end = end
+        return end
 
     def iter_quota_chunks(
         self,
@@ -243,13 +243,8 @@ class Subscription(models.Model):
             plan=self.plan,
             subscription=self,
             quantity=self.quantity,
+            reference_payment=last_payment,
         )
-
-    def send_successful_charge_email(self):
-        raise NotImplementedError()  # TODO
-
-    def send_failed_charge_email(self):
-        raise NotImplementedError()  # TODO
 
 
 class Quota(models.Model):
@@ -265,7 +260,7 @@ class Quota(models.Model):
         ]
 
     def __str__(self) -> str:
-        return f'{self.resource} {self.limit:,}{self.resource.units}/{self.recharge_period}, burns in {self.burns_in}'
+        return f'{self.id} {self.resource} {self.limit:,}{self.resource.units}/{self.recharge_period}, burns in {self.burns_in}'
 
     def save(self, *args, **kwargs):
         self.recharge_period = self.recharge_period or self.plan.charge_period
@@ -285,7 +280,7 @@ class Usage(models.Model):
         ]
 
     def __str__(self) -> str:
-        return f'{self.amount:,}{self.resource.units} {self.resource} at {self.datetime}'
+        return f'{self.id} {self.amount:,}{self.resource.units} {self.resource} at {self.datetime}'
 
     def save(self, *args, **kwargs):
         self.datetime = self.datetime or now()
@@ -325,7 +320,7 @@ class AbstractTransaction(models.Model):
         return super().save(*args, **kwargs)
 
     def __str__(self) -> str:
-        return f'{self.get_status_display()} {self.amount} via {self.provider_codename}'
+        return f'{self.id} {self.get_status_display()} {self.amount} via {self.provider_codename}'
 
     @property
     def provider(self) -> Provider:
@@ -351,7 +346,7 @@ class SubscriptionPayment(AbstractTransaction):
             if self.status == self.Status.COMPLETED:
                 if (subscription := self.subscription):
                     self.subscription_start = subscription.end
-                    subscription.prolong()
+                    subscription.end = subscription.prolong()  # TODO: what if this fails?
                     self.subscription_end = subscription.end
                     subscription.save()
                 else:
@@ -384,4 +379,4 @@ class Tax(models.Model):
     amount = MoneyField()
 
     def __str__(self) -> str:
-        return f'{self.amount}'
+        return f'{self.id} {self.amount}'

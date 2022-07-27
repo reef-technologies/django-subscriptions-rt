@@ -9,10 +9,10 @@ from dateutil.relativedelta import relativedelta
 from django.contrib.auth import get_user_model
 from django.test import Client
 from djmoney.money import Money
-from freezegun import freeze_time
 from subscriptions.functions import get_remaining_amount, get_remaining_chunks
 from subscriptions.models import INFINITY, Plan, Quota, QuotaCache, Resource, Subscription, SubscriptionPayment, Usage
 from subscriptions.providers import get_provider, get_providers
+from subscriptions.tasks import charge_recurring_subscriptions
 
 
 @pytest.fixture
@@ -277,6 +277,7 @@ def payment(dummy, subscription) -> SubscriptionPayment:
         metadata={
             'subscription_id': 'some-dummy-uid',
         },
+        created=subscription.end,
     )
 
 
@@ -339,3 +340,23 @@ def charge_schedule() -> List[timedelta]:
         timedelta(days=3),
         timedelta(days=7),
     ]
+
+
+@pytest.fixture
+def charge_expiring(charge_schedule, monkeypatch):
+    """ Call: charge_expiring(payment_status=SubscriptionPayment.Status.PENDING) """
+
+    def wrapper(payment_status: SubscriptionPayment.Status = SubscriptionPayment.Status.COMPLETED):
+        with monkeypatch.context() as monkey:
+            # here we don't allow setting any status except `payment_status` to SubscriptionPayment
+            monkey.setattr(
+                'subscriptions.models.SubscriptionPayment.__setattr__',
+                lambda obj, name, value: super(SubscriptionPayment, obj).__setattr__(name, payment_status if name == 'status' else value)
+            )
+
+            return charge_recurring_subscriptions(
+                schedule=charge_schedule,
+                num_threads=1,
+            )
+
+    return wrapper
