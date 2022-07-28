@@ -8,6 +8,7 @@ from typing import ClassVar, Iterable, Optional, Tuple
 
 from django.conf import settings
 from django.contrib.auth.models import AbstractBaseUser
+from django.db import transaction
 from more_itertools import unique_everseen
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -145,14 +146,15 @@ class PaddleProvider(Provider):
             log.warning(f'No handler for {action=}')
             return Response()
 
-        payment = SubscriptionPayment.objects.get(
-            provider_codename=self.codename,
-            id=self.extract_payment_id(payload),
-        )
-        payment.provider_transaction_id = payload['subscription_payment_id']
-        payment.metadata.update(payload)
-        payment.status = self.WEBHOOK_ACTION_TO_PAYMENT_STATUS[action]
-        payment.save()
+        with transaction.atomic():
+            payment = SubscriptionPayment.objects.get(
+                provider_codename=self.codename,
+                id=self.extract_payment_id(payload),
+            )
+            payment.provider_transaction_id = payload['subscription_payment_id']
+            payment.metadata.update(payload)
+            payment.status = self.WEBHOOK_ACTION_TO_PAYMENT_STATUS[action]
+            payment.save()
 
         return Response(status=HTTP_200_OK)
 
