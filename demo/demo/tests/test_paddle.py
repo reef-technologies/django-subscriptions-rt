@@ -68,9 +68,9 @@ def test_payment_flow(paddle, user_client, plan, card_number):
     }
 
     # ---- test_check_unfinished_payments ----
-    if payment.status == SubscriptionPayment.Status.COMPLETED:
-        payment.status == SubscriptionPayment.Status.PENDING
-        payment.save()
+    payment = SubscriptionPayment.objects.last()
+    payment.status = SubscriptionPayment.Status.PENDING
+    payment.save()
 
     check_unfinished_payments(within=timedelta(hours=1))
     payment = SubscriptionPayment.objects.last()

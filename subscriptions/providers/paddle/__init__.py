@@ -159,6 +159,15 @@ class PaddleProvider(Provider):
         return Response(status=HTTP_200_OK)
 
     def check_payments(self, payments: Iterable[SubscriptionPayment]):
+        self.check_payments_using_webhook_history(payments)
+
+    # def check_payments_using_payments_endpoint(self, payments: Iterable[SubscriptionPayment]):
+    #     records = self._api.get_payments(
+    #         from_=min(payment.created for payment in payments),
+    #         to=max(payment.created for payment in payments) + self.WEBHOOK_LOOKUP_PERIOD,
+    #     )
+
+    def check_payments_using_webhook_history(self, payments: Iterable[SubscriptionPayment]):
         payment_ids = {payment.id for payment in payments}
 
         alerts = self._api.iter_webhook_history(
