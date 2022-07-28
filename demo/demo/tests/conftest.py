@@ -46,7 +46,7 @@ def plan(db, days, resource) -> Plan:
         name='Plan',
         charge_amount=Decimal(100),
         charge_period=days(30),
-        max_duration=days(90),
+        max_duration=days(120),
     )
 
 
