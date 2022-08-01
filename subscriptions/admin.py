@@ -22,7 +22,7 @@ class SubscriptionAdmin(admin.ModelAdmin):
     list_display = 'user', 'plan', 'start', 'end',
     list_filter = 'plan', 'start', 'end',
     search_fields = 'user',
-    ordering = '-pk',
+    ordering = '-start', 'uid',
 
 
 @admin.register(Resource)
@@ -49,11 +49,11 @@ class UsageAdmin(admin.ModelAdmin):
 
 @admin.register(SubscriptionPayment)
 class SubscriptionPaymentAdmin(admin.ModelAdmin):
-    list_display = 'pk', 'status', 'created', 'updated', 'amount', 'user', 'subscription', 'subscription_start', 'subscription_end', 'provider_codename',
+    list_display = 'pk', 'status', 'created', 'amount', 'user', 'subscription_start', 'subscription_end',
     list_filter = 'subscription__plan', 'status', 'created', 'updated', 'provider_codename',
     search_fields = 'user', 'amount',
     queryset = SubscriptionPayment.objects.select_related('subscription__plan')
-    ordering = '-pk',
+    ordering = '-created',
 
 
 @admin.register(SubscriptionPaymentRefund)
@@ -62,7 +62,7 @@ class SubscriptionPaymentRefundAdmin(admin.ModelAdmin):
     list_filter = 'status', 'created', 'updated',
     search_fieds = 'original_payment__user'
     queryset = SubscriptionPaymentRefund.objects.select_related('original_payment__user')
-    ordering = '-pk',
+    ordering = '-created',
 
 
 @admin.register(Tax)

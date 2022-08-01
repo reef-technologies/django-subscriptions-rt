@@ -5,8 +5,8 @@ from django.db import migrations
 
 def fill_in_uid_fks(apps, schema_editor):
     SubscriptionPayment = apps.get_model('subscriptions', 'SubscriptionPayment')
-    for payment in SubscriptionPayment.objects.all():
-        payment.subscription_uid = payment.subscription.uid
+    for payment in SubscriptionPayment.objects.exclude(subscription=None):
+        payment.subscription_uid = payment.subscription
         payment.save()
 
     SubscriptionPaymentRefund = apps.get_model('subscriptions', 'SubscriptionPaymentRefund')
