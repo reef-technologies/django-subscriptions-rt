@@ -49,6 +49,7 @@ class Plan(models.Model):
     charge_amount = MoneyField(blank=True, null=True)
     charge_period = RelativeDurationField(blank=True, help_text='leave blank for one-time charge')
     max_duration = RelativeDurationField(blank=True, help_text='leave blank to make it an infinite subscription')
+    metadata = models.JSONField(blank=True, default=dict, encoder=DjangoJSONEncoder)
     is_enabled = models.BooleanField(default=True)
 
     class Meta:

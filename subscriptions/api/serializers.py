@@ -14,7 +14,7 @@ class PlanSerializer(ModelSerializer):
 
     class Meta:
         model = Plan
-        fields = 'id', 'codename', 'name', 'charge_amount', 'charge_amount_currency', 'charge_period', 'max_duration', 'is_recurring',
+        fields = 'id', 'codename', 'name', 'charge_amount', 'charge_amount_currency', 'charge_period', 'max_duration', 'is_recurring', 'metadata',
 
     def get_charge_amount(self, obj) -> Optional[Decimal]:
         if obj.charge_amount is not None:

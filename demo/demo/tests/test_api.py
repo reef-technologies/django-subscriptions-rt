@@ -20,11 +20,14 @@ def test_plans(plan, client):
             'id': plan.id,
             'codename': plan.codename,
             'name': plan.name,
-            'charge_amount': int(plan.charge_amount.amount),
+            'charge_amount': plan.charge_amount.amount,
             'charge_amount_currency': str(plan.charge_amount.currency),
             'charge_period': relativedelta_to_dict(plan.charge_period),
             'max_duration': relativedelta_to_dict(plan.max_duration),
             'is_recurring': plan.is_recurring(),
+            'metadata': {
+                'this': 'that',
+            },
         },
     ]
 
@@ -58,7 +61,7 @@ def test_subscriptions(user_client, two_subscriptions, now):
                 'id': subscription.plan.id,
                 'codename': subscription.plan.codename,
                 'name': subscription.plan.name,
-                'charge_amount': subscription.plan.charge_amount and int(subscription.plan.charge_amount.amount),
+                'charge_amount': subscription.plan.charge_amount and subscription.plan.charge_amount.amount,
                 'charge_amount_currency': str(subscription.plan.charge_amount.currency) if subscription.plan.charge_amount else 'USD',
                 'charge_period': relativedelta_to_dict(subscription.plan.charge_period),
                 'max_duration': relativedelta_to_dict(subscription.plan.max_duration),

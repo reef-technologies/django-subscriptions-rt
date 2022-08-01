@@ -47,6 +47,9 @@ def plan(db, days, resource) -> Plan:
         charge_amount=Decimal(100),
         charge_period=days(30),
         max_duration=days(120),
+        metadata={
+            'this': 'that',
+        }
     )
 
 
