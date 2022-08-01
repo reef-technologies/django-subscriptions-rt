@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from itertools import count, islice, zip_longest
 from logging import getLogger
 from operator import attrgetter
 from typing import TYPE_CHECKING, Callable, Iterable, Iterator, List, Optional
+from uuid import uuid4
 
 from dateutil.relativedelta import relativedelta
 from django.conf import settings
@@ -130,6 +132,7 @@ class SubscriptionQuerySet(models.QuerySet):
 
 
 class Subscription(models.Model):
+    uid = models.UUIDField(primary_key=True, default=uuid4)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='subscriptions')
     plan = models.ForeignKey(Plan, on_delete=models.PROTECT, related_name='subscriptions')
     auto_prolong = models.BooleanField(default=True)
@@ -138,6 +141,13 @@ class Subscription(models.Model):
     end = models.DateTimeField(blank=True)
 
     objects = SubscriptionQuerySet.as_manager()
+
+    class Meta:
+        get_latest_by = 'start'
+
+    @property
+    def id(self) -> Optional[str]:
+        return self.uid and str(self.uid)
 
     def __str__(self) -> str:
         return f'{self.id} {self.plan}, {self.start} - {self.end}'
@@ -296,7 +306,7 @@ class AbstractTransaction(models.Model):
         CANCELED = 3
         ERROR = 4
 
-    # uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False)  # TODO
+    uid = models.UUIDField(primary_key=True)
     provider_codename = models.CharField(max_length=255)
     provider_transaction_id = models.CharField(max_length=255, blank=True, null=True)
     status = models.PositiveSmallIntegerField(choices=Status.choices, default=Status.PENDING)
@@ -312,12 +322,18 @@ class AbstractTransaction(models.Model):
         indexes = [
             Index(fields=('provider_codename', 'provider_transaction_id')),
         ]
+        get_latest_by = 'created'
 
     def save(self, *args, **kwargs):
         now_ = now()
+        self.uid = self.uid or uuid4()
         self.created = self.created or now_
         self.updated = now_
         return super().save(*args, **kwargs)
+
+    @property
+    def id(self) -> Optional[str]:
+        return self.uid and str(self.uid)
 
     def __str__(self) -> str:
         return f'{self.id} {self.get_status_display()} {self.amount} via {self.provider_codename}'
@@ -338,7 +354,7 @@ class SubscriptionPayment(AbstractTransaction):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._initial_status = self.id and self.status
+        self._initial_status = self.uid and self.status
 
     def save(self, *args, **kwargs):
         if self.status != self._initial_status:
@@ -363,10 +379,11 @@ class SubscriptionPayment(AbstractTransaction):
 
     @classmethod
     def get_last_successful(cls, user: AbstractBaseUser) -> Optional[SubscriptionPayment]:
-        return cls.objects.filter(
-            user=user,
-            status=SubscriptionPayment.Status.COMPLETED,
-        ).order_by('created').last()
+        with suppress(cls.DoesNotExist):
+            return cls.objects.filter(
+                user=user,
+                status=SubscriptionPayment.Status.COMPLETED,
+            ).latest()
 
 
 class SubscriptionPaymentRefund(AbstractTransaction):

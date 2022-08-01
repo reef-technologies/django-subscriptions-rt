@@ -6,12 +6,10 @@ from .views import PaymentView, PlanListView, ResourcesView, SubscriptionListVie
 
 urlpatterns = [
     re_path(r'plans/?$', PlanListView.as_view(), name='plans'),
-    # re_path(r'payment-providers/?$', PaymentProviderListView.as_view(), name='payment_providers'),
     re_path(r'subscriptions/?$', SubscriptionListView.as_view(), name='subscriptions'),
     re_path(r'subscribe/?$', SubscriptionSelectView.as_view(), name='subscribe'),
     re_path(r'resources/?$', ResourcesView.as_view(), name='resources'),
-    re_path(r'payments/(?P<id>\d+)/?$', PaymentView.as_view(), name='payment'),
-    # re_path(r'payments/(?P<uuid>[0-9a-f-]{36})/?$', PaymentView.as_view(), name='payment'),
+    re_path(r'payments/(?P<uid>[0-9a-f-]{36})/?$', PaymentView.as_view(), name='payment'),
 ]
 
 for provider in get_providers():

@@ -152,7 +152,7 @@ def test_subscription_charge_offline(db, subscription, payment):
     subscription.charge_offline()
     assert SubscriptionPayment.objects.all().count() == 2
 
-    last_payment = SubscriptionPayment.objects.order_by('id').last()
+    last_payment = SubscriptionPayment.objects.latest()
     assert last_payment.provider_codename == payment.provider_codename
     assert last_payment.amount == subscription.plan.charge_amount
     assert last_payment.quantity == subscription.quantity

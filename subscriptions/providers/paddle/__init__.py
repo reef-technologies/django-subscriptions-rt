@@ -149,7 +149,7 @@ class PaddleProvider(Provider):
         with transaction.atomic():
             payment = SubscriptionPayment.objects.get(
                 provider_codename=self.codename,
-                id=self.extract_payment_id(payload),
+                uid=self.extract_payment_id(payload),
             )
             payment.provider_transaction_id = payload['subscription_payment_id']
             payment.metadata.update(payload)

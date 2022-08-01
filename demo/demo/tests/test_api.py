@@ -78,7 +78,7 @@ def test_subscribe(client, user_client, plan, now):
         assert response.status_code == 200, response.content
         assert response.json() == {
             'plan': plan.id,
-            'payment_id': 1,
+            'payment_id': SubscriptionPayment.objects.latest().id,
             'quantity': 2,
             'redirect_url': '/subscribe/success',
             'background_charge_succeeded': True,
@@ -90,7 +90,7 @@ def test_subscribe(client, user_client, plan, now):
         assert len(subscriptions) == 0
 
         # manually invoke webhook
-        payment = SubscriptionPayment.objects.last()
+        payment = SubscriptionPayment.objects.latest()
         response = client.post('/api/webhook/dummy/', {'transaction_id': payment.provider_transaction_id})
         assert response.status_code == 200, response.content
 
@@ -151,12 +151,12 @@ def test_recharge_plan_subscription(client, user_client, subscription, quota, re
         assert response.json() == {
             'plan': recharge_plan.id,
             'quantity': 1,
-            'payment_id': SubscriptionPayment.objects.last().id,
+            'payment_id': SubscriptionPayment.objects.latest().id,
             'redirect_url': '/subscribe/success',
             'background_charge_succeeded': True,
         }
 
-        transaction_id = SubscriptionPayment.objects.last().provider_transaction_id
+        transaction_id = SubscriptionPayment.objects.latest().provider_transaction_id
         response = client.post('/api/webhook/dummy/', {'transaction_id': transaction_id})
         assert response.status_code == 200, response.content
 

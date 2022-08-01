@@ -48,7 +48,7 @@ class SubscriptionSelectSerializer(Serializer):
     quantity = IntegerField(default=1)
     redirect_url = CharField(read_only=True)
     background_charge_succeeded = BooleanField(default=False)
-    payment_id = IntegerField(read_only=True)
+    payment_id = CharField(read_only=True)
 
 
 class WebhookSerializer(Serializer):

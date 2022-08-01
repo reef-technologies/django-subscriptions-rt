@@ -49,7 +49,7 @@ def test_not_charging_if_previous_attempt_pending(subscription, payment, now, ch
     with freeze_time(subscription.end + middle(charge_period)):
         charge_expiring(payment_status=SubscriptionPayment.Status.PENDING)
         assert SubscriptionPayment.objects.count() == 2
-        payment = SubscriptionPayment.objects.last()
+        payment = SubscriptionPayment.objects.latest()
         assert payment.status == SubscriptionPayment.Status.PENDING
         assert payment.subscription.end == subscription.end
 
@@ -58,7 +58,7 @@ def test_not_charging_if_previous_attempt_pending(subscription, payment, now, ch
         # check that new charge period doesn't try to charge
         charge_expiring()
         assert SubscriptionPayment.objects.count() == 2
-        assert SubscriptionPayment.objects.last() == payment
+        assert SubscriptionPayment.objects.latest() == payment
 
 
 def test_not_charging_if_previous_attempt_succeeded(subscription, payment, now, charge_expiring, charge_schedule):
@@ -67,7 +67,7 @@ def test_not_charging_if_previous_attempt_succeeded(subscription, payment, now, 
     with freeze_time(subscription.end + middle(charge_period)):
         charge_expiring(payment_status=SubscriptionPayment.Status.COMPLETED)
         assert SubscriptionPayment.objects.count() == 2
-        payment = SubscriptionPayment.objects.last()
+        payment = SubscriptionPayment.objects.latest()
         assert payment.status == SubscriptionPayment.Status.COMPLETED
         assert payment.subscription.end != subscription.end
 
@@ -76,7 +76,7 @@ def test_not_charging_if_previous_attempt_succeeded(subscription, payment, now, 
         # check that new charge period doesn't try to charge
         charge_expiring()
         assert SubscriptionPayment.objects.count() == 2
-        assert SubscriptionPayment.objects.last() == payment
+        assert SubscriptionPayment.objects.latest() == payment
 
 
 def test_charging_if_previous_attempt_failed(subscription, payment, now, charge_expiring, charge_schedule):
@@ -85,7 +85,7 @@ def test_charging_if_previous_attempt_failed(subscription, payment, now, charge_
     with freeze_time(subscription.end + middle(charge_period)):
         charge_expiring(payment_status=SubscriptionPayment.Status.ERROR)
         assert SubscriptionPayment.objects.count() == 2
-        payment = SubscriptionPayment.objects.last()
+        payment = SubscriptionPayment.objects.latest()
         assert payment.status == SubscriptionPayment.Status.ERROR
         assert payment.subscription.end == subscription.end
 
@@ -94,7 +94,7 @@ def test_charging_if_previous_attempt_failed(subscription, payment, now, charge_
         # check that new charge period DOES charge
         charge_expiring()
         assert SubscriptionPayment.objects.count() == 3
-        assert SubscriptionPayment.objects.last() != payment
+        assert SubscriptionPayment.objects.latest() != payment
 
 
 def test_not_reacting_to_other_payments(subscription, payment, now, charge_expiring, charge_schedule):
@@ -115,7 +115,7 @@ def test_not_reacting_to_other_payments(subscription, payment, now, charge_expir
     with freeze_time(subscription.end + middle(charge_period)):
         charge_expiring()
         assert SubscriptionPayment.objects.count() == 3
-        assert SubscriptionPayment.objects.last().pk != other_subscription_payment.pk
+        assert SubscriptionPayment.objects.latest().pk != other_subscription_payment.pk
 
 
 def test_prolongation(subscription, payment, now, charge_expiring, charge_schedule):
@@ -150,7 +150,7 @@ def test_prolongation(subscription, payment, now, charge_expiring, charge_schedu
 def test_charge_amount(subscription, payment, now, charge_expiring, charge_schedule):
     with freeze_time(subscription.end + charge_schedule[-2]):
         charge_expiring()
-        last_payment = subscription.payments.last()
+        last_payment = subscription.payments.latest()
         assert last_payment != payment
         assert last_payment.quantity == subscription.quantity
         assert last_payment.amount == subscription.plan.charge_amount

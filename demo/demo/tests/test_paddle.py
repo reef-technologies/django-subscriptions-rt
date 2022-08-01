@@ -22,7 +22,7 @@ def test_payment_flow(paddle, user_client, plan, card_number):
     redirect_url = result.pop('redirect_url')
     assert 'paddle.com' in redirect_url
 
-    payment = SubscriptionPayment.objects.last()
+    payment = SubscriptionPayment.objects.latest()
     assert result == {
         'plan': plan.id,
         'quantity': 1,
@@ -68,19 +68,19 @@ def test_payment_flow(paddle, user_client, plan, card_number):
     }
 
     # ---- test_check_unfinished_payments ----
-    payment = SubscriptionPayment.objects.last()
+    payment = SubscriptionPayment.objects.latest()
     payment.status = SubscriptionPayment.Status.PENDING
     payment.save()
 
     check_unfinished_payments(within=timedelta(hours=1))
-    payment = SubscriptionPayment.objects.last()
+    payment = SubscriptionPayment.objects.latest()
     assert payment.status == SubscriptionPayment.Status.COMPLETED
 
     # ---- test_charge_offline ----
     payment.subscription.charge_offline()
     assert SubscriptionPayment.objects.count() == 2
 
-    last_payment = SubscriptionPayment.objects.last()
+    last_payment = SubscriptionPayment.objects.latest()
     subscription = last_payment.subscription
 
     assert last_payment.provider_codename == payment.provider_codename
@@ -125,11 +125,11 @@ def test_webhook_idempotence(paddle, client, paddle_unconfirmed_payment, paddle_
 
     response = client.post('/api/webhook/paddle/', paddle_webhook_payload)
     assert response.status_code == 200, response.content
-    start_old, end_old = Subscription.objects.values_list('start', 'end').last()
+    start_old, end_old = Subscription.objects.values_list('start', 'end').latest()
 
     response = client.post('/api/webhook/paddle/', paddle_webhook_payload)
     assert response.status_code == 200, response.content
-    start_new, end_new = Subscription.objects.values_list('start', 'end').last()
+    start_new, end_new = Subscription.objects.values_list('start', 'end').latest()
 
     assert start_old == start_new
     assert end_old == end_new

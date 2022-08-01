@@ -48,7 +48,7 @@ class SubscriptionListView(ListAPIView):
     permission_classes = IsAuthenticated,
     serializer_class = SubscriptionSerializer
     schema = AutoSchema()
-    ordering = '-end', '-id',
+    ordering = '-end', '-uid',
 
     def get_queryset(self):
         return Subscription.objects.active().select_related('plan').filter(user=self.request.user)
@@ -140,7 +140,7 @@ class PaymentView(RetrieveAPIView):
     serializer_class = SubscriptionPaymentSerializer
     schema = AutoSchema()
     queryset = SubscriptionPayment.objects.all()
-    lookup_url_kwarg = 'id'
+    lookup_url_kwarg = 'uid'
 
     def post(self, request, *args, **kwargs):
         """ Fetch payment status from the provider and update status if needed """
