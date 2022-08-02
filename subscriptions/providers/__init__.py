@@ -7,6 +7,7 @@ from django.conf import settings
 from django.contrib.auth.models import AbstractBaseUser
 from django.forms import Form
 from django.utils.module_loading import import_string
+from djmoney.money import Money
 from more_itertools import first, one
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -23,6 +24,9 @@ class Provider:
     codename: ClassVar[str] = 'default'
     is_enabled: ClassVar[bool] = True
     form: ClassVar[Optional[Form]] = None
+
+    def get_amount(self, user: AbstractBaseUser, plan: Plan, quantity: int) -> Money:
+        return plan.charge_amount
 
     def charge_online(
         self,

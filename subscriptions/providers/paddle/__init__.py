@@ -1,6 +1,7 @@
 import json
 from dataclasses import dataclass
 from datetime import timedelta
+from decimal import Decimal
 from functools import cached_property
 from logging import getLogger
 from operator import itemgetter
@@ -9,6 +10,7 @@ from typing import ClassVar, Iterable, Optional, Tuple
 from django.conf import settings
 from django.contrib.auth.models import AbstractBaseUser
 from django.db import transaction
+from djmoney.money import Money
 from more_itertools import unique_everseen
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -48,6 +50,16 @@ class PaddleProvider(Provider):
             f'There should be exactly one subscription plan, but there are {num_plans}: {plans}'
         return plans[0]
 
+    def get_amount(self, user: AbstractBaseUser, plan: Plan, quantity: int) -> Money:
+        # TODO: remove this
+        if user.is_staff:
+            return Money(
+                amount=Decimal('1.0') + Decimal('0.01') * plan.id,
+                currency=plan.charge_amount.currency,
+            )
+
+        return plan.charge_amount
+
     def charge_online(
         self,
         user: AbstractBaseUser,
@@ -55,10 +67,13 @@ class PaddleProvider(Provider):
         subscription: Optional[Subscription] = None,
         quantity: int = 1,
     ) -> Tuple[SubscriptionPayment, str]:
+
+        amount = self.get_amount(user=user, plan=plan, quantity=quantity)
+
         payment = SubscriptionPayment.objects.create(  # TODO: limit number of creations per day
             provider_codename=self.codename,
             provider_transaction_id=None,
-            amount=plan.charge_amount,
+            amount=amount,
             user=user,
             plan=plan,
             subscription=subscription,
@@ -67,7 +82,7 @@ class PaddleProvider(Provider):
 
         payment_link = self._api.generate_payment_link(
             product_id=self._plan['id'],
-            prices=[plan.charge_amount * quantity] if plan.charge_amount else [],
+            prices=[amount * quantity] if amount else [],
             email=user.email,
             metadata={
                 'SubscriptionPayment.id': payment.id,
@@ -105,9 +120,10 @@ class PaddleProvider(Provider):
             raise PaymentError('Reference payment metadata has no "subscription_id" field') from exc
 
         # TODO: check that currency of last payment matches currency of this plan (paddle doesn't allow one-off charges with different currencies
+        amount = self.get_amount(user=user, plan=plan, quantity=quantity)
         metadata = self._api.one_off_charge(
             subscription_id=subscription_id,
-            amount=plan.charge_amount.amount * quantity,
+            amount=amount.amount * quantity,
             name=plan.name,
         ) if plan.charge_amount else {}
 
@@ -127,7 +143,7 @@ class PaddleProvider(Provider):
         return SubscriptionPayment.objects.create(
             provider_codename=self.codename,
             provider_transaction_id=None,  # paddle doesn't return anything
-            amount=plan.charge_amount,
+            amount=amount,
             status=status,
             user=user,
             plan=plan,

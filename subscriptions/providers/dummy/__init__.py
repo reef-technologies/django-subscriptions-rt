@@ -30,7 +30,7 @@ class DummyProvider(Provider):
         payment = SubscriptionPayment.objects.create(  # TODO: limit number of creations per day
             provider_codename=self.codename,
             provider_transaction_id=transaction_id,
-            amount=plan.charge_amount,
+            amount=self.get_amount(user=user, plan=plan, quantity=quantity),
             user=user,
             plan=plan,
             subscription=subscription,
@@ -48,7 +48,7 @@ class DummyProvider(Provider):
         return SubscriptionPayment.objects.create(  # TODO: limit number of creations per day
             provider_codename=self.codename,
             provider_transaction_id=get_random_string(8),
-            amount=plan.charge_amount,
+            amount=self.get_amount(user=user, plan=plan, quantity=quantity),
             user=user,
             plan=plan,
             subscription=subscription,

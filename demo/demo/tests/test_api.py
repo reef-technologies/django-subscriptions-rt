@@ -66,6 +66,7 @@ def test_subscriptions(user_client, two_subscriptions, now):
                 'charge_period': relativedelta_to_dict(subscription.plan.charge_period),
                 'max_duration': relativedelta_to_dict(subscription.plan.max_duration),
                 'is_recurring': subscription.plan.is_recurring(),
+                'metadata': {},
             }
         }]
 

@@ -84,7 +84,12 @@ def test_payment_flow(paddle, user_client, plan, card_number):
     subscription = last_payment.subscription
 
     assert last_payment.provider_codename == payment.provider_codename
-    assert last_payment.amount == plan.charge_amount
+    provider = get_provider(last_payment.provider_codename)
+    assert last_payment.amount == provider.get_amount(
+        user=last_payment.user,
+        plan=plan,
+        quantity=last_payment.quantity,
+    )
     assert last_payment.quantity == subscription.quantity
     assert last_payment.user == subscription.user
     assert last_payment.subscription == subscription
