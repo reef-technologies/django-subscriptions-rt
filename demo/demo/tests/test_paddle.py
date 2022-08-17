@@ -7,6 +7,7 @@ from subscriptions.models import Subscription, SubscriptionPayment
 from subscriptions.providers import get_provider
 from subscriptions.providers.paddle import PaddleProvider
 from subscriptions.tasks import check_unfinished_payments
+from tenacity import Retrying, TryAgain, stop_after_attempt, wait_fixed
 
 
 def test_provider(paddle):
@@ -39,10 +40,6 @@ def test_payment_flow(paddle, user_client, plan, card_number):
     assert payment.status == SubscriptionPayment.Status.PENDING
 
     # ---- test_payment_status_endpoint_get ----
-    if payment.status == SubscriptionPayment.Status.COMPLETED:
-        payment.status == SubscriptionPayment.Status.PENDING
-        payment.save()
-
     response = user_client.get(f'/api/payments/{payment.id}/')
     assert response.status_code == 200, response.content
 
@@ -50,21 +47,42 @@ def test_payment_flow(paddle, user_client, plan, card_number):
     assert result == {
         'id': payment.id,
         'status': 'pending',
+        'quantity': 1,
+        'subscription': None,
     }
-    sleep(2)
 
     # ---- test_payment_status_endpoint_post ----
-    if payment.status == SubscriptionPayment.Status.COMPLETED:
-        payment.status == SubscriptionPayment.Status.PENDING
-        payment.save()
+    for attempt in Retrying(wait=wait_fixed(2), stop=stop_after_attempt(10)):
+        with attempt:
+            response = user_client.post(f'/api/payments/{payment.id}/')
+            assert response.status_code == 200, response.content
+            result = response.json()
+            if result['status'] != 'completed':
+                raise TryAgain()
 
-    response = user_client.post(f'/api/payments/{payment.id}/')
-    assert response.status_code == 200, response.content
+    payment = SubscriptionPayment.objects.get(pk=payment.pk)
 
-    result = response.json()
     assert result == {
         'id': payment.id,
         'status': 'completed',
+        'quantity': 1,
+        'subscription': {
+            'id': payment.subscription.id,
+            'quantity': 1,
+            'start': payment.subscription.start.isoformat().replace('+00:00', 'Z'),
+            'end': payment.subscription.end.isoformat().replace('+00:00', 'Z'),
+            'plan': {
+                'charge_amount': 100,
+                'charge_amount_currency': 'USD',
+                'charge_period': {'days': 30},
+                'codename': 'plan',
+                'id': 1,
+                'is_recurring': True,
+                'max_duration': {'days': 120},
+                'metadata': {'this': 'that'},
+                'name': 'Plan',
+            },
+        },
     }
 
     # ---- test_check_unfinished_payments ----
