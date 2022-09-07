@@ -1,7 +1,7 @@
 from decimal import Decimal
 from typing import Optional
 
-from rest_framework.serializers import BooleanField, CharField, IntegerField, ModelSerializer, PrimaryKeyRelatedField, Serializer, SerializerMethodField
+from rest_framework.serializers import BooleanField, CharField, DateTimeField, DecimalField, IntegerField, ModelSerializer, PrimaryKeyRelatedField, Serializer, SerializerMethodField
 
 from ..fields import relativedelta_to_dict
 from ..models import Plan, Subscription, SubscriptionPayment
@@ -61,11 +61,22 @@ class ResourcesSerializer(Serializer):
 
 class SubscriptionPaymentSerializer(ModelSerializer):
     status = SerializerMethodField()
+    amount = SerializerMethodField()
+    currency = CharField(source='amount.currency')
+    total = SerializerMethodField()
     subscription = SubscriptionSerializer()
+    paid_from = DateTimeField(source='subscription_start')
+    paid_to = DateTimeField(source='subscription_end')
 
     class Meta:
         model = SubscriptionPayment
-        fields = 'id', 'status', 'subscription', 'quantity',
+        fields = 'id', 'status', 'subscription', 'quantity', 'amount', 'currency', 'total', 'paid_from', 'paid_to', 'created',
 
     def get_status(self, obj) -> str:
         return obj.get_status_display().lower()
+
+    def get_amount(self, obj) -> Decimal:
+        return obj.amount.amount
+
+    def get_total(self, obj) -> Decimal:
+        return obj.amount.amount * obj.quantity

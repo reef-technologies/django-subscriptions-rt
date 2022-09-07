@@ -350,8 +350,8 @@ class SubscriptionPayment(AbstractTransaction):
     plan = models.ForeignKey(Plan, on_delete=models.PROTECT, related_name='payments')
     subscription = models.ForeignKey(Subscription, on_delete=models.PROTECT, blank=True, null=True, related_name='payments')
     quantity = models.PositiveIntegerField(default=1)
-    subscription_start = models.DateTimeField(blank=True, null=True)
-    subscription_end = models.DateTimeField(blank=True, null=True)
+    subscription_start = models.DateTimeField(blank=True, null=True)  # TODO: paid from
+    subscription_end = models.DateTimeField(blank=True, null=True)  # TODO: paid to
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

@@ -192,3 +192,42 @@ def test_background_charge(subscription, days, now):
 
     with freeze_time(now + days(2)):
         subscription.charge_offline()
+
+
+def test_payments(user_client, payment):
+    response = user_client.get(f'/api/payments/{payment.id}/')
+    assert response.status_code == 200, response.content
+    assert response.json() == {
+        "id": payment.id,
+        "status": "completed",
+        "subscription": {
+            "id": payment.subscription.id,
+            "plan": {
+                "id": payment.subscription.plan.id,
+                "codename": "plan",
+                "name": "Plan",
+                "charge_amount": 100.0,
+                "charge_amount_currency": "USD",
+                "charge_period": {
+                    "days": 30
+                },
+                "max_duration": {
+                    "days": 120
+                },
+                "is_recurring": True,
+                "metadata": {
+                    "this": "that"
+                },
+            },
+            "quantity": 2,
+            "start": datetime_to_api(payment.subscription.start),
+            "end": datetime_to_api(payment.subscription.end),
+        },
+        "quantity": 2,
+        "amount": 100.0,
+        "currency": "USD",
+        "total": 200.0,
+        "paid_from": datetime_to_api(payment.subscription_start),
+        "paid_to": datetime_to_api(payment.subscription_end),
+        "created": datetime_to_api(payment.created),
+    }
