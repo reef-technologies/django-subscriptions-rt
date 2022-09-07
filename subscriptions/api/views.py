@@ -136,6 +136,9 @@ class ResourcesView(GenericAPIView):
 
 
 class PaymentView(RetrieveAPIView):
+    """
+    GET request just asks backend to show whatever it has in database, while POST asks backend to force-fetch data from payment provider.
+    """
     permission_classes = IsAuthenticated,
     serializer_class = SubscriptionPaymentSerializer
     schema = AutoSchema()
