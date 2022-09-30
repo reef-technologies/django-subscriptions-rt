@@ -10,6 +10,7 @@ from typing import ClassVar, Iterable, Optional, Tuple
 from django.conf import settings
 from django.contrib.auth.models import AbstractBaseUser
 from django.db import transaction
+from django.utils.timezone import now
 from djmoney.money import Money
 from more_itertools import unique_everseen
 from rest_framework.request import Request
@@ -34,7 +35,11 @@ class PaddleProvider(Provider):
 
     _api: Paddle = None
 
-    WEBHOOK_LOOKUP_PERIOD = timedelta(hours=6)  # we assume that first webhook will arrive within this period after payment
+    # we assume that first webhook will arrive within this period after payment
+    WEBHOOK_LOOKUP_PERIOD = timedelta(hours=6)
+
+    # if user already created a SubscriptionPayment within this period, reuse it
+    ONLINE_CHARGE_DUPLICATE_LOOKUP_TIME = timedelta(hours=1)
 
     def __post_init__(self):
         self._api = Paddle(
@@ -70,29 +75,38 @@ class PaddleProvider(Provider):
 
         amount = self.get_amount(user=user, plan=plan, quantity=quantity)
 
-        payment = SubscriptionPayment.objects.create(  # TODO: limit number of creations per day
+        payment, is_new = SubscriptionPayment.objects.get_or_create(
+            created__gte=now() - self.ONLINE_CHARGE_DUPLICATE_LOOKUP_TIME,
+            status=SubscriptionPayment.Status.PENDING,
+            metadata__payment_url__isnull=False,
+
             provider_codename=self.codename,
-            provider_transaction_id=None,
             amount=amount,
             user=user,
             plan=plan,
             subscription=subscription,
             quantity=quantity,
+            defaults=dict(
+                provider_transaction_id=None,
+            ),
         )
 
-        payment_link = self._api.generate_payment_link(
-            product_id=self._plan['id'],
-            prices=[amount * quantity] if amount else [],
-            email=user.email,
-            metadata={
-                'SubscriptionPayment.id': payment.id,
-            },
-        )['url']
+        if is_new:
+            payment_link = self._api.generate_payment_link(
+                product_id=self._plan['id'],
+                prices=[amount * quantity] if amount else [],
+                email=user.email,
+                metadata={
+                    'SubscriptionPayment.id': payment.id,
+                },
+            )['url']
 
-        payment.metadata = {
-            'payment_url': payment_link,
-        }
-        payment.save()
+            payment.metadata = {
+                'payment_url': payment_link,
+            }
+            payment.save()
+        else:
+            payment_link = payment.metadata['payment_url']
 
         return payment, payment_link
 

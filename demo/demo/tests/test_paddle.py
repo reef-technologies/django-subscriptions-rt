@@ -1,5 +1,4 @@
 from datetime import datetime, timedelta
-from time import sleep
 
 from django.utils.timezone import now
 from freezegun import freeze_time
@@ -168,3 +167,66 @@ def test_webhook_idempotence(paddle, client, paddle_unconfirmed_payment, paddle_
 
     assert start_old == start_new
     assert end_old == end_new
+
+
+def test_subscription_charge_online_avoid_duplicates(paddle, user_client, plan):
+    assert not SubscriptionPayment.objects.all().exists()
+
+    response = user_client.post('/api/subscribe/', {'plan': plan.id})
+    assert response.status_code == 200, response.content
+    assert SubscriptionPayment.objects.count() == 1
+    payment = SubscriptionPayment.objects.last()
+    payment_url = payment.metadata['payment_url']
+
+    response = user_client.post('/api/subscribe/', {'plan': plan.id})
+    assert response.status_code == 200, response.content
+    assert SubscriptionPayment.objects.count() == 1  # additinal payment was not created
+    assert SubscriptionPayment.objects.last().metadata['payment_url'] == payment_url  # url hasn't changed
+
+
+def test_subscription_charge_online_new_payment_after_duplicate_lookup_time(paddle, user_client, plan):
+    assert not SubscriptionPayment.objects.all().exists()
+
+    response = user_client.post('/api/subscribe/', {'plan': plan.id})
+    assert response.status_code == 200, response.content
+    assert SubscriptionPayment.objects.count() == 1
+    payment = SubscriptionPayment.objects.last()
+
+    payment.created = now() - PaddleProvider.ONLINE_CHARGE_DUPLICATE_LOOKUP_TIME
+    payment.save()
+
+    response = user_client.post('/api/subscribe/', {'plan': plan.id})
+    assert response.status_code == 200, response.content
+    assert SubscriptionPayment.objects.count() == 2
+
+
+def test_subscription_charge_online_new_payment_if_no_pending(paddle, user_client, plan):
+    assert not SubscriptionPayment.objects.all().exists()
+
+    response = user_client.post('/api/subscribe/', {'plan': plan.id})
+    assert response.status_code == 200, response.content
+    assert SubscriptionPayment.objects.count() == 1
+    payment = SubscriptionPayment.objects.last()
+
+    payment.status = SubscriptionPayment.Status.ERROR
+    payment.save()
+
+    response = user_client.post('/api/subscribe/', {'plan': plan.id})
+    assert response.status_code == 200, response.content
+    assert SubscriptionPayment.objects.count() == 2
+
+
+def test_subscription_charge_online_new_payment_if_no_payment_url(paddle, user_client, plan):
+    assert not SubscriptionPayment.objects.all().exists()
+
+    response = user_client.post('/api/subscribe/', {'plan': plan.id})
+    assert response.status_code == 200, response.content
+    assert SubscriptionPayment.objects.count() == 1
+    payment = SubscriptionPayment.objects.last()
+
+    payment.metadata = {'foo': 'bar'}
+    payment.save()
+
+    response = user_client.post('/api/subscribe/', {'plan': plan.id})
+    assert response.status_code == 200, response.content
+    assert SubscriptionPayment.objects.count() == 2
