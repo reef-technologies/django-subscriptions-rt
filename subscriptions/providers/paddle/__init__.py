@@ -41,6 +41,9 @@ class PaddleProvider(Provider):
     # if user already created a SubscriptionPayment within this period, reuse it
     ONLINE_CHARGE_DUPLICATE_LOOKUP_TIME = timedelta(hours=1)
 
+    # make staff members pay ~1<currency> instead of real charge amount
+    STAFF_DISCOUNT = True
+
     def __post_init__(self):
         self._api = Paddle(
             vendor_id=self.vendor_id,
@@ -56,8 +59,7 @@ class PaddleProvider(Provider):
         return plans[0]
 
     def get_amount(self, user: AbstractBaseUser, plan: Plan, quantity: int) -> Money:
-        # TODO: remove this
-        if user.is_staff:
+        if self.STAFF_DISCOUNT and user.is_staff:
             return Money(
                 amount=Decimal('1.0') + Decimal('0.01') * plan.id,
                 currency=plan.charge_amount.currency,
