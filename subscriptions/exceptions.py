@@ -23,3 +23,7 @@ class SubscriptionError(Exception):
 class PaymentError(Exception):
     user_message: str = 'unknown error'
     code = 'unknown'
+
+
+class BadReferencePayment(PaymentError):
+    pass

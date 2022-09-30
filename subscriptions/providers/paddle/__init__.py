@@ -17,7 +17,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.status import HTTP_200_OK
 
-from ...exceptions import PaymentError
+from ...exceptions import PaymentError, BadReferencePayment
 from ...models import Plan, Subscription, SubscriptionPayment
 from .. import Provider
 from .api import Paddle
@@ -133,9 +133,12 @@ class PaddleProvider(Provider):
             subscription_id = reference_payment.metadata['subscription_id']
         except KeyError as exc:
             log.warning('Reference payment (%s) metadata has no "subscription_id" field', reference_payment)
-            raise PaymentError('Reference payment metadata has no "subscription_id" field') from exc
+            raise BadReferencePayment('Reference payment metadata has no "subscription_id" field') from exc
 
-        # TODO: check that currency of last payment matches currency of this plan (paddle doesn't allow one-off charges with different currencies
+        # paddle doesn't allow one-off charges with different currencies
+        if reference_payment.subscription.plan.charge_amount.currency != plan.charge_amount.currency:
+            raise BadReferencePayment('Reference payment has different currency than current plan')
+
         amount = self.get_amount(user=user, plan=plan, quantity=quantity)
         metadata = self._api.one_off_charge(
             subscription_id=subscription_id,

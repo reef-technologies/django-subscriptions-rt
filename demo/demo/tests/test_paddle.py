@@ -1,8 +1,12 @@
 from datetime import datetime, timedelta
 
+import pytest
+from dateutil.relativedelta import relativedelta
 from django.utils.timezone import now
+from djmoney.money import Money
 from freezegun import freeze_time
-from subscriptions.models import Subscription, SubscriptionPayment
+from subscriptions.exceptions import BadReferencePayment
+from subscriptions.models import Plan, Subscription, SubscriptionPayment
 from subscriptions.providers import get_provider
 from subscriptions.providers.paddle import PaddleProvider
 from subscriptions.tasks import check_unfinished_payments
@@ -230,3 +234,22 @@ def test_subscription_charge_online_new_payment_if_no_payment_url(paddle, user_c
     response = user_client.post('/api/subscribe/', {'plan': plan.id})
     assert response.status_code == 200, response.content
     assert SubscriptionPayment.objects.count() == 2
+
+
+def test_reference_payment_non_matching_currency(paddle, user_client, paddle_unconfirmed_payment):
+    paddle_unconfirmed_payment.status = SubscriptionPayment.Status.COMPLETED
+    paddle_unconfirmed_payment.save()
+
+    other_currency_plan = Plan.objects.create(
+        codename='other',
+        name='Other',
+        charge_amount=Money(30, 'EUR'),
+        charge_period=relativedelta(days=30),
+    )
+
+    provider = get_provider()
+    with pytest.raises(BadReferencePayment):
+        provider.charge_offline(
+            user=paddle_unconfirmed_payment.user,
+            plan=other_currency_plan,
+        )
