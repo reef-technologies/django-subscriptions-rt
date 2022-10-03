@@ -363,3 +363,11 @@ def charge_expiring(charge_schedule, monkeypatch):
             )
 
     return wrapper
+
+
+@pytest.fixture
+def cache_backend(settings):
+    settings.CACHES['subscriptions'] = {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'subscriptions',
+    }

@@ -3,6 +3,7 @@ from itertools import product
 from operator import attrgetter
 
 import pytest
+from django.core.cache import caches
 from freezegun import freeze_time
 from subscriptions.exceptions import InconsistentQuotaCache, QuotaLimitExceeded
 from subscriptions.functions import iter_subscriptions_involved, use_resource
@@ -46,15 +47,15 @@ def test_cache_apply(resource, now, days):
     assert list(cache.apply(chunks)) == cache.chunks
 
 
-def test_remaining_chunks_performance(db, two_subscriptions, now, remains, django_assert_max_num_queries, get_cache, days):
+def test_remaining_chunks_performance(db, two_subscriptions, now, remaining_chunks, django_assert_max_num_queries, get_cache, days):
     cache_day, test_day = 8, 10
 
     with django_assert_max_num_queries(3):
-        remains(at=now + days(test_day))
+        remaining_chunks(at=now + days(test_day))
 
     cache = get_cache(at=now + days(cache_day))
     with django_assert_max_num_queries(3):
-        remains(at=now + days(test_day), quota_cache=cache)
+        remaining_chunks(at=now + days(test_day), quota_cache=cache)
 
 
 def test_usage_with_simple_quota(db, subscription, resource, remains, days):
@@ -186,14 +187,14 @@ def test_multiple_subscriptions(db, two_subscriptions, user, resource, now, rema
     assert remains(at=now + days(16)) == 0
 
 
-def test_cache(db, two_subscriptions, now, remains, remaining_chunks, get_cache, days):
+def test_cache(db, two_subscriptions, now, remaining_chunks, get_cache, days):
 
     for cache_day, test_day in product(range(13), range(13)):
         if cache_day > test_day:
             continue
 
-        assert remains(at=now + days(test_day / 2), quota_cache=get_cache(at=now + days(cache_day / 2))) == remains(at=now + days(test_day / 2))  # "middle" cases
-        assert remains(at=now + days(test_day), quota_cache=get_cache(at=now + days(cache_day))) == remains(at=now + days(test_day))  # corner cases
+        assert remaining_chunks(at=now + days(test_day / 2), quota_cache=get_cache(at=now + days(cache_day / 2))) == remaining_chunks(at=now + days(test_day / 2))  # "middle" cases
+        assert remaining_chunks(at=now + days(test_day), quota_cache=get_cache(at=now + days(cache_day))) == remaining_chunks(at=now + days(test_day))  # corner cases
 
 
 def test_use_resource(db, user, subscription, quota, resource, remains, now, days):
@@ -222,3 +223,79 @@ def test_use_resource(db, user, subscription, quota, resource, remains, now, day
     with freeze_time(now + days(2)):
         with use_resource(user, resource, 100, raises=False):
             pass
+
+
+def test_cache_backend_correctness(cache_backend, db, user, two_subscriptions, remains, days, now, resource):
+    cache = caches['subscriptions']
+
+    assert cache.get(user.pk) is None
+
+    assert remains(at=now - days(1)) == 0
+    assert cache.get(user.pk) == QuotaCache(
+        datetime=now - days(1),
+        chunks=[],
+    )
+
+    assert remains(at=now) == 100
+    assert cache.get(user.pk) == QuotaCache(
+        datetime=now,
+        chunks=[
+            QuotaChunk(
+                resource=resource,
+                start=now,
+                end=now + days(7),
+                remains=100,
+            ),
+        ],
+    )
+
+    # corrupt cache
+    cache.set(user.pk, QuotaCache(
+        datetime=now,
+        chunks=[
+            QuotaChunk(
+                resource=resource,
+                start=now,
+                end=now + days(4),
+                remains=900,
+            ),
+        ],
+    ))
+
+    assert remains(at=now + days(1)) == 50
+    assert cache.get(user.pk) == QuotaCache(
+        datetime=now + days(1),
+        chunks=[
+            QuotaChunk(
+                resource=resource,
+                start=now,
+                end=now + days(7),
+                remains=50,
+            ),
+        ],
+    )
+
+    assert remains(at=now + days(6)) == 50
+    assert cache.get(user.pk) == QuotaCache(
+        datetime=now + days(6),
+        chunks=[
+            QuotaChunk(
+                resource=resource,
+                start=now,
+                end=now + days(7),
+                remains=0,
+            ),
+            QuotaChunk(
+                resource=resource,
+                start=now + days(4),
+                end=now + days(4) + days(7),
+                remains=50,
+            ),
+            QuotaChunk(
+                resource=resource,
+                start=now + days(5),
+                end=now + days(10),
+                remains=0,
+            ),
+        ],
+    )

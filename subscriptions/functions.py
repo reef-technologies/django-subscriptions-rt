@@ -4,13 +4,17 @@ from logging import getLogger
 from operator import attrgetter
 from typing import Callable, Dict, Iterable, Iterator, List, Optional
 
+from django.conf import settings
 from django.contrib.auth.models import AbstractUser
+from django.core.cache import InvalidCacheBackendError, caches
 from django.db import transaction
 from django.db.models import Prefetch
 from django.utils.timezone import now
 from more_itertools import spy
 
-from .exceptions import QuotaLimitExceeded
+from subscriptions.defaults import DEFAULT_SUBSCRIPTIONS_CACHE_NAME
+
+from .exceptions import InconsistentQuotaCache, QuotaLimitExceeded
 from .models import Quota, QuotaCache, QuotaChunk, Resource, Subscription, Usage
 from .utils import merge_iter
 
@@ -150,11 +154,29 @@ def get_remaining_chunks(
 def get_remaining_amount(
     user: AbstractUser,
     at: Optional[datetime] = None,
-    quota_cache: Optional[QuotaCache] = None,
 ) -> Dict[Resource, int]:
-    # TODO: auto-fetch cache
+
+    try:
+        cache = caches[getattr(settings, 'SUBSCRIPTIONS_CACHE_NAME', DEFAULT_SUBSCRIPTIONS_CACHE_NAME)]
+    except InvalidCacheBackendError:
+        cache = None
+    quota_cache = cache and cache.get(user.pk, None)
+
+    try:
+        remaining_chunks = get_remaining_chunks(user=user, at=at, quota_cache=quota_cache)
+    except InconsistentQuotaCache:
+        log.exception('Dropping inconsistent quota cache')
+        cache.delete(user.pk)
+        remaining_chunks = get_remaining_chunks(user=user, at=at)
+
+    if cache and (not quota_cache or quota_cache.datetime < at < now()):
+        cache.set(user.pk, QuotaCache(
+            datetime=at,
+            chunks=remaining_chunks,
+        ))
+
     amount = {}
-    for chunk in get_remaining_chunks(user=user, at=at, quota_cache=quota_cache):
+    for chunk in remaining_chunks:
         amount[chunk.resource] = amount.setdefault(chunk.resource, 0) + chunk.remains
 
     return amount
@@ -163,7 +185,7 @@ def get_remaining_amount(
 @contextmanager
 def use_resource(user: AbstractUser, resource: Resource, amount: int = 1, raises: bool = True) -> int:
     with transaction.atomic():
-        available = get_remaining_amount(user).get(resource, 0)  # TODO: auto-fetch cache
+        available = get_remaining_amount(user).get(resource, 0)
         remains = available - amount
 
         if remains < 0 and raises:

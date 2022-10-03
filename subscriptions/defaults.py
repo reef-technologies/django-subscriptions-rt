@@ -22,3 +22,5 @@ DEFAULT_SUBSCRIPTIONS_OFFLINE_CHARGE_ATTEMPTS_SCHEDULE = (
     timedelta(hours=-1),
     timedelta(0),
 )
+
+DEFAULT_SUBSCRIPTIONS_CACHE_NAME = 'subscriptions'
