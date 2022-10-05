@@ -53,6 +53,7 @@ class Paddle:
     vendor_id: int
     vendor_auth_code: str
     endpoint: str = 'https://vendors.paddle.com/api/2.0'
+    # TODO: replace response `dict` type with pydantic
 
     _session: requests.Session = None
     TIMEOUT: ClassVar[int] = 30

@@ -132,7 +132,9 @@ def charge_recurring_subscriptions(
     schedule: Iterable[timedelta] = DEFAULT_CHARGE_ATTEMPTS_SCHEDULE,
     num_threads: Optional[int] = None,
     lock: bool = True,
+    # TODO: dry-run
 ):
+    # TODO: management command
     log.debug('Background charging according to schedule %s', schedule)
     schedule = sorted(schedule)
     if not schedule:

@@ -151,7 +151,7 @@ class Subscription(models.Model):
         return self.uid and str(self.uid)
 
     def __str__(self) -> str:
-        return f'{self.id} {self.plan}, {self.start} - {self.end}'
+        return f'{self.id} {self.user} {self.plan}, {self.start} - {self.end}'
 
     @property
     def max_end(self) -> datetime:
