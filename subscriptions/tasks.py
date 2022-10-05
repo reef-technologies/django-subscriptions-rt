@@ -142,7 +142,7 @@ def charge_recurring_subscriptions(
 
     now_ = now()
 
-    subscriptions = subscriptions or Subscription.objects.all()
+    subscriptions = Subscription.objects.all() if subscriptions is None else subscriptions
     expiring_subscriptions = subscriptions\
     .filter(  # noqa
         auto_prolong=True,
