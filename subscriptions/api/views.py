@@ -2,6 +2,7 @@ from logging import getLogger
 from typing import Type
 
 from django.conf import settings
+from django.http import QueryDict
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.generics import GenericAPIView, ListAPIView, RetrieveAPIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -109,7 +110,10 @@ class PaymentWebhookView(GenericAPIView):
     serializer_class = WebhookSerializer
 
     def post(self, request, *args, **kwargs) -> Response:
-        return self.provider.webhook(request=request, payload=request.data)
+        payload = request.data
+        if isinstance(payload, QueryDict):
+            payload = payload.dict()
+        return self.provider.webhook(request=request, payload=payload)
 
 
 def build_payment_webhook_view(provider: Provider) -> GenericAPIView:

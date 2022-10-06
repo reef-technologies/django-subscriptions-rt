@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
-from time import sleep
 
+from django.test.client import MULTIPART_CONTENT
 from django.utils.timezone import now
 from freezegun import freeze_time
 from subscriptions.models import Subscription, SubscriptionPayment
@@ -95,6 +95,7 @@ def test_payment_flow(paddle, user_client, plan, card_number):
     assert payment.status == SubscriptionPayment.Status.COMPLETED
 
     # ---- test_charge_offline ----
+    assert 'subscription_id' in payment.metadata
     payment.subscription.charge_offline()
     assert SubscriptionPayment.objects.count() == 2
 
@@ -156,3 +157,13 @@ def test_webhook_idempotence(paddle, client, paddle_unconfirmed_payment, paddle_
 
     assert start_old == start_new
     assert end_old == end_new
+
+
+def test_webhook_payload_as_form_data(paddle, client, paddle_unconfirmed_payment, paddle_webhook_payload):
+    assert not Subscription.objects.all().exists()
+
+    response = client.post('/api/webhook/paddle/', paddle_webhook_payload, content_type=MULTIPART_CONTENT)
+    assert response.status_code == 200, response.content
+
+    payment = SubscriptionPayment.objects.get(pk=paddle_unconfirmed_payment.pk)
+    assert not isinstance(payment.metadata['subscription_id'], list)
