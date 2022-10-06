@@ -155,6 +155,7 @@ def get_remaining_amount(
     user: AbstractUser,
     at: Optional[datetime] = None,
 ) -> Dict[Resource, int]:
+    at = at or now()
 
     try:
         cache = caches[getattr(settings, 'SUBSCRIPTIONS_CACHE_NAME', DEFAULT_SUBSCRIPTIONS_CACHE_NAME)]
