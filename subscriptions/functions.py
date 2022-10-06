@@ -71,9 +71,15 @@ def get_remaining_chunks(
     at = at or now()
     subscriptions_involved = iter_subscriptions_involved(user=user, at=at)
 
+    if quota_cache and quota_cache.datetime > at:
+        log.warning('Not using quota cache %s because it is newer than requested time %s', quota_cache, at)
+        quota_cache = None
+
     if quota_cache:
-        assert at >= quota_cache.datetime
-        subscriptions_involved = filter(lambda subscription: subscription.end > quota_cache.datetime, subscriptions_involved)
+        subscriptions_involved = (
+            sub for sub in subscriptions_involved
+            if sub.end > quota_cache.datetime
+        )
 
     first_subscriptions_involved, subscriptions_involved = spy(subscriptions_involved, 1)
     if not first_subscriptions_involved:
@@ -83,7 +89,7 @@ def get_remaining_chunks(
         subscriptions_involved,
         since=quota_cache and quota_cache.datetime,
         until=at,
-        sort_by=attrgetter('start'),
+        sort_by=attrgetter('start', 'end'),
     )
     if quota_cache:
         quota_chunks = quota_cache.apply(quota_chunks)
@@ -166,7 +172,7 @@ def get_remaining_amount(
     try:
         remaining_chunks = get_remaining_chunks(user=user, at=at, quota_cache=quota_cache)
     except InconsistentQuotaCache:
-        log.exception('Dropping inconsistent quota cache')
+        log.exception('Dropping inconsistent quota cache for user %s', user.pk)
         cache.delete(user.pk)
         remaining_chunks = get_remaining_chunks(user=user, at=at)
 

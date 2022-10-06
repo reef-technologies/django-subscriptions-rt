@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from itertools import count, islice, zip_longest
+from itertools import count, islice
 from logging import getLogger
 from operator import attrgetter
 from typing import TYPE_CHECKING, Callable, Iterable, Iterator, List, Optional
@@ -77,10 +78,11 @@ class QuotaChunk:
     resource: Resource
     start: datetime
     end: datetime
+    amount: int
     remains: int
 
     def __str__(self) -> str:
-        return f'{self.remains} {self.resource} {self.start} - {self.end}'
+        return f'{self.remains}/{self.amount} {self.resource} {self.start} - {self.end}'
 
     def includes(self, date: datetime) -> bool:
         return self.start <= date < self.end
@@ -94,28 +96,26 @@ class QuotaCache:
     datetime: datetime
     chunks: List[QuotaChunk]
 
-    def apply(self, chunks: Iterable[QuotaChunk]) -> Iterator[QuotaChunk]:
-        cached_chunks = iter(self.chunks)
+    def apply(self, target_chunks: Iterable[QuotaChunk]) -> Iterator[QuotaChunk]:
+        """
+        Apply itself to `chunks` without intercepting their order,
+        and yield application results.
+        """
 
-        # match chunks and cached_chunks one-by-one
-        check_cached_pair = True
-        for i, (chunk, cached_chunk) in enumerate(zip_longest(chunks, cached_chunks, fillvalue=None)):
-            if not chunk and cached_chunk:
-                raise InconsistentQuotaCache(f'Non-paired cached chunk detected at position {i}: {cached_chunk}')
+        get_key = attrgetter('resource', 'start', 'end', 'amount')
+        cached_chunks = defaultdict(list)
+        for chunk in self.chunks:
+            cached_chunks[get_key(chunk)].append(chunk)
 
-            elif chunk and cached_chunk:
-                if not chunk.same_lifetime(cached_chunk):
-                    raise InconsistentQuotaCache(f'Non-matched cached chunk detected at position {i}: {chunk=}, {cached_chunk=}')
+        for target_chunk in target_chunks:
+            key = get_key(target_chunk)
+            try:
+                yield cached_chunks[key].pop()
+            except IndexError:
+                yield target_chunk
 
-                yield cached_chunk
-
-            elif chunk and not cached_chunk:
-                if check_cached_pair:
-                    if chunk.includes(self.datetime):
-                        raise InconsistentQuotaCache(f'No cached chunk for {chunk}')
-                    check_cached_pair = False
-
-                yield chunk
+        if any((non_paired := values) for values in cached_chunks.values()):
+            raise InconsistentQuotaCache(f'Non-paired cached chunk(s) detected: {non_paired}')
 
 
 class SubscriptionQuerySet(models.QuerySet):
@@ -214,11 +214,13 @@ class Subscription(models.Model):
             if start > until:
                 return
 
+            amount = quota.limit * self.quantity
             yield QuotaChunk(
                 resource=quota.resource,
                 start=start,
                 end=min(start + quota.burns_in, self.end),
-                remains=quota.limit * self.quantity,
+                amount=amount,
+                remains=amount,
             )
 
     def iter_charge_dates(self, since: Optional[datetime] = None) -> Iterator[datetime]:

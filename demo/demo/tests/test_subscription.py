@@ -119,9 +119,9 @@ def test_iter_quota_chunks(db, subscription, resource, days):
 
     start = subscription.start
     chunks = [
-        QuotaChunk(resource=resource, start=start, end=start + days(7), remains=100),
-        QuotaChunk(resource=resource, start=start + days(5), end=start + days(10), remains=100),
-        QuotaChunk(resource=resource, start=start + days(10), end=start + days(10), remains=100),
+        QuotaChunk(resource=resource, start=start, end=start + days(7), amount=100, remains=100),
+        QuotaChunk(resource=resource, start=start + days(5), end=start + days(10), amount=100, remains=100),
+        QuotaChunk(resource=resource, start=start + days(10), end=start + days(10), amount=100, remains=100),
     ]
 
     assert list(subscription.iter_quota_chunks(since=start - days(1), until=start - days(1))) == []

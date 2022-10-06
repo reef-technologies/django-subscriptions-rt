@@ -24,27 +24,49 @@ def test_subscriptions_involved_performance(five_subscriptions, django_assert_ma
 
 def test_cache_apply(resource, now, days):
     chunks = [
-        QuotaChunk(resource=resource, start=now, end=now + days(1), remains=100),
-        QuotaChunk(resource=resource, start=now + days(1), end=now + days(2), remains=100),
-        QuotaChunk(resource=resource, start=now + days(2), end=now + days(3), remains=100),
+        QuotaChunk(resource=resource, start=now + days(2), end=now + days(3), amount=100, remains=100),
+        QuotaChunk(resource=resource, start=now, end=now + days(1), amount=100, remains=100),
+        QuotaChunk(resource=resource, start=now + days(1), end=now + days(2), amount=100, remains=100),
     ]
 
-    with pytest.raises(InconsistentQuotaCache):
-        list(QuotaCache(
-            datetime=now + days(2),
-            chunks=chunks[::-1],
-        ).apply(chunks))
+    # check that order doesn't matter
+    cache = QuotaCache(
+        datetime=now + days(2),
+        chunks=chunks[::-1],
+    )
+    assert list(cache.apply(chunks)) == chunks
 
     cache = QuotaCache(
         datetime=now + days(1),
         chunks=[
-            QuotaChunk(resource=resource, start=now, end=now + days(1), remains=22),
-            QuotaChunk(resource=resource, start=now + days(1), end=now + days(2), remains=33),
-            QuotaChunk(resource=resource, start=now + days(2), end=now + days(3), remains=44),
+            QuotaChunk(resource=resource, start=now, end=now + days(1), amount=100, remains=22),
+            QuotaChunk(resource=resource, start=now + days(1), end=now + days(2), amount=100, remains=33),
+            QuotaChunk(resource=resource, start=now + days(2), end=now + days(3), amount=100, remains=44),
         ],
     )
 
-    assert list(cache.apply(chunks)) == cache.chunks
+    assert list(cache.apply(chunks)) == [
+        QuotaChunk(resource=resource, start=now + days(2), end=now + days(3), amount=100, remains=44),
+        QuotaChunk(resource=resource, start=now, end=now + days(1), amount=100, remains=22),
+        QuotaChunk(resource=resource, start=now + days(1), end=now + days(2), amount=100, remains=33),
+    ]
+
+
+def test_cache_inconsistencies(resource, now, days):
+    chunks = [
+        QuotaChunk(resource=resource, start=now, end=now + days(1), amount=100, remains=100),
+        QuotaChunk(resource=resource, start=now + days(1), end=now + days(2), amount=100, remains=100),
+        QuotaChunk(resource=resource, start=now + days(2), end=now + days(3), amount=100, remains=100),
+    ]
+
+    cache = QuotaCache(
+        datetime=None,
+        chunks=chunks + [
+            QuotaChunk(resource=resource, start=now, end=now + days(1), amount=100, remains=100),
+        ],
+    )
+    with pytest.raises(InconsistentQuotaCache):
+        list(cache.apply(chunks))
 
 
 def test_remaining_chunks_performance(db, two_subscriptions, now, remaining_chunks, django_assert_max_num_queries, get_cache, days):
@@ -190,11 +212,19 @@ def test_multiple_subscriptions(db, two_subscriptions, user, resource, now, rema
 def test_cache(db, two_subscriptions, now, remaining_chunks, get_cache, days):
 
     for cache_day, test_day in product(range(13), range(13)):
-        if cache_day > test_day:
-            continue
+        assert remaining_chunks(
+            at=now + days(test_day / 2),
+            quota_cache=get_cache(at=now + days(cache_day / 2)),
+        ) == remaining_chunks(
+            at=now + days(test_day / 2),
+        )  # "middle" cases
 
-        assert remaining_chunks(at=now + days(test_day / 2), quota_cache=get_cache(at=now + days(cache_day / 2))) == remaining_chunks(at=now + days(test_day / 2))  # "middle" cases
-        assert remaining_chunks(at=now + days(test_day), quota_cache=get_cache(at=now + days(cache_day))) == remaining_chunks(at=now + days(test_day))  # corner cases
+        assert remaining_chunks(
+            at=now + days(test_day),
+            quota_cache=get_cache(at=now + days(cache_day)),
+        ) == remaining_chunks(
+            at=now + days(test_day),
+        )  # corner cases
 
 
 def test_use_resource(db, user, subscription, quota, resource, remains, now, days):
@@ -244,6 +274,7 @@ def test_cache_backend_correctness(cache_backend, db, user, two_subscriptions, r
                 resource=resource,
                 start=now,
                 end=now + days(7),
+                amount=100,
                 remains=100,
             ),
         ],
@@ -257,6 +288,7 @@ def test_cache_backend_correctness(cache_backend, db, user, two_subscriptions, r
                 resource=resource,
                 start=now,
                 end=now + days(4),
+                amount=900,
                 remains=900,
             ),
         ],
@@ -270,6 +302,7 @@ def test_cache_backend_correctness(cache_backend, db, user, two_subscriptions, r
                 resource=resource,
                 start=now,
                 end=now + days(7),
+                amount=100,
                 remains=50,
             ),
         ],
@@ -283,18 +316,21 @@ def test_cache_backend_correctness(cache_backend, db, user, two_subscriptions, r
                 resource=resource,
                 start=now,
                 end=now + days(7),
+                amount=100,
                 remains=0,
             ),
             QuotaChunk(
                 resource=resource,
                 start=now + days(4),
                 end=now + days(4) + days(7),
+                amount=100,
                 remains=50,
             ),
             QuotaChunk(
                 resource=resource,
                 start=now + days(5),
                 end=now + days(10),
+                amount=100,
                 remains=0,
             ),
         ],
