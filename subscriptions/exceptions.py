@@ -1,5 +1,3 @@
-
-
 class QuotaLimitExceeded(Exception):
     pass
 
@@ -26,4 +24,8 @@ class PaymentError(Exception):
 
 
 class BadReferencePayment(PaymentError):
+    pass
+
+
+class InvalidOperation(Exception):
     pass

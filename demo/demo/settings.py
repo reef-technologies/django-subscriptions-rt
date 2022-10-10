@@ -152,3 +152,6 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/4.0/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+
+APPLE_SHARED_SECRET = environ.get('APPLE_SHARED_SECRET')
