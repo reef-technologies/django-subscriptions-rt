@@ -1,9 +1,24 @@
-from django.contrib.auth.mixins import LoginRequiredMixin
-from django.core.exceptions import ValidationError
-from django.http import Http404
-from django.views.generic import DetailView, ListView, TemplateView
+import json
 
-from .exceptions import PaymentError, ProviderNotFound
+from django.contrib.auth.mixins import LoginRequiredMixin
+from django.contrib.auth.models import User
+from django.core.exceptions import (
+    BadRequest,
+    PermissionDenied,
+    ValidationError,
+)
+from django.http import Http404
+from django.views.generic import (
+    DetailView,
+    ListView,
+    TemplateView,
+)
+from rest_framework.decorators import api_view
+
+from .exceptions import (
+    PaymentError,
+    ProviderNotFound,
+)
 from .models import Plan
 from .providers import get_provider
 
@@ -50,3 +65,28 @@ class PlanSubscriptionView(LoginRequiredMixin, PlanView):
 
 class PlanSubscriptionSuccessView(TemplateView):
     template_name = 'subscriptions/subscribe-success.html'
+
+
+@api_view(['POST'])
+def in_app_purchase_handler(request):
+    user: User = request.user
+
+    if not user.is_authenticated:
+        raise PermissionDenied
+
+    try:
+        json_body = json.loads(request.body)
+    except json.JSONDecodeError:
+        raise BadRequest('Invalid format, expected JSON.')
+
+    try:
+        provider = json_body['provider']
+        transaction_data = json_body['transaction_data']
+    except KeyError:
+        raise BadRequest('Invalid payload, missing fields.')
+
+    # Check for duplication of the transaction_data.
+
+    # Fetch a provider and validate the transaction_data against the store. Also, fetch the plan purchased.
+
+    # Activate the plan.
