@@ -7,6 +7,7 @@ from typing import (
 )
 
 import requests
+import tenacity
 
 
 @enum.unique
@@ -36,7 +37,12 @@ class AppleValidationStatus(int, enum.Enum):
 class AppleInApp:
     # Several fields were omitted. For a full list go to
     # https://developer.apple.com/documentation/appstorereceipts/responsebody/receipt/in_app
+
+    # From documentation: For auto-renewable subscriptions, the time the App Store charged the user’s account
+    # for a subscription purchase or renewal after a lapse (...otherwise) the time the App Store charged
+    # the user's account for a purchased or restored product.
     purchase_date_ms: str
+    # From documentation: The time a subscription expires or when it will renew.
     expires_date_ms: str
 
     product_id: str
@@ -115,8 +121,14 @@ class AppleVerificationResponse:
     receipt: Optional[AppleReceipt] = None
 
     @property
-    def is_ok(self) -> bool:
+    def is_valid(self) -> bool:
         return self.status == AppleValidationStatus.OK
+
+    @property
+    def should_be_retried(self) -> bool:
+        # Receiving sandbox receipt is handled by changing the URL that we target.
+        return not (self.is_valid or self.status == AppleValidationStatus.SANDBOX_RECEIPT_ON_PRODUCTION_ENV) \
+               and self.is_retryable
 
     @classmethod
     def from_json(cls, json_dict: dict) -> 'AppleVerificationResponse':
@@ -132,12 +144,20 @@ class AppleVerificationResponse:
         )
 
 
+RETRY_RULES_FOR_VERIFICATION_RESPONSE = tenacity.retry(
+    # Retry if the response tells us it's ok to retry or
+    # retry if we received any kind of error, documentation says that 200 is the only correct response.
+    retry=tenacity.retry_if_result(lambda verification_response: verification_response.should_be_retried)
+          | tenacity.retry_if_exception_type(requests.HTTPError),
+    stop=tenacity.stop_after_attempt(10),
+    wait=tenacity.wait_exponential(),
+)
+
+
 class AppleReceiptValidator:
     PRODUCTION_ENDPOINT: ClassVar[str] = 'https://buy.itunes.apple.com/verifyReceipt'
     SANDBOX_ENDPOINT: ClassVar[str] = 'https://sandbox.itunes.apple.com/verifyReceipt'
     TIMEOUT_S: ClassVar[float] = 30.0
-
-    RETRY_COUNT: ClassVar[int] = 10
 
     def __init__(self, apple_shared_secret: str):
         self._session = requests.Session()
@@ -149,11 +169,12 @@ class AppleReceiptValidator:
         # to verify with the sandbox URL if you receive a 21007 status code."
         response = self._validate_receipt_on_endpoint(self.PRODUCTION_ENDPOINT, receipt_data)
 
-        if response.status == AppleValidationStatus.PRODUCTION_RECEIPT_ON_SANDBOX_ENV:
+        if response.status == AppleValidationStatus.SANDBOX_RECEIPT_ON_PRODUCTION_ENV:
             response = self._validate_receipt_on_endpoint(self.SANDBOX_ENDPOINT, receipt_data)
 
         return response
 
+    @RETRY_RULES_FOR_VERIFICATION_RESPONSE
     def _validate_receipt_on_endpoint(self, endpoint: str, receipt_data: str) -> AppleVerificationResponse:
         # Omitting parameter 'exclude-old-transactions' as it's only for recurring subscriptions.
         # https://developer.apple.com/documentation/appstorereceipts/requestbody
