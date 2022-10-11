@@ -1,10 +1,7 @@
 import dataclasses
 import datetime
 import enum
-from typing import (
-    ClassVar,
-    Optional,
-)
+from typing import ClassVar
 
 import requests
 import tenacity
@@ -112,13 +109,19 @@ class AppleVerificationResponse:
     # Several fields were omitted. For a full list go to
     # https://developer.apple.com/documentation/appstorereceipts/responsebody
 
+    FINISHED_STATES: ClassVar[set[AppleValidationStatus]] = {
+        AppleValidationStatus.OK,
+        # Receiving sandbox receipt is handled by changing the URL that we target.
+        AppleValidationStatus.SANDBOX_RECEIPT_ON_PRODUCTION_ENV,
+    }
+
     # The environment for which the receipt was generated.
     environment: AppleEnvironment
 
     is_retryable: bool
     status: AppleValidationStatus
 
-    receipt: Optional[AppleReceipt] = None
+    receipt: AppleReceipt = None
 
     @property
     def is_valid(self) -> bool:
@@ -126,9 +129,8 @@ class AppleVerificationResponse:
 
     @property
     def should_be_retried(self) -> bool:
-        # Receiving sandbox receipt is handled by changing the URL that we target.
-        return not (self.is_valid or self.status == AppleValidationStatus.SANDBOX_RECEIPT_ON_PRODUCTION_ENV) \
-               and self.is_retryable
+        is_finished = self.status in self.FINISHED_STATES
+        return not is_finished and self.is_retryable
 
     @classmethod
     def from_json(cls, json_dict: dict) -> 'AppleVerificationResponse':
@@ -182,7 +184,7 @@ class AppleReceiptValidator:
             'receipt-data': receipt_data,
             'password': self._shared_secret,
         }
-        response = self._session.post(endpoint, json=payload)
+        response = self._session.post(endpoint, json=payload, timeout=self.TIMEOUT_S)
         response.raise_for_status()
 
         json_data = response.json()
