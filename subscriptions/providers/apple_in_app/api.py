@@ -105,7 +105,7 @@ class AppleReceipt:
 
 
 @dataclasses.dataclass
-class AppleVerificationResponse:
+class AppleVerifyReceiptResponse:
     # Several fields were omitted. For a full list go to
     # https://developer.apple.com/documentation/appstorereceipts/responsebody
 
@@ -121,7 +121,7 @@ class AppleVerificationResponse:
     is_retryable: bool
     status: AppleValidationStatus
 
-    receipt: AppleReceipt = None
+    receipt: AppleReceipt
 
     @property
     def is_valid(self) -> bool:
@@ -133,7 +133,7 @@ class AppleVerificationResponse:
         return not is_finished and self.is_retryable
 
     @classmethod
-    def from_json(cls, json_dict: dict) -> 'AppleVerificationResponse':
+    def from_json(cls, json_dict: dict) -> 'AppleVerifyReceiptResponse':
         receipt = AppleReceipt.from_json(json_dict['receipt'])
 
         return cls(
@@ -156,7 +156,7 @@ RETRY_RULES_FOR_VERIFICATION_RESPONSE = tenacity.retry(
 )
 
 
-class AppleReceiptValidator:
+class AppleAppStoreAPI:
     PRODUCTION_ENDPOINT: ClassVar[str] = 'https://buy.itunes.apple.com/verifyReceipt'
     SANDBOX_ENDPOINT: ClassVar[str] = 'https://sandbox.itunes.apple.com/verifyReceipt'
     TIMEOUT_S: ClassVar[float] = 30.0
@@ -165,19 +165,19 @@ class AppleReceiptValidator:
         self._session = requests.Session()
         self._shared_secret = apple_shared_secret
 
-    def validate_receipt(self, receipt_data: str) -> AppleVerificationResponse:
+    def fetch_receipt_data(self, receipt_data: str) -> AppleVerifyReceiptResponse:
         # https://developer.apple.com/documentation/appstorereceipts/verifyreceipt
         # "As a best practice, always call the production URL for verifyReceipt first, and proceed
         # to verify with the sandbox URL if you receive a 21007 status code."
-        response = self._validate_receipt_on_endpoint(self.PRODUCTION_ENDPOINT, receipt_data)
+        response = self._fetch_receipt_from_endpoint(self.PRODUCTION_ENDPOINT, receipt_data)
 
         if response.status == AppleValidationStatus.SANDBOX_RECEIPT_ON_PRODUCTION_ENV:
-            response = self._validate_receipt_on_endpoint(self.SANDBOX_ENDPOINT, receipt_data)
+            response = self._fetch_receipt_from_endpoint(self.SANDBOX_ENDPOINT, receipt_data)
 
         return response
 
     @RETRY_RULES_FOR_VERIFICATION_RESPONSE
-    def _validate_receipt_on_endpoint(self, endpoint: str, receipt_data: str) -> AppleVerificationResponse:
+    def _fetch_receipt_from_endpoint(self, endpoint: str, receipt_data: str) -> AppleVerifyReceiptResponse:
         # Omitting parameter 'exclude-old-transactions' as it's only for recurring subscriptions.
         # https://developer.apple.com/documentation/appstorereceipts/requestbody
         payload = {
@@ -188,4 +188,4 @@ class AppleReceiptValidator:
         response.raise_for_status()
 
         json_data = response.json()
-        return AppleVerificationResponse.from_json(json_data)
+        return AppleVerifyReceiptResponse.from_json(json_data)

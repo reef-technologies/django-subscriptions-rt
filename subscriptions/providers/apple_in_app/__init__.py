@@ -6,6 +6,7 @@ from typing import (
     Tuple,
 )
 
+from django.conf import settings
 from django.contrib.auth.base_user import AbstractBaseUser
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -16,12 +17,22 @@ from subscriptions.models import (
     Subscription,
     SubscriptionPayment,
 )
-from subscriptions.providers import Provider
+from .api import (
+    AppleAppStoreAPI,
+    AppleInApp,
+    AppleVerifyReceiptResponse,
+)
+from .. import Provider
 
 
 @dataclass
 class AppleInAppProvider(Provider):
     codename: ClassVar[str] = 'apple_in_app'
+
+    api: AppleAppStoreAPI = None
+
+    def __post_init__(self):
+        pass
 
     def charge_online(self, user: AbstractBaseUser, plan: Plan, subscription: Optional[Subscription] = None,
                       quantity: int = 1) -> Tuple[SubscriptionPayment, str]:
@@ -50,6 +61,8 @@ class AppleInAppProvider(Provider):
             pass
 
         # Validate the receipt. Fetch the status and product.
+        receipt_data = self.api.fetch_receipt_data(receipt)
+        single_in_app = self._get_validated_in_app_product(receipt_data)
 
         # Create a new plan mapped to the receipt.
         if payment is None:
@@ -61,3 +74,10 @@ class AppleInAppProvider(Provider):
 
     def check_payments(self, payments: Iterable[SubscriptionPayment]):
         pass
+
+    @staticmethod
+    def _get_validated_in_app_product(response: AppleVerifyReceiptResponse) -> AppleInApp:
+        assert response.is_valid, str(response)
+        assert response.receipt.bundle_id == settings.APPLE_BUNDLE_ID, str(response)
+        assert len(response.receipt.in_apps) == 1
+        return response.receipt.in_apps[0]

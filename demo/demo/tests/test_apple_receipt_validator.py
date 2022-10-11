@@ -6,9 +6,9 @@ import requests
 
 from subscriptions.providers.apple_in_app.api import (
     AppleEnvironment,
-    AppleReceiptValidator,
+    AppleAppStoreAPI,
     AppleValidationStatus,
-    AppleVerificationResponse,
+    AppleVerifyReceiptResponse,
 )
 
 
@@ -49,8 +49,8 @@ def make_mock_response(code: int, data_json: str) -> unittest.mock.MagicMock:
 
 
 def make_api_call(service_responses: list[tuple[int, str]]) -> tuple[
-    AppleVerificationResponse, list[unittest.mock.call]]:
-    api = AppleReceiptValidator('shared-secret')
+    AppleVerifyReceiptResponse, list[unittest.mock.call]]:
+    api = AppleAppStoreAPI('shared-secret')
 
     responses = [
         make_mock_response(code, data)
@@ -61,7 +61,7 @@ def make_api_call(service_responses: list[tuple[int, str]]) -> tuple[
     fake_session.post = unittest.mock.MagicMock(side_effect=responses)
     api._session = fake_session
 
-    result = api.validate_receipt('receipt-data')
+    result = api.fetch_receipt_data('receipt-data')
 
     return result, fake_session.post.call_args_list
 

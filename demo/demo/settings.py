@@ -154,4 +154,8 @@ STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
+# ID of the application that we're trying to verify.
+APPLE_BUNDLE_ID = environ.get('APPLE_BUNDLE_ID')
+# Shared secret that can be used to ask Apple about receipts. Obtainable from
+# https://help.apple.com/app-store-connect/#/devf341c0f01
 APPLE_SHARED_SECRET = environ.get('APPLE_SHARED_SECRET')
