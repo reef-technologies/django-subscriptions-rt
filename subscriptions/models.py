@@ -18,6 +18,7 @@ from django.db import models
 from django.db.models import Index, QuerySet, UniqueConstraint
 from django.urls import reverse
 from django.utils.timezone import now
+from pydantic import BaseModel
 
 from .exceptions import InconsistentQuotaCache, PaymentError, ProlongationImpossible, ProviderNotFound
 from .fields import MoneyField, RelativeDurationField
@@ -388,6 +389,17 @@ class SubscriptionPayment(AbstractTransaction):
                 user=user,
                 status=SubscriptionPayment.Status.COMPLETED,
             ).latest()
+
+    @property
+    def meta(self) -> BaseModel:
+        from .providers import get_provider
+
+        provider = get_provider(self.provider_codename)
+        return provider.metadata_class.parse_obj(self.metadata)
+
+    @meta.setter
+    def meta(self, value: BaseModel):
+        self.metadata = value.dict()
 
 
 class SubscriptionPaymentRefund(AbstractTransaction):
