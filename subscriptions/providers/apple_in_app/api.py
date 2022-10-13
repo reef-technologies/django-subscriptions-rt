@@ -7,6 +7,11 @@ import requests
 import tenacity
 
 
+def datetime_from_ms_timestamp(ms_timestamp: str) -> datetime.datetime:
+    seconds_timestamp = float(ms_timestamp) / 1000.0
+    return datetime.datetime.fromtimestamp(seconds_timestamp, tz=datetime.timezone.utc)
+
+
 @enum.unique
 class AppleEnvironment(str, enum.Enum):
     SANDBOX = 'Sandbox'
@@ -38,9 +43,9 @@ class AppleInApp:
     # From documentation: For auto-renewable subscriptions, the time the App Store charged the user’s account
     # for a subscription purchase or renewal after a lapse (...otherwise) the time the App Store charged
     # the user's account for a purchased or restored product.
-    purchase_date_ms: str
+    purchase_date: datetime.datetime
     # From documentation: The time a subscription expires or when it will renew.
-    expires_date_ms: str
+    expires_date: datetime.datetime
 
     product_id: str
     quantity: int
@@ -52,19 +57,11 @@ class AppleInApp:
     # This value is the primary key for identifying subscription purchases.
     web_order_line_item_id: str
 
-    @property
-    def purchase_date(self) -> datetime.datetime:
-        return self.__from_ms_timestamp(self.purchase_date_ms)
-
-    @property
-    def expires_date(self) -> datetime.datetime:
-        return self.__from_ms_timestamp(self.expires_date_ms)
-
     @classmethod
     def from_json(cls, json_dict: dict) -> 'AppleInApp':
         return cls(
-            purchase_date_ms=json_dict['purchase_date_ms'],
-            expires_date_ms=json_dict['expires_date_ms'],
+            purchase_date=datetime_from_ms_timestamp(json_dict['purchase_date_ms']),
+            expires_date=datetime_from_ms_timestamp(json_dict['expires_date_ms']),
 
             product_id=json_dict['product_id'],
             quantity=int(json_dict['quantity']),
@@ -79,11 +76,6 @@ class AppleInApp:
             cls.from_json(entry)
             for entry in json_list
         ]
-
-    @staticmethod
-    def __from_ms_timestamp(ms_timestamp: str) -> datetime.datetime:
-        seconds_timestamp = float(ms_timestamp) / 1000.0
-        return datetime.datetime.fromtimestamp(seconds_timestamp, tz=datetime.timezone.utc)
 
 
 @dataclasses.dataclass

@@ -8,6 +8,7 @@ from typing import (
 
 from django.conf import settings
 from django.contrib.auth.base_user import AbstractBaseUser
+from django.core.exceptions import SuspiciousOperation
 from rest_framework.request import Request
 from rest_framework.response import Response
 
@@ -25,6 +26,7 @@ from .api import (
 from .app_store import (
     AppStoreNotification,
     AppStoreNotificationTypeV2,
+    PayloadValidationError,
 )
 from .. import Provider
 
@@ -100,7 +102,11 @@ class AppleInAppProvider(Provider):
 
     def _handle_app_store(self, _request: Request, payload: dict) -> Response:
         signed_payload = payload[self.signed_payload_tag]
-        payload = AppStoreNotification.from_signed_payload(signed_payload)
+
+        try:
+            payload = AppStoreNotification.from_signed_payload(signed_payload)
+        except PayloadValidationError:
+            raise SuspiciousOperation()
 
         # We're only handling an actual renewal event. The rest means that,
         # for whatever reason, it failed, or we don't care about them for now.
