@@ -61,15 +61,16 @@ def are_certificates_identical(cert_1: crypto.X509, cert_2: crypto.X509) -> bool
 
 def validate_and_fetch_apple_signed_payload(signed_payload: str) -> dict[str, Any]:
     """
-    Information about the JWT header from this payload.
+    https://developer.apple.com/documentation/appstoreservernotifications/responsebodyv2
     https://developer.apple.com/documentation/appstoreservernotifications/jwsdecodedheader
+    https://datatracker.ietf.org/doc/html/rfc7515#section-5.2
 
     This consists of three steps:
     1. Checking whether the root certificate is the same as the Apple root certificate.
     2. Checking whether the certificate chain "works as intended" (root signed intermediate, store signed final one).
     3. Using public key from the last certificate to validate the JWT payload.
 
-    Things to look after
+    Things to look after (I know it's old).
     https://mail.python.org/pipermail/cryptography-dev/2016-August/000676.html
     """
     header = jwt.get_unverified_header(signed_payload)
