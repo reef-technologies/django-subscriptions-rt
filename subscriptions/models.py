@@ -354,6 +354,12 @@ class SubscriptionPayment(AbstractTransaction):
     plan = models.ForeignKey(Plan, on_delete=models.PROTECT, related_name='payments')
     subscription = models.ForeignKey(Subscription, on_delete=models.PROTECT, blank=True, null=True, related_name='payments')
     quantity = models.PositiveIntegerField(default=1)
+
+    # If not specifying following fields, they are set automatically after Subscription
+    # creation / prolongation; however, it works other way round as well: if these fields
+    # are set, their values will be used to adjust subscription duration; this is handy
+    # when payment and subscription info comes from external source and is out of control
+    # of the application.
     subscription_start = models.DateTimeField(blank=True, null=True)  # TODO: paid from
     subscription_end = models.DateTimeField(blank=True, null=True)  # TODO: paid to
 
@@ -366,19 +372,37 @@ class SubscriptionPayment(AbstractTransaction):
             # TODO: send email if not silent
             if self.status == self.Status.COMPLETED:
                 if (subscription := self.subscription):
-                    self.subscription_start = subscription.end
-                    subscription.end = subscription.prolong()  # TODO: what if this fails?
-                    self.subscription_end = subscription.end
+                    self.subscription_start = self.subscription_start or subscription.end
+
+                    if self.subscription_end:
+                        assert self.subscription_end > self.subscription_start
+
+                        # change existing subscription duration based on payment's end
+                        if self.subscription_end <= subscription.end:
+                            log.warning('Payment\'s end (%s) is earlier than current subscription\'s end (%s) -> payment has no effect', self.subscription_end, subscription.end)
+                        else:
+                            subscription.end = self.subscription_end
+
+                    else:
+                        # prolong existing subscription and set payment's (start, end)
+                        subscription.end = subscription.prolong()  # TODO: what if this fails?
+                        self.subscription_end = subscription.end
+
                     subscription.save()
+
                 else:
                     self.subscription = Subscription.objects.create(
                         user=self.user,
                         plan=self.plan,
                         quantity=self.quantity,
+                        start=self.subscription_start,
+                        end=self.subscription_end,
                     )
-                    self.subscription
+                    # in case subscription_start and subscription_end are empty:
                     self.subscription_start = self.subscription.start
                     self.subscription_end = self.subscription.end
+            elif self.status == self.Status.CANCELED:
+                raise NotImplementedError()
 
         return super().save(*args, **kwargs)
 
