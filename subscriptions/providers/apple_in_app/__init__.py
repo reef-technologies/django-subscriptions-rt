@@ -22,11 +22,18 @@ from .api import (
     AppleInApp,
     AppleVerifyReceiptResponse,
 )
+from .app_store import (
+    AppStoreNotification,
+    AppStoreNotificationTypeV2,
+)
 from .. import Provider
 
 
 @dataclass
 class AppleInAppProvider(Provider):
+    transaction_receipt_tag: ClassVar[str] = 'transaction_receipt'
+    signed_payload_tag: ClassVar[str] = 'signedPayload'
+
     codename: ClassVar[str] = 'apple_in_app'
 
     api: AppleAppStoreAPI = None
@@ -47,7 +54,26 @@ class AppleInAppProvider(Provider):
         raise InvalidOperation()
 
     def webhook(self, request: Request, payload: dict) -> Response:
-        receipt = payload['transaction_receipt']
+        if self.transaction_receipt_tag in payload:
+            return self._handle_receipt(request, payload)
+        elif self.signed_payload_tag in payload:
+            return self._handle_app_store(request, payload)
+        else:
+            # Invalid, unhandled request.
+            return Response(status=400)
+
+    def check_payments(self, payments: Iterable[SubscriptionPayment]):
+        pass
+
+    @staticmethod
+    def _get_validated_in_app_product(response: AppleVerifyReceiptResponse) -> AppleInApp:
+        assert response.is_valid, str(response)
+        assert response.receipt.bundle_id == settings.APPLE_BUNDLE_ID, str(response)
+        assert len(response.receipt.in_apps) == 1
+        return response.receipt.in_apps[0]
+
+    def _handle_receipt(self, _request: Request, payload: dict) -> Response:
+        receipt = payload[self.transaction_receipt_tag]
 
         # Check whether this receipt is anyhow interesting:
         payment = None
@@ -72,12 +98,15 @@ class AppleInAppProvider(Provider):
         payment.save()
         return Response()
 
-    def check_payments(self, payments: Iterable[SubscriptionPayment]):
-        pass
+    def _handle_app_store(self, _request: Request, payload: dict) -> Response:
+        signed_payload = payload[self.signed_payload_tag]
+        payload = AppStoreNotification.from_signed_payload(signed_payload)
 
-    @staticmethod
-    def _get_validated_in_app_product(response: AppleVerifyReceiptResponse) -> AppleInApp:
-        assert response.is_valid, str(response)
-        assert response.receipt.bundle_id == settings.APPLE_BUNDLE_ID, str(response)
-        assert len(response.receipt.in_apps) == 1
-        return response.receipt.in_apps[0]
+        # We're only handling an actual renewal event. The rest means that,
+        # for whatever reason, it failed, or we don't care about them for now.
+        # As for expirations – these are handled on our side anyway, that would be only an additional validation.
+        # In all other cases we're just returning "200 OK" to let the App Store know that we're received the message.
+        if payload.notification != AppStoreNotificationTypeV2.DID_RENEW:
+            return Response(status=200)
+
+        # Find the original transaction, fetch the user, create a new subscription payment.
