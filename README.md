@@ -39,7 +39,7 @@ Workflow from the mobile application perspective:
 
 1) App fetches data from backend's `/plans/` endpoint. Each plan will have metadata entry `apple_in_app`
    -> `string`, where `string` represents an
-   Apple [identifier](https://developer.apple.com/documentation/storekit/product/3851116-products)
+   Apple [Product identifier](https://developer.apple.com/documentation/storekit/product/3851116-products)
 2) When user performs a purchase,
    app [fetches the receipt data](https://developer.apple.com/documentation/storekit/in-app_purchase/original_api_for_in-app_purchase/validating_receipts_with_the_app_store)
 3) Receipt is sent to backend using `POST /webhook/apple_in_app/ {"transaction_receipt": "<base64 encoded receipt>"}`.
@@ -48,7 +48,7 @@ Workflow from the mobile application perspective:
    returned to the app is the same as when querying `/payments/<uid>/` endpoint
 5) In case of an error, a retry should be performed with an exponentially increased timeout and after each application
    restart. Utmost care should be taken when handling the receipt. It should be stored on the device until the server
-   accepts the operation
+   accepts the operation. Failure to comply will result in client dissatisfaction and potential refund
 
 Workflow from the backend perspective – handling client operation:
 
