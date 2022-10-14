@@ -128,6 +128,8 @@ class AppleInAppProvider(Provider):
         # Making a silly copy.
         subscription_payment.pk = None
         # Updating relevant fields.
+        # TODO(kkalinowski): check whether the product ID didn't change in the meantime –
+        #  someone might have upgraded their subscription.
         subscription_payment.provider_transaction_id = payload.transaction_info.transaction_id
         subscription_payment.subscription_start = payload.transaction_info.purchase_date
         subscription_payment.subscription_end = payload.transaction_info.expires_date
