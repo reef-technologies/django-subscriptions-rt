@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import (
     ClassVar,
     Iterable,
@@ -76,7 +77,7 @@ class AppleInAppProvider(Provider):
         assert len(response.receipt.in_apps) == 1
         return response.receipt.in_apps[0]
 
-    def _handle_receipt(self, _request: Request, payload: dict) -> Response:
+    def _handle_receipt(self, request: Request, payload: dict) -> Response:
         receipt = payload[self.transaction_receipt_tag]
 
         # Validate the receipt. Fetch the status and product.
@@ -96,12 +97,33 @@ class AppleInAppProvider(Provider):
             pass
 
         # Find the right plan to create subscription.
+        plan = Plan.objects.get(apple_in_app=single_in_app.product_id)
 
         # Create subscription.
+        subscription = Subscription(
+            user=request.user,
+            plan=plan,
+            # For in-app purchases this option doesn't make sense.
+            auto_prolong=False,
+        )
+        subscription.save()
 
         # Create subscription payment.
+        subscription_payment = SubscriptionPayment(
+            provider_codename=self.codename,
+            provider_transaction_id=single_in_app.transaction_id,
+            status=SubscriptionPayment.Status.COMPLETED,
+            # In-app purchase doesn't report the money.
+            amount=Decimal('0.00'),
+            user=subscription.user,
+            plan=subscription.plan,
+            subscription_start=single_in_app.purchase_date,
+            subscription_end=single_in_app.expires_date,
+        )
+        subscription_payment.save()
 
         # Return the payment.
+        return Response()
 
     def _handle_app_store(self, _request: Request, payload: dict) -> Response:
         signed_payload = payload[self.signed_payload_tag]
