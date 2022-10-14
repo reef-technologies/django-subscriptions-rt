@@ -27,6 +27,7 @@ from .app_store import (
     AppStoreNotification,
     AppStoreNotificationTypeV2,
     PayloadValidationError,
+    setup_original_apple_certificate,
 )
 from .. import Provider
 
@@ -41,7 +42,8 @@ class AppleInAppProvider(Provider):
     api: AppleAppStoreAPI = None
 
     def __post_init__(self):
-        pass
+        self.api = AppleAppStoreAPI(settings.APPLE_SHARED_SECRET)
+        setup_original_apple_certificate(settings.APPLE_ROOT_CERTIFICATE_PATH)
 
     def charge_online(self, user: AbstractBaseUser, plan: Plan, subscription: Optional[Subscription] = None,
                       quantity: int = 1) -> Tuple[SubscriptionPayment, str]:

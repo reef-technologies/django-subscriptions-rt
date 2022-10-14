@@ -15,7 +15,6 @@ from cryptography.hazmat.primitives.serialization import (
     PublicFormat,
 )
 from cryptography.x509 import load_der_x509_certificate
-from django.conf import settings
 
 from .api import (
     AppleEnvironment,
@@ -31,7 +30,6 @@ class PayloadValidationError(Exception):
 
 def load_certificate_from_bytes(certificate_data: bytes) -> crypto.X509:
     basic_cert = load_der_x509_certificate(certificate_data)
-    # OpenSSL can load ASN1 and PEM, cryptography can load DER. Luckily, OpenSSL can use cryptography.
     return crypto.X509.from_cryptography(basic_cert)
 
 
@@ -41,16 +39,21 @@ def load_certificate_from_x5c(x5c_entry: str) -> crypto.X509:
     return load_certificate_from_bytes(certificate_data)
 
 
-def get_original_apple_certificate() -> crypto.X509:
+def setup_original_apple_certificate(certificate_path: str) -> None:
     global CACHED_APPLE_ROOT_CERT
 
     if CACHED_APPLE_ROOT_CERT is None:
-        cert_path = pathlib.Path(settings.APPLE_ROOT_CERTIFICATE_PATH)
+        cert_path = pathlib.Path(certificate_path)
         if not cert_path.exists() or not cert_path.is_file():
             raise ValueError('No root certificate for Apple provided. Check Django configuration settings.')
 
         CACHED_APPLE_ROOT_CERT = load_certificate_from_bytes(cert_path.read_bytes())
 
+
+def get_original_apple_certificate() -> crypto.X509:
+    global CACHED_APPLE_ROOT_CERT
+    if CACHED_APPLE_ROOT_CERT is None:
+        raise ValueError('Certificate was not set up properly. Call setup_original_apple_certificate before using it.')
     return CACHED_APPLE_ROOT_CERT
 
 
@@ -97,7 +100,7 @@ def validate_and_fetch_apple_signed_payload(signed_payload: str) -> dict[str, An
     current_certificate: Optional[crypto.X509] = None
 
     # Go from the back, excluding the one that we've already validated.
-    # NOTE(kkalinowski): While it could be done with a single X509StoreContext,
+    # NOTE(kkalinowski): While it could be done with a single X509StoreContext
     # using untrusted cert list, I'm unsure about safety of this method (and far from understanding it enough
     # to be able to determine this myself). The one presented below is said to be secure by someone smarter than me.
     for certificate_x5c in reversed(certificates_chain[:-1]):
@@ -116,13 +119,9 @@ def validate_and_fetch_apple_signed_payload(signed_payload: str) -> dict[str, An
 
     # Fetch public key from the last certificate and validate the payload.
     algorithm = header['alg']
-    # TODO(kkalinowski): validate whether this is the correct set of parameters used as the secret
-    #  from the actual app-store query. While encoding should be fine (all other keys are in DER fromat)
-    #  the PublicFormat has SubjectPublicKeyInfo entry, that "could be the right one".
-    secret = current_certificate.to_cryptography().public_key().public_bytes(Encoding.DER, PublicFormat.PKCS1)
 
     try:
-        payload = jwt.decode(signed_payload, secret, algorithm)
+        payload = jwt.decode(signed_payload, current_certificate.get_pubkey().to_cryptography_key(), algorithm)
     except jwt.PyJWTError as ex:
         raise PayloadValidationError(str(ex))
 

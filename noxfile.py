@@ -26,7 +26,8 @@ def test(session, django: str):
         f'django~={django}.0',
         'pytest', 'pytest-django',
         'ipdb', 'freezegun',
-        'psycopg2-binary',
+        'psycopg2-binary', 'pyjwt',
+        'cryptography', 'pyopenssl',
         '.',
     )
     session.run('pytest', '-W', 'ignore::DeprecationWarning', '-s', '-x', '-vv', str(DEMO_APP_DIR / 'demo' / 'tests'), *session.posargs, env={'DJANGO_SETTINGS_MODULE': 'demo.settings'})
