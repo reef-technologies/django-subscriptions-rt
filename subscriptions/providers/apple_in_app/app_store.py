@@ -178,6 +178,9 @@ class AppStoreNotificationTypeV2Subtype(str, enum.Enum):
 
 @dataclasses.dataclass
 class AppStoreTransactionInfo:
+    """
+    https://developer.apple.com/documentation/appstoreservernotifications/jwstransactiondecodedpayload
+    """
     # UUID set by the application, empty if not set.
     app_account_token: str
     bundle_id: str

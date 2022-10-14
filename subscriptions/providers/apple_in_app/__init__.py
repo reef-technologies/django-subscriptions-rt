@@ -79,28 +79,29 @@ class AppleInAppProvider(Provider):
     def _handle_receipt(self, _request: Request, payload: dict) -> Response:
         receipt = payload[self.transaction_receipt_tag]
 
-        # Check whether this receipt is anyhow interesting:
-        payment = None
-        try:
-            payment = SubscriptionPayment.objects.get(provider_transaction_id=receipt)
-            # We're interested in existing payments only if these are pending, and we're waiting for an update.
-            if payment.status != payment.Status.PENDING:
-                return Response()
-        except SubscriptionPayment.DoesNotExist:
-            # If it doesn't exist, it's all right – most probably it needs to be created.
-            pass
-
         # Validate the receipt. Fetch the status and product.
         receipt_data = self.api.fetch_receipt_data(receipt)
         single_in_app = self._get_validated_in_app_product(receipt_data)
 
-        # Create a new plan mapped to the receipt.
-        if payment is None:
-            payment = SubscriptionPayment.objects.create(provider_transaction_id=receipt)
+        # Check whether this receipt is anyhow interesting:
+        try:
+            payment = SubscriptionPayment.objects.get(provider_codename=self.codename,
+                                                      provider_transaction_id=single_in_app.transaction_id)
+            # We've already handled this. And all the messages coming to us from iOS should be AFTER
+            # the client money were removed.
+            # TODO(kkalinowski): return the subscription payment object.
+            return Response()
+        except SubscriptionPayment.DoesNotExist:
+            # If it doesn't exist, it's all right – most probably it needs to be created.
+            pass
 
-        payment.status = SubscriptionPayment.Status.COMPLETED
-        payment.save()
-        return Response()
+        # Find the right plan to create subscription.
+
+        # Create subscription.
+
+        # Create subscription payment.
+
+        # Return the payment.
 
     def _handle_app_store(self, _request: Request, payload: dict) -> Response:
         signed_payload = payload[self.signed_payload_tag]
@@ -118,3 +119,18 @@ class AppleInAppProvider(Provider):
             return Response(status=200)
 
         # Find the original transaction, fetch the user, create a new subscription payment.
+        # Note – if we didn't find it, something is really wrong. This notification is only for subsequent payments.
+        subscription_payment = SubscriptionPayment.objects.get(
+            provider_codename=self.codename,
+            provider_transaction_id=payload.transaction_info.original_transaction_id,
+        )
+
+        # Making a silly copy.
+        subscription_payment.pk = None
+        # Updating relevant fields.
+        subscription_payment.provider_transaction_id = payload.transaction_info.transaction_id
+        subscription_payment.subscription_start = payload.transaction_info.purchase_date
+        subscription_payment.subscription_end = payload.transaction_info.expires_date
+        subscription_payment.save()
+
+        return Response(status=200)

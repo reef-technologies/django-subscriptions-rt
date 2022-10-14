@@ -50,6 +50,7 @@ class AppleInApp:
     product_id: str
     quantity: int
 
+    original_transaction_id: str
     transaction_id: str
 
     # From documentation:
@@ -66,6 +67,7 @@ class AppleInApp:
             product_id=json_dict['product_id'],
             quantity=int(json_dict['quantity']),
 
+            original_transaction_id=json_dict['original_transaction_id'],
             transaction_id=json_dict['transaction_id'],
             web_order_line_item_id=json_dict['web_order_line_item_id'],
         )
