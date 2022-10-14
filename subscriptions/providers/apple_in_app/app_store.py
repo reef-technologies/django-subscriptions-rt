@@ -10,10 +10,7 @@ from typing import (
 
 import jwt
 from OpenSSL import crypto
-from cryptography.hazmat.primitives.serialization import (
-    Encoding,
-    PublicFormat,
-)
+from cryptography.hazmat.primitives.serialization import Encoding
 from cryptography.x509 import load_der_x509_certificate
 
 from .api import (
@@ -24,7 +21,15 @@ from .api import (
 CACHED_APPLE_ROOT_CERT: Optional[crypto.X509] = None
 
 
-class PayloadValidationError(Exception):
+class AppleAppStoreError(Exception):
+    pass
+
+
+class ConfigurationError(AppleAppStoreError):
+    pass
+
+
+class PayloadValidationError(AppleAppStoreError):
     pass
 
 
@@ -45,7 +50,7 @@ def setup_original_apple_certificate(certificate_path: str) -> None:
     if CACHED_APPLE_ROOT_CERT is None:
         cert_path = pathlib.Path(certificate_path)
         if not cert_path.exists() or not cert_path.is_file():
-            raise ValueError('No root certificate for Apple provided. Check Django configuration settings.')
+            raise ConfigurationError('No root certificate for Apple provided. Check Django configuration settings.')
 
         CACHED_APPLE_ROOT_CERT = load_certificate_from_bytes(cert_path.read_bytes())
 
@@ -53,7 +58,8 @@ def setup_original_apple_certificate(certificate_path: str) -> None:
 def get_original_apple_certificate() -> crypto.X509:
     global CACHED_APPLE_ROOT_CERT
     if CACHED_APPLE_ROOT_CERT is None:
-        raise ValueError('Certificate was not set up properly. Call setup_original_apple_certificate before using it.')
+        raise ConfigurationError('Certificate was not set up properly. '
+                                 'Call setup_original_apple_certificate before using it.')
     return CACHED_APPLE_ROOT_CERT
 
 

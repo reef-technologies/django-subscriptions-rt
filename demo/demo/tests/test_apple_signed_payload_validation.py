@@ -4,15 +4,22 @@ from typing import (
     Optional,
 )
 
-import jwt
+import jwt.utils
 import pytest
 from OpenSSL import crypto
 
 import subscriptions.providers.apple_in_app.app_store
-from subscriptions.providers.apple_in_app.app_store import validate_and_fetch_apple_signed_payload
+from subscriptions.providers.apple_in_app.app_store import (
+    ConfigurationError,
+    PayloadValidationError,
+    validate_and_fetch_apple_signed_payload,
+)
 
 # TODO(kkalinowski): replace with the actual algorithm obtained from a request from Apple.
 ALG_JWT_HEADER = 'RS256'
+TEST_PAYLOAD = {
+    'test': 'value'
+}
 
 
 class CertificateGroup(NamedTuple):
@@ -20,10 +27,10 @@ class CertificateGroup(NamedTuple):
     key: crypto.PKey
 
 
-def make_cert(serial: int,
-              is_ca: bool = False,
-              is_leaf: bool = False,
-              issuer_group: Optional[CertificateGroup] = None) -> CertificateGroup:
+def make_cert_group(serial: int,
+                    is_ca: bool = False,
+                    is_leaf: bool = False,
+                    issuer_group: Optional[CertificateGroup] = None) -> CertificateGroup:
     # Procedure taken from
     # https://stackoverflow.com/questions/45873832/how-do-i-create-and-sign-certificates-with-pythons-pyopenssl
     # and cleaned up.
@@ -65,12 +72,13 @@ def make_cert(serial: int,
     return CertificateGroup(certificate, cert_key)
 
 
-@pytest.fixture(scope='module')
+@pytest.fixture(scope='function')
 def root_certificate_group() -> CertificateGroup:
-    certificate_group = make_cert(serial=1, is_ca=True)
+    certificate_group = make_cert_group(serial=1, is_ca=True)
     # Assign is as a root apple certificate.
     subscriptions.providers.apple_in_app.app_store.CACHED_APPLE_ROOT_CERT = certificate_group.certificate
-    return certificate_group
+    yield certificate_group
+    subscriptions.providers.apple_in_app.app_store.CACHED_APPLE_ROOT_CERT = None
 
 
 def make_x5c_header(certificate_chain: list[crypto.X509]) -> list[str]:
@@ -88,51 +96,104 @@ def make_x5c_header(certificate_chain: list[crypto.X509]) -> list[str]:
     return result
 
 
-def test__ok(root_certificate_group: CertificateGroup):
-    intermediate_cert_group = make_cert(serial=2, is_ca=True, issuer_group=root_certificate_group)
-    final_cert_group = make_cert(serial=3, is_leaf=True, issuer_group=intermediate_cert_group)
-
-    # NOTE(kkalinowski): this is our assumption about the secret created by Apple.
-    #   If it happens to be different, this is the place to fix it.
-    original_payload = {
-        'test': 'value'
-    }
+def get_signed_payload_with_certificates(payload: dict,
+                                         cert_chain: list[CertificateGroup],
+                                         private_key: crypto.PKey) -> str:
     headers = {
         'alg': ALG_JWT_HEADER,
         'x5c': make_x5c_header([
-            final_cert_group.certificate,
-            intermediate_cert_group.certificate,
-            root_certificate_group.certificate,
+            group.certificate
+            for group in cert_chain[::-1]
         ]),
     }
-
-    signed_payload = jwt.encode(
-        original_payload,
-        # Signing with a private key.
-        final_cert_group.key.to_cryptography_key(),
+    return jwt.encode(
+        payload,
+        private_key.to_cryptography_key(),
         algorithm=ALG_JWT_HEADER,
         headers=headers,
     )
 
+
+def test__ok(root_certificate_group: CertificateGroup):
+    intermediate_cert_group = make_cert_group(serial=2, is_ca=True, issuer_group=root_certificate_group)
+    final_cert_group = make_cert_group(serial=3, is_leaf=True, issuer_group=intermediate_cert_group)
+
+    signed_payload = get_signed_payload_with_certificates(
+        TEST_PAYLOAD,
+        [root_certificate_group, intermediate_cert_group, final_cert_group],
+        final_cert_group.key,
+    )
+
     received_payload = validate_and_fetch_apple_signed_payload(signed_payload)
-    assert received_payload == original_payload, f'{received_payload=}, {original_payload=}'
+    assert received_payload == TEST_PAYLOAD
 
 
 def test__apple_root_certificate_not_set_up():
-    pass
+    # No certificate set up
+    root_certificate_group = make_cert_group(serial=1, is_ca=True)
+    # This time the "ok" test should rise configuration error.
+    with pytest.raises(ConfigurationError):
+        test__ok(root_certificate_group)
 
 
-def test__no_certificates_in_the_header():
-    pass
+def test__no_certificates_in_the_header(root_certificate_group: CertificateGroup):
+    signed_payload = get_signed_payload_with_certificates(
+        TEST_PAYLOAD,
+        [],  # No certs here.
+        root_certificate_group.key,
+    )
+    with pytest.raises(PayloadValidationError):
+        validate_and_fetch_apple_signed_payload(signed_payload)
 
 
-def test__invalid_root_certificate_from_jwt():
-    pass
+def test__root_certificate_from_jwt_doesnt_match_apple_root(root_certificate_group: CertificateGroup):
+    fake_root_cert_group = make_cert_group(serial=5, is_ca=True)
+    intermediate_cert_group = make_cert_group(serial=2, is_ca=True, issuer_group=fake_root_cert_group)
+    final_cert_group = make_cert_group(serial=3, is_leaf=True, issuer_group=intermediate_cert_group)
+
+    signed_payload = get_signed_payload_with_certificates(
+        TEST_PAYLOAD,
+        [fake_root_cert_group, intermediate_cert_group, final_cert_group],
+        final_cert_group.key,
+    )
+
+    with pytest.raises(PayloadValidationError):
+        validate_and_fetch_apple_signed_payload(signed_payload)
 
 
-def test__invalid_intermediate_certificate_from_jwt():
-    pass
+def test__invalid_leaf_certificate_from_jwt(root_certificate_group: CertificateGroup):
+    intermediate_cert_group = make_cert_group(serial=2, is_ca=True, issuer_group=root_certificate_group)
+
+    fake_root_cert_group = make_cert_group(serial=5, is_ca=True)
+    final_cert_group = make_cert_group(serial=3, is_leaf=True, issuer_group=fake_root_cert_group)
+
+    signed_payload = get_signed_payload_with_certificates(
+        TEST_PAYLOAD,
+        [root_certificate_group, intermediate_cert_group, final_cert_group],
+        final_cert_group.key,
+    )
+
+    with pytest.raises(PayloadValidationError):
+        validate_and_fetch_apple_signed_payload(signed_payload)
 
 
-def test__invalid_signature_of_the_jwt():
-    pass
+def test__invalid_signature_of_the_jwt(root_certificate_group: CertificateGroup):
+    intermediate_cert_group = make_cert_group(serial=2, is_ca=True, issuer_group=root_certificate_group)
+    final_cert_group = make_cert_group(serial=3, is_leaf=True, issuer_group=intermediate_cert_group)
+
+    signed_payload = get_signed_payload_with_certificates(
+        TEST_PAYLOAD,
+        [root_certificate_group, intermediate_cert_group, final_cert_group],
+        final_cert_group.key,
+    )
+
+    # Last part of the signed payload is the signature.
+    header, payload, signature = signed_payload.split('.')
+    # Padding characters are removed in JWT, this function ensures that it works as intended.
+    binary_signature = jwt.utils.base64url_decode(signature)
+    binary_signature = binary_signature[::-1]
+    bad_signature = jwt.utils.base64url_decode(binary_signature)
+    bad_signed_payload = f'{header}.{payload}.{bad_signature}'
+
+    with pytest.raises(PayloadValidationError):
+        validate_and_fetch_apple_signed_payload(bad_signed_payload)
