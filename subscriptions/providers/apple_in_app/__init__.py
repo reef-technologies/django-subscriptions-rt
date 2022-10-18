@@ -1,6 +1,5 @@
 from contextlib import suppress
 from dataclasses import dataclass
-from decimal import Decimal
 from typing import (
     ClassVar,
     Iterable,
@@ -11,6 +10,7 @@ from typing import (
 from django.conf import settings
 from django.contrib.auth.base_user import AbstractBaseUser
 from django.core.exceptions import SuspiciousOperation
+from django.db import transaction
 from more_itertools import one
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -19,7 +19,10 @@ from rest_framework.status import (
     HTTP_400_BAD_REQUEST,
 )
 
-from subscriptions.exceptions import InvalidOperation
+from subscriptions.exceptions import (
+    PaymentError,
+    SubscriptionError,
+)
 from subscriptions.models import (
     Plan,
     Subscription,
@@ -40,6 +43,23 @@ from .. import Provider
 from ...api.serializers import SubscriptionPaymentSerializer
 
 
+class AppleInvalidOperation(SubscriptionError):
+    def __init__(self):
+        super().__init__(f'Apple subscription provider doesn\'t support this operation.')
+
+
+class AppleSubscriptionNotCompletedError(SubscriptionError):
+    def __init__(self, transaction_id: str):
+        super().__init__(f'Apple subscription for transaction ID {transaction_id} '
+                         f'found to be not in a COMPLETED state.')
+
+
+class AppleReceiptValidationError(PaymentError):
+    def __init__(self):
+        self.code = 'invalid_receipt'
+        self.user_message = 'Provided transaction receipt was either malformed or invalid.'
+
+
 @dataclass
 class AppleInAppProvider(Provider):
     transaction_receipt_tag: ClassVar[str] = 'transaction_receipt'
@@ -58,12 +78,12 @@ class AppleInAppProvider(Provider):
         """
         In case of in-app purchase this operation is triggered from the mobile application library.
         """
-        raise InvalidOperation()
+        raise AppleInvalidOperation()
 
     def charge_offline(self, user: AbstractBaseUser, plan: Plan, subscription: Optional[Subscription] = None,
                        quantity: int = 1,
                        reference_payment: Optional[SubscriptionPayment] = None) -> SubscriptionPayment:
-        raise InvalidOperation()
+        raise AppleInvalidOperation()
 
     def webhook(self, request: Request, payload: dict) -> Response:
         if self.transaction_receipt_tag in payload:
@@ -75,14 +95,18 @@ class AppleInAppProvider(Provider):
             return Response(status=HTTP_400_BAD_REQUEST)
 
     def check_payments(self, payments: Iterable[SubscriptionPayment]):
-        pass
+        for payment in payments:
+            if payment.status != SubscriptionPayment.Status.COMPLETED:
+                # All the operations that we care about should be completed before they reach us.
+                raise AppleSubscriptionNotCompletedError(payment.provider_transaction_id)
 
     @staticmethod
     def _get_validated_in_app_product(response: AppleVerifyReceiptResponse) -> AppleInApp:
-        assert response.is_valid, str(response)
-        assert response.receipt.bundle_id == settings.APPLE_BUNDLE_ID, str(response)
+        if not response.is_valid or response.receipt.bundle_id != settings.APPLE_BUNDLE_ID:
+            raise AppleReceiptValidationError()
         return one(response.receipt.in_apps)
 
+    @transaction.atomic
     def _handle_receipt(self, request: Request, payload: dict) -> Response:
         receipt = payload[self.transaction_receipt_tag]
 
@@ -126,6 +150,7 @@ class AppleInAppProvider(Provider):
             status=HTTP_200_OK,
         )
 
+    @transaction.atomic
     def _handle_app_store(self, _request: Request, payload: dict) -> Response:
         signed_payload = payload[self.signed_payload_tag]
 
