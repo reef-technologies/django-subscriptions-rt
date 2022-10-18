@@ -18,13 +18,9 @@ from pydantic import (
     Field,
 )
 
+from subscriptions.providers.apple_in_app.exceptions import ConfigurationError
 from .enums import AppleEnvironment
-from .exceptions import (
-    ConfigurationError,
-    PayloadValidationError,
-)
-
-CACHED_APPLE_ROOT_CERT: Optional[crypto.X509] = None
+from .exceptions import PayloadValidationError
 
 
 def load_certificate_from_bytes(certificate_data: bytes) -> crypto.X509:
@@ -38,17 +34,20 @@ def load_certificate_from_x5c(x5c_entry: str) -> crypto.X509:
     return load_certificate_from_bytes(certificate_data)
 
 
-@functools.cache
-def get_original_apple_certificate() -> crypto.X509:
-    cert_path = pathlib.Path(settings.APPLE_ROOT_CERTIFICATE_PATH)
-    if not cert_path.exists() or not cert_path.is_file():
-        raise ConfigurationError('No root certificate for Apple provided. Check Django configuration settings.')
-    return load_certificate_from_bytes(cert_path.read_bytes())
-
-
 def are_certificates_identical(cert_1: crypto.X509, cert_2: crypto.X509) -> bool:
     # There are a few ways to compare these, but checking their binary representation seems good enough.
     return cert_1.to_cryptography().public_bytes(Encoding.DER) == cert_2.to_cryptography().public_bytes(Encoding.DER)
+
+
+@functools.cache
+def get_original_apple_certificate() -> crypto.X509:
+    try:
+        cert_path = pathlib.Path(settings.APPLE_ROOT_CERTIFICATE_PATH)
+    except TypeError as type_error:
+        raise ConfigurationError('Invalid object passed as Apple certificate path.') from type_error
+    if not cert_path.exists() or not cert_path.is_file():
+        raise ConfigurationError('No root certificate for Apple provided. Check Django configuration settings.')
+    return load_certificate_from_bytes(cert_path.read_bytes())
 
 
 def validate_and_fetch_apple_signed_payload(signed_payload: str) -> dict[str, Any]:

@@ -23,9 +23,9 @@ class AppleInApp(BaseModel):
     # From documentation: For auto-renewable subscriptions, the time the App Store charged the user’s account
     # for a subscription purchase or renewal after a lapse (...otherwise) the time the App Store charged
     # the user's account for a purchased or restored product.
-    purchase_date: datetime.datetime
+    purchase_date: datetime.datetime = Field(alias='purchase_date_ms')
     # From documentation: The time a subscription expires or when it will renew.
-    expires_date: datetime.datetime
+    expires_date: datetime.datetime = Field(alias='expires_date_ms')
 
     product_id: str
     quantity: int

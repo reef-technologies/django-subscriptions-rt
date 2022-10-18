@@ -31,6 +31,7 @@ def make_json_response_with_status(status: AppleValidationStatus, retryable: boo
                     'product_id': 'test-product',
                     'quantity': '1',
                     'transaction_id': 'test-transaction-id',
+                    'original_transaction_id': 'test-original-transaction-id',
                     'web_order_line_item_id': 'test-item-id',
                 }
             ]
@@ -48,8 +49,8 @@ def make_mock_response(code: int, data_json: str) -> unittest.mock.MagicMock:
     return result
 
 
-def make_api_call(service_responses: list[tuple[int, str]]) -> tuple[
-    AppleVerifyReceiptResponse, list[unittest.mock.call]]:
+def make_api_call(service_responses: list[tuple[int, str]]) \
+        -> tuple[AppleVerifyReceiptResponse, list[unittest.mock.call]]:
     api = AppleAppStoreAPI('shared-secret')
 
     responses = [

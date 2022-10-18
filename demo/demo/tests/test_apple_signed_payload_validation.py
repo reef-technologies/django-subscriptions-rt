@@ -8,12 +8,13 @@ from typing import (
 import jwt.utils
 import pytest
 from OpenSSL import crypto
+from django.test import override_settings
 
 from subscriptions.providers.apple_in_app.app_store import (
-    ConfigurationError,
     PayloadValidationError,
     validate_and_fetch_apple_signed_payload,
 )
+from subscriptions.providers.apple_in_app.exceptions import ConfigurationError
 
 # TODO(kkalinowski): replace with the actual algorithm obtained from a request from Apple.
 ALG_JWT_HEADER = 'RS256'
@@ -79,7 +80,7 @@ def root_certificate_group() -> CertificateGroup:
     with unittest.mock.patch(
         'subscriptions.providers.apple_in_app.app_store.get_original_apple_certificate'
     ) as mock_get_original_apple_certificate:
-        mock_get_original_apple_certificate.return_value = certificate_group
+        mock_get_original_apple_certificate.return_value = certificate_group.certificate
         yield certificate_group
 
 
@@ -130,6 +131,7 @@ def test__ok(root_certificate_group: CertificateGroup):
     assert received_payload == TEST_PAYLOAD
 
 
+@override_settings(APPLE_ROOT_CERTIFICATE_PATH=None)
 def test__apple_root_certificate_not_set_up():
     # No certificate set up
     root_certificate_group = make_cert_group(serial=1, is_ca=True)
@@ -190,11 +192,8 @@ def test__invalid_signature_of_the_jwt(root_certificate_group: CertificateGroup)
     )
 
     # Last part of the signed payload is the signature.
-    header, payload, signature = signed_payload.split('.')
-    # Padding characters are removed in JWT, this function ensures that it works as intended.
-    binary_signature = jwt.utils.base64url_decode(signature)
-    binary_signature = binary_signature[::-1]
-    bad_signature = jwt.utils.base64url_decode(binary_signature)
+    header, payload, _signature = signed_payload.split('.')
+    bad_signature = jwt.utils.base64url_encode(b'invalid signature').decode('ascii')
     bad_signed_payload = f'{header}.{payload}.{bad_signature}'
 
     with pytest.raises(PayloadValidationError):
