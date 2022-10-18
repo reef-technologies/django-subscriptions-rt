@@ -1,15 +1,20 @@
-import dataclasses
 import datetime
 import enum
 from typing import ClassVar
 
 import requests
 import tenacity
+from pydantic import (
+    BaseModel,
+    Field,
+    ValidationError,
+)
+
+from subscriptions.exceptions import InvalidOperation
 
 
-def datetime_from_ms_timestamp(ms_timestamp: str) -> datetime.datetime:
-    seconds_timestamp = float(ms_timestamp) / 1000.0
-    return datetime.datetime.fromtimestamp(seconds_timestamp, tz=datetime.timezone.utc)
+class InvalidAppleReceiptError(InvalidOperation):
+    pass
 
 
 @enum.unique
@@ -35,8 +40,7 @@ class AppleValidationStatus(int, enum.Enum):
     USER_ACCOUNT_DOESNT_EXIST = 21010
 
 
-@dataclasses.dataclass
-class AppleInApp:
+class AppleInApp(BaseModel):
     # Several fields were omitted. For a full list go to
     # https://developer.apple.com/documentation/appstorereceipts/responsebody/receipt/in_app
 
@@ -58,48 +62,17 @@ class AppleInApp:
     # This value is the primary key for identifying subscription purchases.
     web_order_line_item_id: str
 
-    @classmethod
-    def from_json(cls, json_dict: dict) -> 'AppleInApp':
-        return cls(
-            purchase_date=datetime_from_ms_timestamp(json_dict['purchase_date_ms']),
-            expires_date=datetime_from_ms_timestamp(json_dict['expires_date_ms']),
 
-            product_id=json_dict['product_id'],
-            quantity=int(json_dict['quantity']),
-
-            original_transaction_id=json_dict['original_transaction_id'],
-            transaction_id=json_dict['transaction_id'],
-            web_order_line_item_id=json_dict['web_order_line_item_id'],
-        )
-
-    @classmethod
-    def from_json_list(cls, json_list: list[dict]) -> list['AppleInApp']:
-        return [
-            cls.from_json(entry)
-            for entry in json_list
-        ]
-
-
-@dataclasses.dataclass
-class AppleReceipt:
+class AppleReceipt(BaseModel):
     # Several fields were omitted. For a full list go to
     # https://developer.apple.com/documentation/appstorereceipts/responsebody/receipt
     application_version: str
     bundle_id: str
 
-    in_apps: list[AppleInApp]
-
-    @classmethod
-    def from_json(cls, json_dict: dict) -> 'AppleReceipt':
-        return cls(
-            application_version=json_dict['application_version'],
-            bundle_id=json_dict['bundle_id'],
-            in_apps=AppleInApp.from_json_list(json_dict['in_app']),
-        )
+    in_apps: list[AppleInApp] = Field(alias='in_app')
 
 
-@dataclasses.dataclass
-class AppleVerifyReceiptResponse:
+class AppleVerifyReceiptResponse(BaseModel):
     # Several fields were omitted. For a full list go to
     # https://developer.apple.com/documentation/appstorereceipts/responsebody
 
@@ -112,10 +85,10 @@ class AppleVerifyReceiptResponse:
     # The environment for which the receipt was generated.
     environment: AppleEnvironment
 
-    is_retryable: bool
-    status: AppleValidationStatus
-
     receipt: AppleReceipt
+
+    is_retryable: bool = Field(alias='is-retryable')
+    status: AppleValidationStatus
 
     @property
     def is_valid(self) -> bool:
@@ -125,19 +98,6 @@ class AppleVerifyReceiptResponse:
     def should_be_retried(self) -> bool:
         is_finished = self.status in self.FINISHED_STATES
         return not is_finished and self.is_retryable
-
-    @classmethod
-    def from_json(cls, json_dict: dict) -> 'AppleVerifyReceiptResponse':
-        receipt = AppleReceipt.from_json(json_dict['receipt'])
-
-        return cls(
-            environment=AppleEnvironment(json_dict['environment']),
-
-            is_retryable=json_dict['is-retryable'],
-            status=AppleValidationStatus(json_dict['status']),
-
-            receipt=receipt,
-        )
 
 
 RETRY_RULES_FOR_VERIFICATION_RESPONSE = tenacity.retry(
@@ -182,4 +142,7 @@ class AppleAppStoreAPI:
         response.raise_for_status()
 
         json_data = response.json()
-        return AppleVerifyReceiptResponse.from_json(json_data)
+        try:
+            return AppleVerifyReceiptResponse.parse_obj(json_data)
+        except ValidationError as validation_error:
+            raise InvalidAppleReceiptError() from validation_error

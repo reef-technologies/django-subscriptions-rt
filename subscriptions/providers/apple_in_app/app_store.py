@@ -1,5 +1,4 @@
 import base64
-import dataclasses
 import datetime
 import enum
 import pathlib
@@ -12,11 +11,12 @@ import jwt
 from OpenSSL import crypto
 from cryptography.hazmat.primitives.serialization import Encoding
 from cryptography.x509 import load_der_x509_certificate
-
-from .api import (
-    AppleEnvironment,
-    datetime_from_ms_timestamp,
+from pydantic import (
+    BaseModel,
+    Field,
 )
+
+from .api import AppleEnvironment
 
 CACHED_APPLE_ROOT_CERT: Optional[crypto.X509] = None
 
@@ -176,72 +176,52 @@ class AppStoreNotificationTypeV2Subtype(str, enum.Enum):
     ACCEPTED = 'ACCEPTED'
 
 
-@dataclasses.dataclass
-class AppStoreTransactionInfo:
+class AppStoreTransactionInfo(BaseModel):
     """
     https://developer.apple.com/documentation/appstoreservernotifications/jwstransactiondecodedpayload
     """
     # UUID set by the application, empty if not set.
-    app_account_token: str
-    bundle_id: str
+    app_account_token: str = Field(alias='appAccountToken')
+    bundle_id: str = Field(alias='bundleId')
 
-    purchase_date: datetime.datetime
-    expires_date: datetime.datetime
+    purchase_date: datetime.datetime = Field(alias='purchaseDate')
+    expires_date: datetime.datetime = Field(alias='expiresDate')
 
-    product_id: str
-    transaction_id: str
-    original_transaction_id: str
+    product_id: str = Field(alias='productId')
+    transaction_id: str = Field(alias='transactionId')
+    original_transaction_id: str = Field(alias='originalTransactionId')
 
     @classmethod
     def from_signed_payload(cls, signed_payload_data: str) -> 'AppStoreTransactionInfo':
         payload = validate_and_fetch_apple_signed_payload(signed_payload_data)
-
-        return cls(
-            app_account_token=payload['appAccountToken'],
-            bundle_id=payload['bundleId'],
-
-            purchase_date=datetime_from_ms_timestamp(payload['purchaseDate']),
-            expires_date=datetime_from_ms_timestamp(payload['expiresDate']),
-
-            product_id=payload['productId'],
-            transaction_id=payload['transactionId'],
-            original_transaction_id=payload['originalTransactionId'],
-        )
+        return cls.parse_obj(payload)
 
 
-@dataclasses.dataclass
-class AppStoreNotificationData:
+class AppStoreNotificationData(BaseModel):
     """
     https://developer.apple.com/documentation/appstoreservernotifications/data
+    Renewal field doesn't seem to carry anything interesting.
     """
-    app_apple_id: int
-    bundle_id: str
-    bundle_version: str
+    app_apple_id: int = Field(alias='appAppleId')
+    bundle_id: str = Field(alias='bundleId')
+    bundle_version: str = Field(alias='bundleVersion')
     environment: AppleEnvironment
 
-    # Renewal doesn't seem to carry anything interesting.
-    transaction_info: AppStoreTransactionInfo
+    signed_transaction_info: str = Field(alias='signedTransactionInfo')
 
-    @classmethod
-    def from_json(cls, json_dict: dict) -> 'AppStoreNotificationData':
-        return cls(
-            app_apple_id=json_dict['appAppleId'],
-            bundle_id=json_dict['bundleId'],
-            bundle_version=json_dict['bundleVersion'],
-            environment=AppleEnvironment(json_dict['environment']),
-            transaction_info=AppStoreTransactionInfo.from_signed_payload(json_dict['signedTransactionInfo']),
-        )
+    @property
+    def transaction_info(self) -> AppStoreTransactionInfo:
+        return AppStoreTransactionInfo.from_signed_payload(self.signed_transaction_info)
 
 
-@dataclasses.dataclass
-class AppStoreNotification:
+class AppStoreNotification(BaseModel):
     """
     https://developer.apple.com/documentation/appstoreservernotifications/responsebodyv2decodedpayload
     """
     notification: AppStoreNotificationTypeV2
     subtype: AppStoreNotificationTypeV2Subtype
     # Used to deduplicate notifications.
-    notification_uuid: str
+    notification_uuid: str = Field(alias='notificationUUID')
 
     data: AppStoreNotificationData
 
@@ -252,10 +232,4 @@ class AppStoreNotification:
     @classmethod
     def from_signed_payload(cls, signed_payload_data: str) -> 'AppStoreNotification':
         payload = validate_and_fetch_apple_signed_payload(signed_payload_data)
-
-        return cls(
-            notification=AppStoreNotificationTypeV2(payload['notification']),
-            subtype=AppStoreNotificationTypeV2Subtype(payload['subtype']),
-            notification_uuid=payload['notificationUUID'],
-            data=AppStoreNotificationData.from_json(payload['data'])
-        )
+        return cls.parse_obj(payload)
