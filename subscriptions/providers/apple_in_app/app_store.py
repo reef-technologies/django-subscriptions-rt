@@ -16,21 +16,13 @@ from pydantic import (
     Field,
 )
 
-from .api import AppleEnvironment
+from .enums import AppleEnvironment
+from .exceptions import (
+    ConfigurationError,
+    PayloadValidationError,
+)
 
 CACHED_APPLE_ROOT_CERT: Optional[crypto.X509] = None
-
-
-class AppleAppStoreError(Exception):
-    pass
-
-
-class ConfigurationError(AppleAppStoreError):
-    pass
-
-
-class PayloadValidationError(AppleAppStoreError):
-    pass
 
 
 def load_certificate_from_bytes(certificate_data: bytes) -> crypto.X509:

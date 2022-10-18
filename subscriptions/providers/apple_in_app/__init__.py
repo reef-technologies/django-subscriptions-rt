@@ -17,12 +17,9 @@ from rest_framework.response import Response
 from rest_framework.status import (
     HTTP_200_OK,
     HTTP_400_BAD_REQUEST,
+    HTTP_404_NOT_FOUND,
 )
 
-from subscriptions.exceptions import (
-    PaymentError,
-    SubscriptionError,
-)
 from subscriptions.models import (
     Plan,
     Subscription,
@@ -39,25 +36,13 @@ from .app_store import (
     PayloadValidationError,
     setup_original_apple_certificate,
 )
+from .exceptions import (
+    AppleInvalidOperation,
+    AppleReceiptValidationError,
+    AppleSubscriptionNotCompletedError,
+)
 from .. import Provider
 from ...api.serializers import SubscriptionPaymentSerializer
-
-
-class AppleInvalidOperation(SubscriptionError):
-    def __init__(self):
-        super().__init__(f'Apple subscription provider doesn\'t support this operation.')
-
-
-class AppleSubscriptionNotCompletedError(SubscriptionError):
-    def __init__(self, transaction_id: str):
-        super().__init__(f'Apple subscription for transaction ID {transaction_id} '
-                         f'found to be not in a COMPLETED state.')
-
-
-class AppleReceiptValidationError(PaymentError):
-    def __init__(self):
-        self.code = 'invalid_receipt'
-        self.user_message = 'Provided transaction receipt was either malformed or invalid.'
 
 
 @dataclass
@@ -126,7 +111,10 @@ class AppleInAppProvider(Provider):
             )
 
         # Find the right plan to create subscription.
-        plan = Plan.objects.get(apple_in_app=single_in_app.product_id)
+        try:
+            plan = Plan.objects.get(metadata__apple_in_app=single_in_app.product_id)
+        except Plan.DoesNotExist:
+            return Response(status=HTTP_404_NOT_FOUND)
 
         # Create subscription payment. Subscription is created automatically.
         subscription_payment = SubscriptionPayment.objects.create(
