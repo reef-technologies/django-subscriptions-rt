@@ -14,7 +14,10 @@ from django.core.exceptions import SuspiciousOperation
 from more_itertools import one
 from rest_framework.request import Request
 from rest_framework.response import Response
-from rest_framework.status import HTTP_200_OK
+from rest_framework.status import (
+    HTTP_200_OK,
+    HTTP_400_BAD_REQUEST,
+)
 
 from subscriptions.exceptions import InvalidOperation
 from subscriptions.models import (
@@ -69,7 +72,7 @@ class AppleInAppProvider(Provider):
             return self._handle_app_store(request, payload)
         else:
             # Invalid, unhandled request.
-            return Response(status=400)
+            return Response(status=HTTP_400_BAD_REQUEST)
 
     def check_payments(self, payments: Iterable[SubscriptionPayment]):
         pass

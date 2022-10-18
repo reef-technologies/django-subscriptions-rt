@@ -67,3 +67,37 @@ Currently, only `version 2` of the notifications is supported.
 1) Whenever a notification is received from Apple, we discard anything that's not a renewal operation. It is assumed that we, ourselves, can handle expiration, and other events are to be handled in the future
 2) Renewal operation contains original transaction id (the first transaction that initiated the whole subscription) – this is used (in turns) to fetch user for which this operation is performed
 3) New `SubscriptionPayment` is created, using expiration date provided in the notification
+
+
+# Development setup
+
+Install the `subscriptions` as a development module using
+```bash
+pip install -e .
+```
+
+Set environmental variables
+```bash
+export POSTGRES_DB=postgres
+export POSTGRES_HOST=localhost
+export POSTGRES_PORT=8432
+export POSTGRES_USER=postgres
+export POSTGRES_PASSWORD=12345
+```
+
+Start database (in another terminal with the same variables) with
+```bash
+docker-compose -f demo/docker-compose.yml up
+```
+
+Prepare everything by running
+```bash
+cd demo
+python manage.py migrate
+python manage.py runserver
+```
+
+Run tests with
+```bash
+nox -s test
+```
