@@ -48,7 +48,7 @@ Workflow from the mobile application perspective:
    returned to the app is the same as when querying `/payments/<uid>/` endpoint
 5) In case of an error, a retry should be performed with an exponentially increased timeout and after each application
    restart. Utmost care should be taken when handling the receipt. It should be stored on the device until the server
-   accepts the operation. Failure to comply will result in client dissatisfaction and potential refund
+   accepts the operation. Failure to comply will result in client dissatisfaction and a potential refund
 
 Workflow from the backend perspective – handling client operation:
 

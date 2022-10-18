@@ -1,3 +1,4 @@
+from contextlib import suppress
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import (
@@ -10,8 +11,10 @@ from typing import (
 from django.conf import settings
 from django.contrib.auth.base_user import AbstractBaseUser
 from django.core.exceptions import SuspiciousOperation
+from more_itertools import one
 from rest_framework.request import Request
 from rest_framework.response import Response
+from rest_framework.status import HTTP_200_OK
 
 from subscriptions.exceptions import InvalidOperation
 from subscriptions.models import (
@@ -31,6 +34,7 @@ from .app_store import (
     setup_original_apple_certificate,
 )
 from .. import Provider
+from ...api.serializers import SubscriptionPaymentSerializer
 
 
 @dataclass
@@ -74,8 +78,7 @@ class AppleInAppProvider(Provider):
     def _get_validated_in_app_product(response: AppleVerifyReceiptResponse) -> AppleInApp:
         assert response.is_valid, str(response)
         assert response.receipt.bundle_id == settings.APPLE_BUNDLE_ID, str(response)
-        assert len(response.receipt.in_apps) == 1
-        return response.receipt.in_apps[0]
+        return one(response.receipt.in_apps)
 
     def _handle_receipt(self, request: Request, payload: dict) -> Response:
         receipt = payload[self.transaction_receipt_tag]
@@ -85,60 +88,55 @@ class AppleInAppProvider(Provider):
         single_in_app = self._get_validated_in_app_product(receipt_data)
 
         # Check whether this receipt is anyhow interesting:
-        try:
+        with suppress(SubscriptionPayment.DoesNotExist):  # noqa (DoesNotExist seems not to be an exception for PyCharm)
             payment = SubscriptionPayment.objects.get(provider_codename=self.codename,
                                                       provider_transaction_id=single_in_app.transaction_id)
             # We've already handled this. And all the messages coming to us from iOS should be AFTER
             # the client money were removed.
-            # TODO(kkalinowski): return the subscription payment object.
-            return Response()
-        except SubscriptionPayment.DoesNotExist:
-            # If it doesn't exist, it's all right – most probably it needs to be created.
-            pass
+            return Response(
+                SubscriptionPaymentSerializer(payment).data,
+                status=HTTP_200_OK,
+            )
 
         # Find the right plan to create subscription.
         plan = Plan.objects.get(apple_in_app=single_in_app.product_id)
 
-        # Create subscription.
-        subscription = Subscription(
-            user=request.user,
-            plan=plan,
-            # For in-app purchases this option doesn't make sense.
-            auto_prolong=False,
-        )
-        subscription.save()
-
-        # Create subscription payment.
-        subscription_payment = SubscriptionPayment(
+        # Create subscription payment. Subscription is created automatically.
+        subscription_payment = SubscriptionPayment.objects.create(
             provider_codename=self.codename,
             provider_transaction_id=single_in_app.transaction_id,
             status=SubscriptionPayment.Status.COMPLETED,
             # In-app purchase doesn't report the money.
-            amount=Decimal('0.00'),
-            user=subscription.user,
-            plan=subscription.plan,
+            # We mark it as None to indicate we don't know how much did it cost.
+            amount=None,
+            user=request.user,
+            plan=plan,
             subscription_start=single_in_app.purchase_date,
             subscription_end=single_in_app.expires_date,
         )
+        subscription_payment.subscription.auto_prolong = False
         subscription_payment.save()
 
         # Return the payment.
-        return Response()
+        return Response(
+            SubscriptionPaymentSerializer(subscription_payment).data,
+            status=HTTP_200_OK,
+        )
 
     def _handle_app_store(self, _request: Request, payload: dict) -> Response:
         signed_payload = payload[self.signed_payload_tag]
 
         try:
             payload = AppStoreNotification.from_signed_payload(signed_payload)
-        except PayloadValidationError:
-            raise SuspiciousOperation()
+        except PayloadValidationError as exception:
+            raise SuspiciousOperation() from exception
 
         # We're only handling an actual renewal event. The rest means that,
         # for whatever reason, it failed, or we don't care about them for now.
         # As for expirations – these are handled on our side anyway, that would be only an additional validation.
         # In all other cases we're just returning "200 OK" to let the App Store know that we're received the message.
         if payload.notification != AppStoreNotificationTypeV2.DID_RENEW:
-            return Response(status=200)
+            return Response(status=HTTP_200_OK)
 
         # Find the original transaction, fetch the user, create a new subscription payment.
         # Note – if we didn't find it, something is really wrong. This notification is only for subsequent payments.
@@ -147,14 +145,14 @@ class AppleInAppProvider(Provider):
             provider_transaction_id=payload.transaction_info.original_transaction_id,
         )
 
-        # Making a silly copy.
+        # Currently, we don't support changing of the product ID. Assert here will let us know if anyone did that.
+        assert subscription_payment.plan.apple_in_app == payload.transaction_info.product_id
+
         subscription_payment.pk = None
         # Updating relevant fields.
-        # TODO(kkalinowski): check whether the product ID didn't change in the meantime –
-        #  someone might have upgraded their subscription.
         subscription_payment.provider_transaction_id = payload.transaction_info.transaction_id
         subscription_payment.subscription_start = payload.transaction_info.purchase_date
         subscription_payment.subscription_end = payload.transaction_info.expires_date
         subscription_payment.save()
 
-        return Response(status=200)
+        return Response(status=HTTP_200_OK)

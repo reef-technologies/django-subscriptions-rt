@@ -314,7 +314,8 @@ class AbstractTransaction(models.Model):
     provider_codename = models.CharField(max_length=255)
     provider_transaction_id = models.CharField(max_length=255, blank=True, null=True)
     status = models.PositiveSmallIntegerField(choices=Status.choices, default=Status.PENDING)
-    amount = MoneyField()
+    # Allowing amount to be set a `null` for services where the payment information are completely out of reach.
+    amount = MoneyField(null=True)
     # source = models.ForeignKey(MoneyStorage, on_delete=models.PROTECT, related_name='transactions_out')
     # destination = models.ForeignKey(MoneyStorage, on_delete=models.PROTECT, related_name='transactions_in')
     metadata = models.JSONField(blank=True, default=dict, encoder=DjangoJSONEncoder)
