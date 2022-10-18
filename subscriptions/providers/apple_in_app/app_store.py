@@ -225,3 +225,7 @@ class AppStoreNotification(BaseModel):
     def from_signed_payload(cls, signed_payload_data: str) -> 'AppStoreNotification':
         payload = validate_and_fetch_apple_signed_payload(signed_payload_data)
         return cls.parse_obj(payload)
+
+
+class AppleAppStoreNotification(BaseModel):
+    signed_payload: str = Field(alias='signedPayload')

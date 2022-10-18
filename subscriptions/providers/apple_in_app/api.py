@@ -122,3 +122,7 @@ class AppleAppStoreAPI:
             return AppleVerifyReceiptResponse.parse_obj(json_data)
         except ValidationError as validation_error:
             raise InvalidAppleReceiptError() from validation_error
+
+
+class AppleReceiptRequest(BaseModel):
+    transaction_receipt: str

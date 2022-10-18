@@ -9,7 +9,10 @@ from typing import (
 
 from django.conf import settings
 from django.contrib.auth.base_user import AbstractBaseUser
-from django.core.exceptions import SuspiciousOperation
+from django.core.exceptions import (
+    SuspiciousOperation,
+    ValidationError,
+)
 from django.db import transaction
 from more_itertools import one
 from rest_framework.request import Request
@@ -28,11 +31,13 @@ from subscriptions.models import (
 from .api import (
     AppleAppStoreAPI,
     AppleInApp,
+    AppleReceiptRequest,
     AppleVerifyReceiptResponse,
 )
 from .app_store import (
     AppStoreNotification,
     AppStoreNotificationTypeV2,
+    AppleAppStoreNotification,
     PayloadValidationError,
     setup_original_apple_certificate,
 )
@@ -47,9 +52,6 @@ from ...api.serializers import SubscriptionPaymentSerializer
 
 @dataclass
 class AppleInAppProvider(Provider):
-    transaction_receipt_tag: ClassVar[str] = 'transaction_receipt'
-    signed_payload_tag: ClassVar[str] = 'signedPayload'
-
     codename: ClassVar[str] = 'apple_in_app'
 
     api: AppleAppStoreAPI = None
@@ -71,13 +73,19 @@ class AppleInAppProvider(Provider):
         raise AppleInvalidOperation()
 
     def webhook(self, request: Request, payload: dict) -> Response:
-        if self.transaction_receipt_tag in payload:
-            return self._handle_receipt(request, payload)
-        elif self.signed_payload_tag in payload:
-            return self._handle_app_store(request, payload)
-        else:
-            # Invalid, unhandled request.
-            return Response(status=HTTP_400_BAD_REQUEST)
+        handlers = {
+            AppleReceiptRequest: self._handle_receipt,
+            AppleAppStoreNotification: self._handle_app_store,
+        }
+
+        for request_class, handler in handlers.items():
+            with suppress(ValidationError):
+                instance = request_class.parse_obj(payload)
+            if instance is not None:
+                return handler(request, instance)
+
+        # Invalid, unhandled request.
+        return Response(status=HTTP_400_BAD_REQUEST)
 
     def check_payments(self, payments: Iterable[SubscriptionPayment]):
         for payment in payments:
@@ -92,8 +100,8 @@ class AppleInAppProvider(Provider):
         return one(response.receipt.in_apps)
 
     @transaction.atomic
-    def _handle_receipt(self, request: Request, payload: dict) -> Response:
-        receipt = payload[self.transaction_receipt_tag]
+    def _handle_receipt(self, request: Request, payload: AppleReceiptRequest) -> Response:
+        receipt = payload.transaction_receipt
 
         # Validate the receipt. Fetch the status and product.
         receipt_data = self.api.fetch_receipt_data(receipt)
@@ -139,8 +147,8 @@ class AppleInAppProvider(Provider):
         )
 
     @transaction.atomic
-    def _handle_app_store(self, _request: Request, payload: dict) -> Response:
-        signed_payload = payload[self.signed_payload_tag]
+    def _handle_app_store(self, _request: Request, payload: AppleAppStoreNotification) -> Response:
+        signed_payload = payload.signed_payload
 
         try:
             payload = AppStoreNotification.from_signed_payload(signed_payload)
