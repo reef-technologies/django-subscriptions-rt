@@ -1,4 +1,5 @@
 import base64
+import unittest.mock
 from typing import (
     NamedTuple,
     Optional,
@@ -8,7 +9,6 @@ import jwt.utils
 import pytest
 from OpenSSL import crypto
 
-import subscriptions.providers.apple_in_app.app_store
 from subscriptions.providers.apple_in_app.app_store import (
     ConfigurationError,
     PayloadValidationError,
@@ -76,9 +76,11 @@ def make_cert_group(serial: int,
 def root_certificate_group() -> CertificateGroup:
     certificate_group = make_cert_group(serial=1, is_ca=True)
     # Assign is as a root apple certificate.
-    subscriptions.providers.apple_in_app.app_store.CACHED_APPLE_ROOT_CERT = certificate_group.certificate
-    yield certificate_group
-    subscriptions.providers.apple_in_app.app_store.CACHED_APPLE_ROOT_CERT = None
+    with unittest.mock.patch(
+        'subscriptions.providers.apple_in_app.app_store.get_original_apple_certificate'
+    ) as mock_get_original_apple_certificate:
+        mock_get_original_apple_certificate.return_value = certificate_group
+        yield certificate_group
 
 
 def make_x5c_header(certificate_chain: list[crypto.X509]) -> list[str]:

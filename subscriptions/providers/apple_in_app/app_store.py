@@ -1,6 +1,7 @@
 import base64
 import datetime
 import enum
+import functools
 import pathlib
 from typing import (
     Any,
@@ -11,6 +12,7 @@ import jwt
 from OpenSSL import crypto
 from cryptography.hazmat.primitives.serialization import Encoding
 from cryptography.x509 import load_der_x509_certificate
+from django.conf import settings
 from pydantic import (
     BaseModel,
     Field,
@@ -36,23 +38,12 @@ def load_certificate_from_x5c(x5c_entry: str) -> crypto.X509:
     return load_certificate_from_bytes(certificate_data)
 
 
-def setup_original_apple_certificate(certificate_path: str) -> None:
-    global CACHED_APPLE_ROOT_CERT
-
-    if CACHED_APPLE_ROOT_CERT is None:
-        cert_path = pathlib.Path(certificate_path)
-        if not cert_path.exists() or not cert_path.is_file():
-            raise ConfigurationError('No root certificate for Apple provided. Check Django configuration settings.')
-
-        CACHED_APPLE_ROOT_CERT = load_certificate_from_bytes(cert_path.read_bytes())
-
-
+@functools.cache
 def get_original_apple_certificate() -> crypto.X509:
-    global CACHED_APPLE_ROOT_CERT
-    if CACHED_APPLE_ROOT_CERT is None:
-        raise ConfigurationError('Certificate was not set up properly. '
-                                 'Call setup_original_apple_certificate before using it.')
-    return CACHED_APPLE_ROOT_CERT
+    cert_path = pathlib.Path(settings.APPLE_ROOT_CERTIFICATE_PATH)
+    if not cert_path.exists() or not cert_path.is_file():
+        raise ConfigurationError('No root certificate for Apple provided. Check Django configuration settings.')
+    return load_certificate_from_bytes(cert_path.read_bytes())
 
 
 def are_certificates_identical(cert_1: crypto.X509, cert_2: crypto.X509) -> bool:
