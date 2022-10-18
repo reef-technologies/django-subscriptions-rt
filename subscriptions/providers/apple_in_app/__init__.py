@@ -45,6 +45,7 @@ from .exceptions import (
     AppleInvalidOperation,
     AppleReceiptValidationError,
     AppleSubscriptionNotCompletedError,
+    ProductIdChangedError,
 )
 from .. import Provider
 from ...api.serializers import SubscriptionPaymentSerializer
@@ -53,6 +54,8 @@ from ...api.serializers import SubscriptionPaymentSerializer
 @dataclass
 class AppleInAppProvider(Provider):
     codename: ClassVar[str] = 'apple_in_app'
+    # Field that signifies the name of the product ID.
+    product_id_metadata_field: ClassVar[str] = 'apple_in_app'
 
     api: AppleAppStoreAPI = None
 
@@ -120,7 +123,10 @@ class AppleInAppProvider(Provider):
 
         # Find the right plan to create subscription.
         try:
-            plan = Plan.objects.get(metadata__apple_in_app=single_in_app.product_id)
+            search_kwargs = {
+                f'metadata__{self.product_id_metadata_field}': single_in_app.product_id
+            }
+            plan = Plan.objects.get(**search_kwargs)
         except Plan.DoesNotExist:
             return Response(status=HTTP_404_NOT_FOUND)
 
@@ -170,7 +176,10 @@ class AppleInAppProvider(Provider):
         )
 
         # Currently, we don't support changing of the product ID. Assert here will let us know if anyone did that.
-        assert subscription_payment.plan.apple_in_app == payload.transaction_info.product_id
+        # In case the field is not available in metadata, the product ID error will still be raised.
+        current_product_id = subscription_payment.plan.metadata.get(self.product_id_metadata_field)
+        if current_product_id == payload.transaction_info.product_id:
+            raise ProductIdChangedError(current_product_id, payload.transaction_info.product_id)
 
         subscription_payment.pk = None
         # Updating relevant fields.
