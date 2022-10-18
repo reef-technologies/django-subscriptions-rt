@@ -52,7 +52,6 @@ class Plan(models.Model):
     max_duration = RelativeDurationField(blank=True, help_text='leave blank to make it an infinite subscription')
     metadata = models.JSONField(blank=True, default=dict, encoder=DjangoJSONEncoder)
     is_enabled = models.BooleanField(default=True)
-    apple_in_app = models.CharField(max_length=255, help_text='Apple Product ID for Bundle ID defined in settings')
 
     class Meta:
         constraints = [
