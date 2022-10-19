@@ -67,7 +67,7 @@ def make_api_call(service_responses: list[tuple[int, str]]) \
     return result, fake_session.post.call_args_list
 
 
-def test__ok():
+def test__proper_receipt():
     responses = [
         (200, make_json_response_with_status(AppleValidationStatus.OK)),
     ]

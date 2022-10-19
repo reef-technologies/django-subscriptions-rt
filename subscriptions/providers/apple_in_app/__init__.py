@@ -1,5 +1,6 @@
 from contextlib import suppress
 from dataclasses import dataclass
+from logging import getLogger
 from typing import (
     ClassVar,
     Iterable,
@@ -48,6 +49,8 @@ from .exceptions import (
 )
 from .. import Provider
 from ...api.serializers import SubscriptionPaymentSerializer
+
+log = getLogger(__name__)
 
 
 @dataclass
@@ -126,6 +129,7 @@ class AppleInAppProvider(Provider):
             }
             plan = Plan.objects.get(**search_kwargs)
         except Plan.DoesNotExist:
+            log.warning('Plan for apple in-app purchase "%s" not found.', single_in_app.product_id)
             return Response(status=HTTP_404_NOT_FOUND)
 
         # Create subscription payment. Subscription is created automatically.
@@ -164,6 +168,9 @@ class AppleInAppProvider(Provider):
         # As for expirations – these are handled on our side anyway, that would be only an additional validation.
         # In all other cases we're just returning "200 OK" to let the App Store know that we're received the message.
         if payload.notification != AppStoreNotificationTypeV2.DID_RENEW:
+            log.info('Received apple notification %s and ignored it. Payload: %s',
+                     payload.notification,
+                     str(payload))
             return Response(status=HTTP_200_OK)
 
         # Find the original transaction, fetch the user, create a new subscription payment.
@@ -176,7 +183,7 @@ class AppleInAppProvider(Provider):
         # Currently, we don't support changing of the product ID. Assert here will let us know if anyone did that.
         # In case the field is not available in metadata, the product ID error will still be raised.
         current_product_id = subscription_payment.plan.metadata.get(self.product_id_metadata_field)
-        if current_product_id == payload.transaction_info.product_id:
+        if current_product_id != payload.transaction_info.product_id:
             raise ProductIdChangedError(current_product_id, payload.transaction_info.product_id)
 
         subscription_payment.pk = None

@@ -117,7 +117,7 @@ def get_signed_payload_with_certificates(payload: dict,
     )
 
 
-def test__ok(root_certificate_group: CertificateGroup):
+def test__proper_signature(root_certificate_group: CertificateGroup):
     intermediate_cert_group = make_cert_group(serial=2, is_ca=True, issuer_group=root_certificate_group)
     final_cert_group = make_cert_group(serial=3, is_leaf=True, issuer_group=intermediate_cert_group)
 

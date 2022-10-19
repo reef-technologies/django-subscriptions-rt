@@ -162,6 +162,9 @@ class AppStoreTransactionInfo(BaseModel):
     """
     https://developer.apple.com/documentation/appstoreservernotifications/jwstransactiondecodedpayload
     """
+    class Config:
+        extra = 'ignore'
+
     # UUID set by the application, empty if not set.
     app_account_token: str = Field(alias='appAccountToken')
     bundle_id: str = Field(alias='bundleId')
@@ -184,6 +187,9 @@ class AppStoreNotificationData(BaseModel):
     https://developer.apple.com/documentation/appstoreservernotifications/data
     Renewal field doesn't seem to carry anything interesting.
     """
+    class Config:
+        extra = 'ignore'
+
     app_apple_id: int = Field(alias='appAppleId')
     bundle_id: str = Field(alias='bundleId')
     bundle_version: str = Field(alias='bundleVersion')
@@ -200,6 +206,9 @@ class AppStoreNotification(BaseModel):
     """
     https://developer.apple.com/documentation/appstoreservernotifications/responsebodyv2decodedpayload
     """
+    class Config:
+        extra = 'ignore'
+
     notification: AppStoreNotificationTypeV2
     subtype: AppStoreNotificationTypeV2Subtype
     # Used to deduplicate notifications.
@@ -218,4 +227,7 @@ class AppStoreNotification(BaseModel):
 
 
 class AppleAppStoreNotification(BaseModel):
+    class Config:
+        extra = 'forbid'
+
     signed_payload: str = Field(alias='signedPayload')

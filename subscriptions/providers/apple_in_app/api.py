@@ -19,6 +19,8 @@ from .exceptions import InvalidAppleReceiptError
 class AppleInApp(BaseModel):
     # Several fields were omitted. For a full list go to
     # https://developer.apple.com/documentation/appstorereceipts/responsebody/receipt/in_app
+    class Config:
+        extra = 'ignore'
 
     # From documentation: For auto-renewable subscriptions, the time the App Store charged the user’s account
     # for a subscription purchase or renewal after a lapse (...otherwise) the time the App Store charged
@@ -42,6 +44,9 @@ class AppleInApp(BaseModel):
 class AppleReceipt(BaseModel):
     # Several fields were omitted. For a full list go to
     # https://developer.apple.com/documentation/appstorereceipts/responsebody/receipt
+    class Config:
+        extra = 'ignore'
+
     application_version: str
     bundle_id: str
 
@@ -51,6 +56,8 @@ class AppleReceipt(BaseModel):
 class AppleVerifyReceiptResponse(BaseModel):
     # Several fields were omitted. For a full list go to
     # https://developer.apple.com/documentation/appstorereceipts/responsebody
+    class Config:
+        extra = 'ignore'
 
     FINISHED_STATES: ClassVar[set[AppleValidationStatus]] = {
         AppleValidationStatus.OK,
@@ -125,4 +132,7 @@ class AppleAppStoreAPI:
 
 
 class AppleReceiptRequest(BaseModel):
+    class Config:
+        extra = 'forbid'
+
     transaction_receipt: str
