@@ -1,11 +1,36 @@
 from django.contrib import admin
 
-from .models import Plan, Quota, Resource, Subscription, SubscriptionPayment, SubscriptionPaymentRefund, Tax, Usage
+from .models import (
+    Feature,
+    Plan,
+    Quota,
+    Resource,
+    Subscription,
+    SubscriptionPayment,
+    SubscriptionPaymentRefund,
+    Tax,
+    Usage,
+    Tier,
+)
 
 
 class QuotaInline(admin.TabularInline):
     model = Quota
     extra = 0
+
+
+@admin.register(Feature)
+class FeatureAdmin(admin.ModelAdmin):
+    list_display = 'codename', 'description',
+    search_fields = 'codename',
+    ordering = 'codename',
+
+
+@admin.register(Tier)
+class TierAdmin(admin.ModelAdmin):
+    list_display = 'codename', 'description', 'is_default',
+    search_fields = 'codename',
+    ordering = 'codename',
 
 
 @admin.register(Plan)
