@@ -137,7 +137,7 @@ def test__apple_root_certificate_not_set_up():
     root_certificate_group = make_cert_group(serial=1, is_ca=True)
     # This time the "ok" test should rise configuration error.
     with pytest.raises(ConfigurationError):
-        test__ok(root_certificate_group)
+        test__proper_signature(root_certificate_group)
 
 
 def test__no_certificates_in_the_header(root_certificate_group: CertificateGroup):

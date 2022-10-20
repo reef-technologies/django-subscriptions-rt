@@ -55,9 +55,8 @@ log = getLogger(__name__)
 
 @dataclass
 class AppleInAppProvider(Provider):
+    # This is also name of the field in metadata of the Plan, that stores Apple App Store product id.
     codename: ClassVar[str] = 'apple_in_app'
-    # Field that signifies the name of the product ID.
-    product_id_metadata_field: ClassVar[str] = 'apple_in_app'
 
     api: AppleAppStoreAPI = None
 
@@ -125,7 +124,7 @@ class AppleInAppProvider(Provider):
         # Find the right plan to create subscription.
         try:
             search_kwargs = {
-                f'metadata__{self.product_id_metadata_field}': single_in_app.product_id
+                f'metadata__{self.codename}': single_in_app.product_id
             }
             plan = Plan.objects.get(**search_kwargs)
         except Plan.DoesNotExist:
@@ -182,7 +181,7 @@ class AppleInAppProvider(Provider):
 
         # Currently, we don't support changing of the product ID. Assert here will let us know if anyone did that.
         # In case the field is not available in metadata, the product ID error will still be raised.
-        current_product_id = subscription_payment.plan.metadata.get(self.product_id_metadata_field)
+        current_product_id = subscription_payment.plan.metadata.get(self.codename)
         if current_product_id != payload.transaction_info.product_id:
             raise ProductIdChangedError(current_product_id, payload.transaction_info.product_id)
 
