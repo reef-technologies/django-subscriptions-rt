@@ -106,14 +106,15 @@ DATABASES = {
 SUBSCRIPTIONS_PAYMENT_PROVIDERS = [
     'subscriptions.providers.dummy.DummyProvider',
     'subscriptions.providers.paddle.PaddleProvider',
+    'subscriptions.providers.google_in_app.GoogleInAppProvider',
 ]
 
 PADDLE_VENDOR_ID = environ.get('PADDLE_VENDOR_ID')
 PADDLE_VENDOR_AUTH_CODE = environ.get('PADDLE_VENDOR_AUTH_CODE')
 PADDLE_ENDPOINT = environ.get('PADDLE_ENDPOINT')
 
-# Password validation
-# https://docs.djangoproject.com/en/4.0/ref/settings/#auth-password-validators
+GOOGLE_PLAY_PACKAGE_NAME = environ.get('GOOGLE_PLAY_PACKAGE_NAME')
+GOOGLE_PLAY_SERVICE_ACCOUNT = environ.get('GOOGLE_PLAY_SERVICE_ACCOUNT')
 
 AUTH_PASSWORD_VALIDATORS = [
     {

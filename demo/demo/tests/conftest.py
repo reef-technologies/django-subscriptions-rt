@@ -1,3 +1,5 @@
+import json
+from base64 import b64encode
 from datetime import datetime, timedelta
 from datetime import timezone as tz
 from decimal import Decimal
@@ -12,6 +14,10 @@ from djmoney.money import Money
 from subscriptions.functions import get_remaining_amount, get_remaining_chunks
 from subscriptions.models import INFINITY, Plan, Quota, QuotaCache, Resource, Subscription, SubscriptionPayment, Usage
 from subscriptions.providers import get_provider, get_providers
+from subscriptions.providers.dummy import DummyProvider
+from subscriptions.providers.google_in_app import GoogleInAppProvider
+from subscriptions.providers.google_in_app.models import GoogleAcknowledgementState, GoogleAutoRenewingPlan, GoogleSubscriptionPurchaseLineItem, GoogleSubscriptionPurchaseV2, GoogleSubscriptionState, GoogleSubscriptionNotificationType
+from subscriptions.providers.paddle import PaddleProvider
 from subscriptions.tasks import charge_recurring_subscriptions
 
 
@@ -241,7 +247,9 @@ def dummy(settings) -> str:
     ]
     get_provider.cache_clear()
     get_providers.cache_clear()
-    return get_provider().codename
+    provider = get_provider()
+    assert isinstance(provider, DummyProvider)
+    return provider
 
 
 @pytest.fixture
@@ -251,7 +259,21 @@ def paddle(settings) -> str:
     ]
     get_provider.cache_clear()
     get_providers.cache_clear()
-    return get_provider().codename
+    provider = get_provider()
+    assert isinstance(provider, PaddleProvider)
+    return provider
+
+
+@pytest.fixture
+def google_in_app(settings) -> str:
+    settings.SUBSCRIPTIONS_PAYMENT_PROVIDERS = [
+        'subscriptions.providers.google_in_app.GoogleInAppProvider',
+    ]
+    get_provider.cache_clear()
+    get_providers.cache_clear()
+    provider = get_provider()
+    assert isinstance(provider, GoogleInAppProvider)
+    return provider
 
 
 @pytest.fixture
@@ -260,7 +282,7 @@ def paddle_unconfirmed_payment(db, paddle, plan, user) -> SubscriptionPayment:
         user=user,
         plan=plan,
         subscription=None,
-        provider_codename='paddle',
+        provider_codename=paddle.codename,
         provider_transaction_id='12345',
         amount=Money(100, 'USD'),
     )
@@ -272,7 +294,7 @@ def payment(dummy, subscription) -> SubscriptionPayment:
         user=subscription.user,
         plan=subscription.plan,
         subscription=subscription,
-        provider_codename=dummy,
+        provider_codename=dummy.codename,
         provider_transaction_id='12345',
         amount=subscription.plan.charge_amount,
         quantity=2,  # so limit = 50 * 2 = 100 in total
@@ -371,3 +393,63 @@ def cache_backend(settings):
         'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
         'LOCATION': 'subscriptions',
     }
+
+
+@pytest.fixture
+def purchase_token() -> str:
+    return '12345'
+
+
+@pytest.fixture
+def app_notification(purchase_token) -> dict:
+    return {
+        'purchase_token': purchase_token,
+    }
+
+
+@pytest.fixture
+def google_subscription_purchase(plan, now, days) -> GoogleSubscriptionPurchaseV2:
+    return GoogleSubscriptionPurchaseV2(
+        lineItems=[GoogleSubscriptionPurchaseLineItem(
+            productId=plan.id,
+            expiryTime=(now + days(5)).isoformat(),
+            plan_type=GoogleAutoRenewingPlan(autoRenewEnabled=True),
+        )],
+        startTime=now.isoformat(),
+        subscriptionState=GoogleSubscriptionState.ACTIVE,
+        linkedPurchaseToken=None,
+        acknowledgementState=GoogleAcknowledgementState.ACKNOWLEDGED,
+    )
+
+
+@pytest.fixture
+def google_rtdn_notification_factory(settings, purchase_token, plan) -> Callable:
+
+    def build_google_rtdn_notification(type_: GoogleSubscriptionNotificationType):
+        return {
+            "message": {
+                "attributes": {
+                    "key": "value"
+                },
+                "data": b64encode(json.dumps({
+                    "version": '1.0',
+                    "packageName": settings.GOOGLE_PLAY_PACKAGE_NAME,
+                    "eventTimeMillis": 100,
+                    "subscriptionNotification": {
+                        'version': '1.0',
+                        'notificationType': type_,
+                        'purchaseToken': purchase_token,
+                        'subscriptionId': plan.id,
+                    },
+                }).encode('utf8')).decode('utf8'),
+                "messageId": "136969346945"
+            },
+            "subscription": "projects/myproject/subscriptions/mysubscription",
+        }
+
+    return build_google_rtdn_notification
+
+
+@pytest.fixture
+def google_rtdn_notification(google_rtdn_notification_factory) -> dict:
+    return google_rtdn_notification_factory(GoogleSubscriptionNotificationType.PURCHASED)
