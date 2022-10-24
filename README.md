@@ -40,6 +40,15 @@ quota   (quota lifetime)       quota burned
 
 # Cache
 
+Cache is required for fast resource calculations.
+
+```python
+settings.CACHES['subscriptions'] = {
+   'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+   'LOCATION': 'subscriptions',
+}
+```
+
 # Humanize
 
 # Payment providers

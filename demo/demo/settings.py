@@ -116,6 +116,9 @@ PADDLE_ENDPOINT = environ.get('PADDLE_ENDPOINT')
 GOOGLE_PLAY_PACKAGE_NAME = environ.get('GOOGLE_PLAY_PACKAGE_NAME')
 GOOGLE_PLAY_SERVICE_ACCOUNT = environ.get('GOOGLE_PLAY_SERVICE_ACCOUNT')
 
+APPLE_SHARED_SECRET = environ.get('APPLE_SHARED_SECRET')
+APPLE_BUNDLE_ID = environ.get('APPLE_BUNDLE_ID')
+
 AUTH_PASSWORD_VALIDATORS = [
     {
         'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',

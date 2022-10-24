@@ -392,6 +392,7 @@ class GoogleInAppProvider(Provider):
                     subscription.save()
 
             elif event == GoogleSubscriptionNotificationType.RENEWED:
+                # TODO: handle case when subscription is resumed from a pause
                 assert last_payment
                 if purchase_end > last_payment.subscription_end:
                     last_payment.uid = None

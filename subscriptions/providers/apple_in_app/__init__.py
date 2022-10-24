@@ -57,6 +57,7 @@ log = getLogger(__name__)
 class AppleInAppProvider(Provider):
     # This is also name of the field in metadata of the Plan, that stores Apple App Store product id.
     codename: ClassVar[str] = 'apple_in_app'
+    bundle_id: ClassVar[str] = settings.APPLE_BUNDLE_ID
 
     api: AppleAppStoreAPI = None
 
@@ -96,9 +97,9 @@ class AppleInAppProvider(Provider):
                 # All the operations that we care about should be completed before they reach us.
                 raise AppleSubscriptionNotCompletedError(payment.provider_transaction_id)
 
-    @staticmethod
-    def _get_validated_in_app_product(response: AppleVerifyReceiptResponse) -> AppleInApp:
-        if not response.is_valid or response.receipt.bundle_id != settings.APPLE_BUNDLE_ID:
+    @classmethod
+    def _get_validated_in_app_product(cls, response: AppleVerifyReceiptResponse) -> AppleInApp:
+        if not response.is_valid or response.receipt.bundle_id != cls.bundle_id:
             raise AppleReceiptValidationError()
         return one(response.receipt.in_apps)
 
