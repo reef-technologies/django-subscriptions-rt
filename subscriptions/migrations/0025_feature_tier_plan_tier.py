@@ -25,7 +25,7 @@ class Migration(migrations.Migration):
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('codename', models.CharField(max_length=255, unique=True)),
                 ('description', models.TextField(blank=True)),
-                ('is_default', models.BooleanField(db_index=True)),
+                ('is_default', models.BooleanField(db_index=True, default=False)),
                 ('features', models.ManyToManyField(to='subscriptions.feature')),
             ],
         ),

@@ -56,7 +56,7 @@ class Feature(models.Model):
 class Tier(models.Model):
     codename = models.CharField(max_length=255, unique=True)
     description = models.TextField(blank=True)
-    is_default = models.BooleanField(db_index=True)
+    is_default = models.BooleanField(db_index=True, default=False)
 
     features = models.ManyToManyField(Feature)
 
