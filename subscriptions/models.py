@@ -3,24 +3,11 @@ from __future__ import annotations
 from collections import defaultdict
 from contextlib import suppress
 from dataclasses import dataclass
-from datetime import (
-    datetime,
-    timedelta,
-)
-from itertools import (
-    count,
-    islice,
-)
+from datetime import datetime, timedelta
+from itertools import count, islice
 from logging import getLogger
 from operator import attrgetter
-from typing import (
-    Callable,
-    Iterable,
-    Iterator,
-    List,
-    Optional,
-    TYPE_CHECKING,
-)
+from typing import TYPE_CHECKING, Callable, Iterable, Iterator, List, Optional
 from uuid import uuid4
 
 from dateutil.relativedelta import relativedelta
@@ -28,25 +15,13 @@ from django.conf import settings
 from django.contrib.auth.models import AbstractBaseUser
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import models
-from django.db.models import (
-    Index,
-    QuerySet,
-    UniqueConstraint,
-)
+from django.db.models import Index, QuerySet, UniqueConstraint
 from django.urls import reverse
 from django.utils.timezone import now
 from pydantic import BaseModel
 
-from .exceptions import (
-    InconsistentQuotaCache,
-    PaymentError,
-    ProlongationImpossible,
-    ProviderNotFound,
-)
-from .fields import (
-    MoneyField,
-    RelativeDurationField,
-)
+from .exceptions import InconsistentQuotaCache, PaymentError, ProlongationImpossible, ProviderNotFound
+from .fields import MoneyField, RelativeDurationField
 from .utils import merge_iter
 
 log = getLogger(__name__)
@@ -72,15 +47,21 @@ class Resource(models.Model):
 
 class Feature(models.Model):
     codename = models.CharField(max_length=255, unique=True)
-    description = models.CharField(max_length=4096)
+    description = models.TextField(blank=True)
+
+    def __str__(self) -> str:
+        return self.codename
 
 
 class Tier(models.Model):
     codename = models.CharField(max_length=255, unique=True)
-    description = models.CharField(max_length=4096)
+    description = models.TextField(blank=True)
     is_default = models.BooleanField(db_index=True)
 
     features = models.ManyToManyField(Feature)
+
+    def __str__(self) -> str:
+        return self.codename
 
 
 class Plan(models.Model):
@@ -96,6 +77,7 @@ class Plan(models.Model):
         null=True,
         help_text='Groups features connected to this plan together and allows '
                   'sharing between plans of different duration.',
+        related_name='plans',
     )
     metadata = models.JSONField(blank=True, default=dict, encoder=DjangoJSONEncoder)
     is_enabled = models.BooleanField(default=True)

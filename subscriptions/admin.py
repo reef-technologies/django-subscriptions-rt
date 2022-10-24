@@ -35,7 +35,7 @@ class TierAdmin(admin.ModelAdmin):
 
 @admin.register(Plan)
 class PlanAdmin(admin.ModelAdmin):
-    list_display = 'codename', 'name', 'charge_amount', 'charge_period', 'max_duration', 'is_enabled',
+    list_display = 'codename', 'name', 'charge_amount', 'charge_period', 'max_duration', 'tier', 'is_enabled',
     list_filter = 'is_enabled',
     search_fields = 'codename', 'name',
     ordering = '-pk',
