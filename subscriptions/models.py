@@ -70,7 +70,7 @@ class Resource(models.Model):
         return self.codename
 
 
-class Feature(models):
+class Feature(models.Model):
     codename = models.CharField(max_length=255, unique=True)
     description = models.CharField(max_length=4096)
 
