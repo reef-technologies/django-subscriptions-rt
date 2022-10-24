@@ -106,14 +106,15 @@ DATABASES = {
 SUBSCRIPTIONS_PAYMENT_PROVIDERS = [
     'subscriptions.providers.dummy.DummyProvider',
     'subscriptions.providers.paddle.PaddleProvider',
+    'subscriptions.providers.google_in_app.GoogleInAppProvider',
 ]
 
 PADDLE_VENDOR_ID = environ.get('PADDLE_VENDOR_ID')
 PADDLE_VENDOR_AUTH_CODE = environ.get('PADDLE_VENDOR_AUTH_CODE')
 PADDLE_ENDPOINT = environ.get('PADDLE_ENDPOINT')
 
-# Password validation
-# https://docs.djangoproject.com/en/4.0/ref/settings/#auth-password-validators
+GOOGLE_PLAY_PACKAGE_NAME = environ.get('GOOGLE_PLAY_PACKAGE_NAME')
+GOOGLE_PLAY_SERVICE_ACCOUNT = environ.get('GOOGLE_PLAY_SERVICE_ACCOUNT')
 
 AUTH_PASSWORD_VALIDATORS = [
     {
@@ -152,3 +153,12 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/4.0/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+
+# ID of the application that we're trying to verify.
+APPLE_BUNDLE_ID = environ.get('APPLE_BUNDLE_ID')
+# Shared secret that can be used to ask Apple about receipts. Obtainable from
+# https://help.apple.com/app-store-connect/#/devf341c0f01
+APPLE_SHARED_SECRET = environ.get('APPLE_SHARED_SECRET')
+# One can obtain it from https://www.apple.com/certificateauthority/
+APPLE_ROOT_CERTIFICATE_PATH = environ.get('APPLE_ROOT_CERTIFICATE_PATH', './apple_cert.cer')

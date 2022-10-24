@@ -76,7 +76,7 @@ class SubscriptionSelectView(GenericAPIView):
             try:
                 validator(active_subscriptions, plan)
             except SubscriptionError as exc:
-                raise PermissionDenied(detail=str(exc)) from exc
+                raise PermissionDenied(detail=getattr(exc, 'user_message', '')) from exc
 
         provider = self.select_payment_provider()
         quantity = serializer.validated_data['quantity']

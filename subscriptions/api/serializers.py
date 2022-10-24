@@ -1,7 +1,7 @@
 from decimal import Decimal
 from typing import Optional
 
-from rest_framework.serializers import BooleanField, CharField, DateTimeField, DecimalField, IntegerField, ModelSerializer, PrimaryKeyRelatedField, Serializer, SerializerMethodField
+from rest_framework.serializers import BooleanField, CharField, DateTimeField, IntegerField, ModelSerializer, PrimaryKeyRelatedField, Serializer, SerializerMethodField
 
 from ..fields import relativedelta_to_dict
 from ..models import Plan, Subscription, SubscriptionPayment
@@ -62,7 +62,7 @@ class ResourcesSerializer(Serializer):
 class SubscriptionPaymentSerializer(ModelSerializer):
     status = SerializerMethodField()
     amount = SerializerMethodField()
-    currency = CharField(source='amount.currency')
+    currency = SerializerMethodField()
     total = SerializerMethodField()
     subscription = SubscriptionSerializer()
     paid_from = DateTimeField(source='subscription_start')
@@ -75,8 +75,14 @@ class SubscriptionPaymentSerializer(ModelSerializer):
     def get_status(self, obj) -> str:
         return obj.get_status_display().lower()
 
-    def get_amount(self, obj) -> Decimal:
-        return obj.amount.amount
+    def get_amount(self, obj) -> Optional[Decimal]:
+        if obj.amount is not None:
+            return obj.amount.amount
 
-    def get_total(self, obj) -> Decimal:
-        return obj.amount.amount * obj.quantity
+    def get_currency(self, obj) -> Optional[str]:
+        if obj.amount is not None:
+            return str(obj.amount.currency)
+
+    def get_total(self, obj) -> Optional[Decimal]:
+        if obj.amount is not None:
+            return obj.amount.amount * obj.quantity
