@@ -45,12 +45,40 @@ class Resource(models.Model):
         return self.codename
 
 
+class Feature(models.Model):
+    codename = models.CharField(max_length=255, unique=True)
+    description = models.TextField(blank=True)
+
+    def __str__(self) -> str:
+        return self.codename
+
+
+class Tier(models.Model):
+    codename = models.CharField(max_length=255, unique=True)
+    description = models.TextField(blank=True)
+    is_default = models.BooleanField(db_index=True)
+
+    features = models.ManyToManyField(Feature)
+
+    def __str__(self) -> str:
+        return self.codename
+
+
 class Plan(models.Model):
     codename = models.CharField(max_length=255)
     name = models.CharField(max_length=255)
     charge_amount = MoneyField(blank=True, null=True)
     charge_period = RelativeDurationField(blank=True, help_text='leave blank for one-time charge')
     max_duration = RelativeDurationField(blank=True, help_text='leave blank to make it an infinite subscription')
+    tier = models.ForeignKey(
+        Tier,
+        on_delete=models.PROTECT,
+        blank=True,
+        null=True,
+        help_text='Groups features connected to this plan together and allows '
+                  'sharing between plans of different duration.',
+        related_name='plans',
+    )
     metadata = models.JSONField(blank=True, default=dict, encoder=DjangoJSONEncoder)
     is_enabled = models.BooleanField(default=True)
 
