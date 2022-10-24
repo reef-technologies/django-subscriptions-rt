@@ -9,4 +9,5 @@ class UserData(NamedTuple):
     tier: str
 
     def get_or_create(self) -> User:
-        return User.objects.get_or_create(username=self.id_)
+        user, _created = User.objects.get_or_create(username=self.id_)
+        return user
