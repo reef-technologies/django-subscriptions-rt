@@ -1,9 +1,10 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from datetime import timezone as tz
 from itertools import islice
 
 import pytest
 from dateutil.relativedelta import relativedelta
+from django.utils.timezone import now
 from subscriptions.exceptions import PaymentError, ProlongationImpossible
 from subscriptions.models import Quota, QuotaChunk, Subscription, SubscriptionPayment
 
@@ -159,3 +160,84 @@ def test_subscription_charge_offline(db, subscription, payment):
     assert last_payment.user == subscription.user
     assert last_payment.subscription == subscription
     assert last_payment.plan == subscription.plan
+
+
+def test_payment_from_until_auto_set(db, plan, subscription, user, dummy):
+    initial_subscription_start = subscription.start
+    initial_subscription_end = subscription.end
+
+    payment = SubscriptionPayment.objects.create(
+        provider_codename=dummy,
+        provider_transaction_id='test',
+        status=SubscriptionPayment.Status.PENDING,
+        user=user,
+        plan=plan,
+        subscription=subscription,
+        subscription_start=None,
+        subscription_end=None,
+    )
+    # check that PENDING doesn't affect anything
+    assert payment.subscription_start is None
+    assert payment.subscription_end is None
+
+    # check that paid_from and paid_until should be set / not set together
+    payment.status = SubscriptionPayment.Status.COMPLETED
+    with pytest.raises(AssertionError):
+        payment.subscription_start = initial_subscription_end
+        payment.save()
+
+    payment.subscription_start = payment.subscription_end = None
+    payment.save()
+    # check that paid_from and paid_until are auto-filled
+    assert payment.subscription_start == initial_subscription_end
+    assert payment.subscription_end > payment.subscription_start
+    # check that subscription is prolonged
+    assert payment.subscription.start == initial_subscription_start
+    assert payment.subscription.end == payment.subscription_end
+
+
+def test_subscription_auto_creation_on_payment(db, plan, user, dummy):
+    assert not Subscription.objects.exists()
+
+    payment = SubscriptionPayment.objects.create(
+        provider_codename=dummy,
+        provider_transaction_id='test',
+        status=SubscriptionPayment.Status.COMPLETED,
+        user=user,
+        plan=plan,
+        subscription_start=None,
+        subscription_end=None,
+    )
+    assert payment.subscription
+    assert now() - payment.subscription.start < timedelta(seconds=1)
+    assert payment.subscription.end == payment.subscription.start + plan.charge_period
+
+    assert payment.subscription_start == payment.subscription.start
+    assert payment.subscription_end == payment.subscription.end
+
+
+def test_subscription_duration_set_by_payment(db, plan, user, dummy, now, days):
+    assert not Subscription.objects.exists()
+
+    payment = SubscriptionPayment.objects.create(
+        provider_codename=dummy,
+        provider_transaction_id='test',
+        status=SubscriptionPayment.Status.COMPLETED,
+        user=user,
+        plan=plan,
+        subscription_start=now,
+        subscription_end=now + days(5),
+    )
+    assert payment.subscription
+    assert payment.subscription.start == payment.subscription_start
+    assert payment.subscription.end == payment.subscription_end
+
+    # check that subscription may be prolonged by payment
+    payment.subscription_end = now + days(6)
+    payment.save()
+    assert payment.subscription.end == payment.subscription_end
+
+    # check that subscription cannot be shrinked by shrinked payment
+    payment.subscription_end = now + days(3)
+    payment.save()
+    assert payment.subscription.end == now + days(6)

@@ -14,10 +14,6 @@ from subscriptions.tasks import check_unfinished_payments
 from tenacity import Retrying, TryAgain, stop_after_attempt, wait_fixed
 
 
-def test_provider(paddle):
-    assert isinstance(get_provider(), PaddleProvider)
-
-
 def test_payment_flow(paddle, user_client, plan, card_number):
     response = user_client.post('/api/subscribe/', {'plan': plan.id})
     assert response.status_code == 200, response.content
