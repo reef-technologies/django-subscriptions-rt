@@ -154,8 +154,8 @@ STATIC_URL = 'static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# Function that accepts a request and returns ID of the user. Returns None if the user is not authenticated.
-HEADER_VALIDATION_FUNCTION = None
+# Function that accepts headers and returns UserData of the user. Returns None if the user is not authenticated.
+HEADER_TO_USER_DATA_FUNCTION = None
 
 # ID of the application that we're trying to verify.
 APPLE_BUNDLE_ID = environ.get('APPLE_BUNDLE_ID')

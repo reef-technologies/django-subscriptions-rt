@@ -4,18 +4,46 @@ from typing import Type
 from django.conf import settings
 from django.http import QueryDict
 from rest_framework.exceptions import PermissionDenied
-from rest_framework.generics import GenericAPIView, ListAPIView, RetrieveAPIView
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.generics import (
+    GenericAPIView,
+    ListAPIView,
+    RetrieveAPIView,
+)
+from rest_framework.permissions import (
+    AllowAny,
+    IsAuthenticated,
+)
 from rest_framework.response import Response
 from rest_framework.schemas.openapi import AutoSchema
-from subscriptions.functions import get_remaining_amount
+from rest_framework.status import HTTP_401_UNAUTHORIZED
 
+from subscriptions.functions import get_remaining_amount
+from .serializers import (
+    PaymentProviderListSerializer,
+    PlanSerializer,
+    ResourcesSerializer,
+    SubscriptionPaymentSerializer,
+    SubscriptionSelectSerializer,
+    SubscriptionSerializer,
+    WebhookSerializer,
+)
+from .. import UserData
 from ..defaults import DEFAULT_SUBSCRIPTIONS_SUCCESS_URL
-from ..exceptions import PaymentError, SubscriptionError
-from ..models import Plan, Subscription, SubscriptionPayment
-from ..providers import Provider, get_provider, get_providers
+from ..exceptions import (
+    PaymentError,
+    SubscriptionError,
+)
+from ..models import (
+    Plan,
+    Subscription,
+    SubscriptionPayment,
+)
+from ..providers import (
+    Provider,
+    get_provider,
+    get_providers,
+)
 from ..validators import get_validators
-from .serializers import PaymentProviderListSerializer, PlanSerializer, ResourcesSerializer, SubscriptionPaymentSerializer, SubscriptionSelectSerializer, SubscriptionSerializer, WebhookSerializer
 
 log = getLogger(__name__)
 
@@ -108,8 +136,17 @@ class PaymentWebhookView(GenericAPIView):
     permission_classes = AllowAny,
     schema = AutoSchema()
     serializer_class = WebhookSerializer
+    provider: Provider = None
 
     def post(self, request, *args, **kwargs) -> Response:
+        # In this case we need to provide a user for the system.
+        if settings.HEADER_TO_USER_DATA_FUNCTION is not None:
+            user_data: UserData = settings.HEADER_TO_USER_DATA_FUNCTION(request.headers)
+            if user_data is None:
+                return Response(HTTP_401_UNAUTHORIZED)
+            # Unused result, we just need him in the database for now.
+            _ = user_data.get_or_create()
+
         payload = request.data
         if isinstance(payload, QueryDict):
             payload = payload.dict()
