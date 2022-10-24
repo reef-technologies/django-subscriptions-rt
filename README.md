@@ -38,6 +38,8 @@ quota   (quota lifetime)       quota burned
 * Grace period
 * Hold / pause
 
+# Plans, tiers & features
+
 # Cache
 
 # Humanize
