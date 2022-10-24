@@ -25,7 +25,7 @@ from ...api.serializers import SubscriptionPaymentSerializer
 from ...models import Plan, SubscriptionPayment
 from .. import Provider
 from .exceptions import InvalidOperation
-from .models import AppNotification, GoogleAcknowledgementState, GoogleAutoRenewingBasePlanType, GoogleBasePlan, GoogleBasePlanState, GoogleDeveloperNotification, GoogleMoney, GooglePubSubData, GoogleRegionalBasePlanConfig, GoogleResubscribeState, GoogleSubscription, GoogleSubscriptionNotificationType, GoogleSubscriptionProrationMode, GoogleSubscriptionPurchaseV2, GoogleSubscriptionState, Metadata, MultiNotification
+from .models import AppNotification, GoogleAcknowledgementState, GoogleAutoRenewingBasePlanType, GoogleBasePlan, GoogleBasePlanState, GoogleDeveloperNotification, GoogleMoney, GooglePubSubData, GoogleRegionalBasePlanConfig, GoogleResubscribeState, GoogleSubscription, GoogleSubscriptionNotificationType, GoogleSubscriptionProrationMode, GoogleSubscriptionPurchaseV2, GoogleSubscriptionState, GoogleTestNotification, Metadata, MultiNotification
 
 log = logging.getLogger(__name__)
 
@@ -278,6 +278,8 @@ class GoogleInAppProvider(Provider):
         elif isinstance(notification, GooglePubSubData):
             notification = GoogleDeveloperNotification.parse_raw(notification.message.decode())
             return self.handle_google_notification(notification)
+        elif isinstance(notification, GoogleTestNotification):
+            return Response(status=HTTP_200_OK)
         else:
             raise ValueError(f'Unknown notification type {notification}')
 

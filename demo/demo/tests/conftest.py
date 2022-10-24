@@ -453,3 +453,8 @@ def google_rtdn_notification_factory(settings, purchase_token, plan) -> Callable
 @pytest.fixture
 def google_rtdn_notification(google_rtdn_notification_factory) -> dict:
     return google_rtdn_notification_factory(GoogleSubscriptionNotificationType.PURCHASED)
+
+
+@pytest.fixture
+def test_notification() -> dict:
+    return {'version': 'trololo'}

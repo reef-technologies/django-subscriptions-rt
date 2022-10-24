@@ -109,6 +109,11 @@ def test_get_user_by_token(google_in_app, payment):
     assert google_in_app.get_user_by_token(payment.provider_transaction_id) == payment.user
 
 
+def test_webhook_test_notification(google_in_app, test_notification, client):
+    response = client.post('/api/webhook/google_in_app/', test_notification, content_type="application/json")
+    assert response.status_code == 200, response.content
+
+
 def test_webhook_for_app_notification_unauthorized(google_in_app, app_notification, client):
     response = client.post('/api/webhook/google_in_app/', app_notification, content_type="application/json")
     assert response.status_code == 403, response.content

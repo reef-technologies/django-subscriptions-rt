@@ -31,6 +31,10 @@ class GoogleSubscriptionNotification(BaseModel):
         extra = Extra.forbid
 
 
+class GoogleTestNotification(BaseModel):
+    version: str
+
+
 class GoogleDeveloperNotification(BaseModel):
     # https://developer.android.com/google/play/billing/rtdn-reference#sub
     version: str
@@ -38,7 +42,7 @@ class GoogleDeveloperNotification(BaseModel):
     eventTimeMillis: str
     oneTimeProductNotification: Optional[Any] = None
     subscriptionNotification: Optional[GoogleSubscriptionNotification] = None
-    testNotification: Optional[Any] = None
+    testNotification: Optional[GoogleTestNotification] = None
 
     class Config:
         extra = Extra.forbid
@@ -72,7 +76,7 @@ class AppNotification(BaseModel):
 
 
 class MultiNotification(BaseModel):
-    notification: Union[AppNotification, GooglePubSubData]
+    notification: Union[AppNotification, GooglePubSubData, GoogleTestNotification]
 
     class Config:
         extra = Extra.forbid
