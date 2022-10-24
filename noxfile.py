@@ -27,6 +27,6 @@ def test(session, django: str):
         'pytest', 'pytest-django',
         'ipdb', 'freezegun',
         'psycopg2-binary',
-        '.[google_in_app]',
+        '.[apple_in_app,google_in_app]',
     )
     session.run('pytest', '-W', 'ignore::DeprecationWarning', '-s', '-vv', str(DEMO_APP_DIR / 'demo' / 'tests'), *session.posargs, env={'DJANGO_SETTINGS_MODULE': 'demo.settings'})
