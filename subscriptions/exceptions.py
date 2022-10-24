@@ -1,5 +1,3 @@
-
-
 class QuotaLimitExceeded(Exception):
     pass
 
@@ -21,9 +19,13 @@ class SubscriptionError(Exception):
 
 
 class PaymentError(Exception):
-    user_message: str = 'unknown error'
+    user_message: str = 'unknown error'  # TODO: won't work with __init__()
     code = 'unknown'
 
 
 class BadReferencePayment(PaymentError):
+    pass
+
+
+class InvalidOperation(Exception):
     pass

@@ -35,6 +35,7 @@ from django.db.models import (
 )
 from django.urls import reverse
 from django.utils.timezone import now
+from pydantic import BaseModel
 
 from .exceptions import (
     InconsistentQuotaCache,
@@ -196,8 +197,13 @@ class Subscription(models.Model):
     def id(self) -> Optional[str]:
         return self.uid and str(self.uid)
 
+    @property
+    def short_id(self) -> Optional[str]:
+        with suppress(TypeError):
+            return self.id[:8]
+
     def __str__(self) -> str:
-        return f'{self.id} {self.user} {self.plan}, {self.start} - {self.end}'
+        return f'{self.short_id} {self.user} {self.plan}, {self.start} - {self.end}'
 
     @property
     def max_end(self) -> datetime:
@@ -359,7 +365,7 @@ class AbstractTransaction(models.Model):
     provider_codename = models.CharField(max_length=255)
     provider_transaction_id = models.CharField(max_length=255, blank=True, null=True)
     status = models.PositiveSmallIntegerField(choices=Status.choices, default=Status.PENDING)
-    amount = MoneyField()
+    amount = MoneyField(blank=True, null=True)  # set None for services where the payment information is completely out of reach
     # source = models.ForeignKey(MoneyStorage, on_delete=models.PROTECT, related_name='transactions_out')
     # destination = models.ForeignKey(MoneyStorage, on_delete=models.PROTECT, related_name='transactions_in')
     metadata = models.JSONField(blank=True, default=dict, encoder=DjangoJSONEncoder)
@@ -384,8 +390,13 @@ class AbstractTransaction(models.Model):
     def id(self) -> Optional[str]:
         return self.uid and str(self.uid)
 
+    @property
+    def short_id(self) -> Optional[str]:
+        with suppress(TypeError):
+            return self.id[:8]
+
     def __str__(self) -> str:
-        return f'{self.id} {self.get_status_display()} {self.amount} via {self.provider_codename}'
+        return f'{self.short_id} {self.get_status_display()} {self.amount}'
 
     @property
     def provider(self) -> Provider:
@@ -398,31 +409,65 @@ class SubscriptionPayment(AbstractTransaction):
     plan = models.ForeignKey(Plan, on_delete=models.PROTECT, related_name='payments')
     subscription = models.ForeignKey(Subscription, on_delete=models.PROTECT, blank=True, null=True, related_name='payments')
     quantity = models.PositiveIntegerField(default=1)
+
+    # If not specifying following fields, they are set automatically after Subscription
+    # creation / prolongation; however, it works other way round as well: if these fields
+    # are set, their values will be used to adjust subscription duration; this is handy
+    # when payment and subscription info comes from external source and is out of control
+    # of the application.
     subscription_start = models.DateTimeField(blank=True, null=True)  # TODO: paid from
-    subscription_end = models.DateTimeField(blank=True, null=True)  # TODO: paid to
+    subscription_end = models.DateTimeField(blank=True, null=True)  # TODO: paid until
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._initial_status = self.uid and self.status
 
+    # TODO: changing latest() to `subscription_end` may not work well when subscription_end is None
+    # class Meta:
+    #     get_latest_by = 'subscription_end'
+
+    def __str__(self) -> str:
+        return f'{self.short_id} {self.get_status_display()} {self.user} {self.amount} from={self.subscription_start} until={self.subscription_end}'
+
     def save(self, *args, **kwargs):
-        if self.status != self._initial_status:
-            # TODO: send email if not silent
-            if self.status == self.Status.COMPLETED:
-                if (subscription := self.subscription):
-                    self.subscription_start = subscription.end
+        assert bool(self.subscription_start) == bool(self.subscription_end), \
+            "subscription_start and subscription_end should both be either set or not"
+
+        if self.status == self.Status.COMPLETED:
+            if (subscription := self.subscription):
+                self.subscription_start = self.subscription_start or subscription.end
+
+                if self.subscription_end:
+                    assert self.subscription_end > self.subscription_start
+
+                    # change existing subscription duration based on payment's end
+                    if self.subscription_end <= subscription.end:
+                        log.warning('Payment\'s end (%s) is earlier than current subscription\'s end (%s) -> payment has no effect', self.subscription_end, subscription.end)
+                    else:
+                        subscription.end = self.subscription_end
+
+                else:
+                    # prolong existing subscription and set payment's (start, end)
                     subscription.end = subscription.prolong()  # TODO: what if this fails?
                     self.subscription_end = subscription.end
-                    subscription.save()
-                else:
-                    self.subscription = Subscription.objects.create(
-                        user=self.user,
-                        plan=self.plan,
-                        quantity=self.quantity,
-                    )
-                    self.subscription
-                    self.subscription_start = self.subscription.start
-                    self.subscription_end = self.subscription.end
+
+                subscription.save()
+
+            else:
+                self.subscription = Subscription.objects.create(
+                    user=self.user,
+                    plan=self.plan,
+                    quantity=self.quantity,
+                    start=self.subscription_start,
+                    end=self.subscription_end,
+                )
+                # in case subscription_start and subscription_end are empty:
+                self.subscription_start = self.subscription.start
+                self.subscription_end = self.subscription.end
+
+            new_status = self.status != self._initial_status and self.status
+            if new_status == self.Status.COMPLETED:
+                pass  # TODO: send email if not silent
 
         return super().save(*args, **kwargs)
 
@@ -433,6 +478,17 @@ class SubscriptionPayment(AbstractTransaction):
                 user=user,
                 status=SubscriptionPayment.Status.COMPLETED,
             ).latest()
+
+    @property
+    def meta(self) -> BaseModel:
+        from .providers import get_provider
+
+        provider = get_provider(self.provider_codename)
+        return provider.metadata_class.parse_obj(self.metadata)
+
+    @meta.setter
+    def meta(self, value: BaseModel):
+        self.metadata = value.dict()
 
 
 class SubscriptionPaymentRefund(AbstractTransaction):
