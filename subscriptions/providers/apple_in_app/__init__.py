@@ -107,7 +107,6 @@ class AppleInAppProvider(Provider):
 
         # Validate the receipt. Fetch the status and product.
         receipt_data = self.api.fetch_receipt_data(receipt)
-        print(receipt_data)
         single_in_app = self._get_validated_in_app_product(receipt_data)
 
         # Check whether this receipt is anyhow interesting:

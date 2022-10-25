@@ -294,6 +294,7 @@ def google_in_app(settings) -> str:
     assert isinstance(provider, GoogleInAppProvider)
     return provider
 
+
 @pytest.fixture
 def apple_in_app(settings) -> AppleInAppProvider:
     settings.SUBSCRIPTIONS_PAYMENT_PROVIDERS = [
@@ -304,7 +305,6 @@ def apple_in_app(settings) -> AppleInAppProvider:
     provider = get_provider()
     assert isinstance(provider, AppleInAppProvider)
     return provider
-
 
 
 @pytest.fixture

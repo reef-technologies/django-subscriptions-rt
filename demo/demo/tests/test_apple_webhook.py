@@ -16,6 +16,9 @@ from subscriptions.providers.apple_in_app.api import AppleReceiptRequest
 from subscriptions.providers.apple_in_app.enums import AppleValidationStatus
 
 
+RECEIPT_FETCH_FUNCTION = 'subscriptions.providers.apple_in_app.api.AppleAppStoreAPI._fetch_receipt_from_endpoint'
+
+
 @pytest.fixture
 def apple_product_id() -> str:
     return 'test-product-id'
@@ -79,7 +82,7 @@ def make_receipt_query() -> dict:
 
 def test__valid_receipt_sent(user_client, apple_in_app, apple_product_id, apple_bundle_id, user):
     receipt_data = make_receipt_data(apple_product_id, apple_bundle_id)
-    with mock.patch.object(apple_in_app.api, '_fetch_receipt_from_endpoint') as mock_receipt:
+    with mock.patch(RECEIPT_FETCH_FUNCTION) as mock_receipt:
         mock_receipt.return_value = receipt_data
         response = user_client.post('/api/webhook/apple_in_app/', make_receipt_query(), content_type='application/json')
 
@@ -98,7 +101,7 @@ def test__valid_receipt_sent(user_client, apple_in_app, apple_product_id, apple_
 
 def test__invalid_receipt_sent(user_client, apple_in_app, apple_product_id, apple_bundle_id):
     receipt_data = make_receipt_data(apple_product_id, apple_bundle_id, is_valid=False)
-    with mock.patch.object(apple_in_app.api, '_fetch_receipt_from_endpoint') as mock_receipt:
+    with mock.patch(RECEIPT_FETCH_FUNCTION) as mock_receipt:
         mock_receipt.return_value = receipt_data
         with pytest.raises(AppleReceiptValidationError):
             user_client.post('/api/webhook/apple_in_app/', make_receipt_query(), content_type='application/json')
@@ -106,7 +109,7 @@ def test__invalid_receipt_sent(user_client, apple_in_app, apple_product_id, appl
 
 def test__invalid_bundle_id_in_the_receipt(user_client, apple_in_app, apple_product_id, apple_bundle_id):
     receipt_data = make_receipt_data(apple_product_id, apple_bundle_id + 'x')
-    with mock.patch.object(apple_in_app.api, '_fetch_receipt_from_endpoint') as mock_receipt:
+    with mock.patch(RECEIPT_FETCH_FUNCTION) as mock_receipt:
         mock_receipt.return_value = receipt_data
         with pytest.raises(AppleReceiptValidationError):
             user_client.post('/api/webhook/apple_in_app/', make_receipt_query(), content_type='application/json')
