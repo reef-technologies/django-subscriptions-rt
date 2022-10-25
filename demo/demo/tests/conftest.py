@@ -271,16 +271,6 @@ def user_client(client, user) -> Client:
     return client
 
 
-def make_provider(provider_path, settings) -> Provider:
-    settings.SUBSCRIPTIONS_PAYMENT_PROVIDERS = [
-        provider_path,
-    ]
-    get_provider.cache_clear()
-    get_providers.cache_clear()
-    provider = get_provider()
-    assert isinstance(provider, DummyProvider)
-    return provider
-
 @pytest.fixture
 def paddle(settings) -> str:
     settings.SUBSCRIPTIONS_PAYMENT_PROVIDERS = [

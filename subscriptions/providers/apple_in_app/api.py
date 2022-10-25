@@ -1,4 +1,5 @@
 import datetime
+import logging
 from typing import ClassVar
 
 import requests
@@ -14,6 +15,9 @@ from .enums import (
     AppleValidationStatus,
 )
 from .exceptions import InvalidAppleReceiptError
+
+
+logger = logging.getLogger(__name__)
 
 
 class AppleInApp(BaseModel):
@@ -66,11 +70,11 @@ class AppleVerifyReceiptResponse(BaseModel):
     }
 
     # The environment for which the receipt was generated.
-    environment: AppleEnvironment
+    environment: AppleEnvironment = Field(default=AppleEnvironment.PRODUCTION)
 
-    receipt: AppleReceipt
+    receipt: AppleReceipt = Field(default=None)
 
-    is_retryable: bool = Field(alias='is-retryable')
+    is_retryable: bool = Field(alias='is-retryable', default=False)
     status: AppleValidationStatus
 
     @property
@@ -128,6 +132,7 @@ class AppleAppStoreAPI:
         try:
             return AppleVerifyReceiptResponse.parse_obj(json_data)
         except ValidationError as validation_error:
+            logger.exception('Payload received: %s', json_data)
             raise InvalidAppleReceiptError() from validation_error
 
 
