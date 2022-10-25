@@ -411,7 +411,7 @@ def app_notification(purchase_token) -> dict:
 def google_subscription_purchase(plan, now, days) -> GoogleSubscriptionPurchaseV2:
     return GoogleSubscriptionPurchaseV2(
         lineItems=[GoogleSubscriptionPurchaseLineItem(
-            productId=plan.id,
+            productId=plan.codename,
             expiryTime=(now + days(5)).isoformat().replace('+00:00', 'Z'),
             autoRenewingPlan=GoogleAutoRenewingPlan(autoRenewEnabled=True),
         )],
@@ -438,7 +438,7 @@ def google_rtdn_notification_factory(settings, purchase_token, plan) -> Callable
                         'version': '1.0',
                         'notificationType': type_,
                         'purchaseToken': purchase_token,
-                        'subscriptionId': plan.id,
+                        'subscriptionId': plan.codename,
                     },
                 }).encode('utf8')).decode('utf8'),
             },

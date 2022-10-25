@@ -146,8 +146,8 @@ class GoogleInAppProvider(Provider):
 
                 self.subscription_api.basePlans().deactivate(
                     packageName=self.package_name,
-                    productId=plan.id,
-                    basePlanId=plan.id,
+                    productId=plan.codename,
+                    basePlanId=plan.codename,
                 ).execute()
 
             # google_subscription.'status': GoogleSubscriptionStatus.INACTIVE,
@@ -166,15 +166,15 @@ class GoogleInAppProvider(Provider):
             if base_plan.state == GoogleBasePlanState.ACTIVE and not plan.is_enabled:
                 self.subscriptions_api.basePlans().deactivate(
                     packageName=self.package_name,
-                    productId=plan.id,
-                    basePlanId=plan.id,
+                    productId=plan.codename,
+                    basePlanId=plan.codename,
                 ).execute()
                 base_plan.state = GoogleBasePlanState.INACTIVE
             elif base_plan.state == GoogleBasePlanState.INACTIVE and plan.is_enabled:
                 self.subscriptions_api.basePlans().activate(
                     packageName=self.package_name,
-                    productId=plan.id,
-                    basePlanId=plan.id,
+                    productId=plan.codename,
+                    basePlanId=plan.codename,
                 ).execute()
                 base_plan.state = GoogleBasePlanState.ACTIVE
 
@@ -207,9 +207,9 @@ class GoogleInAppProvider(Provider):
         # https://support.google.com/googleplay/android-developer/answer/12154973?hl=en
         return GoogleSubscription(
             packageName=cls.package_name,
-            productId=plan.id,
+            productId=plan.codename,
             basePlans=[GoogleBasePlan(
-                basePlanId=plan.id,
+                basePlanId=plan.codename,
                 state=GoogleBasePlanState.ACTIVE if plan.is_enabled else GoogleBasePlanState.INACTIVE,
                 regionalConfigs=[
                     GoogleRegionalBasePlanConfig(
@@ -359,7 +359,7 @@ class GoogleInAppProvider(Provider):
 
         purchase_item = one(purchase.lineItems)
         purchase_end = fromisoformat(purchase_item.expiryTime)
-        plan_pk = purchase_item.productId
+        plan_codename = purchase_item.productId
 
         if not user and linked_token:
             user = self.get_user_by_token(linked_token)
@@ -419,7 +419,7 @@ class GoogleInAppProvider(Provider):
                     defaults=dict(
                         user=user,
                         status=SubscriptionPayment.Status.COMPLETED,
-                        plan=Plan.objects.get(pk=plan_pk),
+                        plan=Plan.objects.get(codename=plan_codename),
                         amount=None,
                         subscription_start=fromisoformat(purchase.startTime),
                         subscription_end=purchase_end,
@@ -471,7 +471,7 @@ class GoogleInAppProvider(Provider):
             if purchase.acknowledgementState == GoogleAcknowledgementState.PENDING and subscription:
                 self.acknowledge(
                     packageName=self.package_name,
-                    subscriptionId=plan_pk,
+                    subscriptionId=plan_codename,
                     token=purchase_token,
                     body={
                         'developerPayload': json.dumps({

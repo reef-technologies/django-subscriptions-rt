@@ -31,7 +31,7 @@ def test_plan_push(google_in_app, plan):
         google_in_app.subscriptions_api,
         'list',
         return_value=Executable([
-            GoogleSubscription(productId=plan.id - 1),  # some other ID
+            GoogleSubscription(productId=plan.codename + '-trololo'),  # some other ID
         ]),
     ), mock.patch(
         google_in_app.subscriptions_api,
@@ -215,7 +215,7 @@ def test_purchase_acknowledgement(google_in_app, user_client, google_subscriptio
             assert Subscription.objects.exists()
             google_in_app.acknowledge.assert_called_with(
                 packageName=google_in_app.package_name,
-                subscriptionId=str(plan.id),
+                subscriptionId=str(plan.codename),
                 token=app_notification['purchase_token'],
                 body=mock.ANY,
             )
