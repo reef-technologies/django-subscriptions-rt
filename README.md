@@ -51,6 +51,10 @@ settings.CACHES['subscriptions'] = {
 }
 ```
 
+# Middleware
+
+It is costy - calculates resources for each authenticated user's request! May be handy in html templates, but better not to use it too much.
+
 # Humanize
 
 # Payment providers
