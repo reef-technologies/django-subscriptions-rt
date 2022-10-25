@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Any, Optional
 from unittest import mock
 
@@ -9,6 +8,7 @@ from freezegun import freeze_time
 from more_itertools import one
 from subscriptions.models import Plan, Subscription, SubscriptionPayment
 from subscriptions.providers.google_in_app.models import GoogleAcknowledgementState, GoogleSubscription, GoogleSubscriptionNotificationType, GoogleSubscriptionState
+from subscriptions.utils import fromisoformat
 
 
 def test_iter_subscriptions(google_in_app):
@@ -131,8 +131,8 @@ def test_webhook_for_app_notification(google_in_app, app_notification, user_clie
     payment = one(SubscriptionPayment.objects.all())
     subscription = payment.subscription
 
-    assert payment.subscription_start == subscription.start == datetime.fromisoformat(google_subscription_purchase.startTime)
-    assert payment.subscription_end == subscription.end == datetime.fromisoformat(one(google_subscription_purchase.lineItems).expiryTime)
+    assert payment.subscription_start == subscription.start == fromisoformat(google_subscription_purchase.startTime)
+    assert payment.subscription_end == subscription.end == fromisoformat(one(google_subscription_purchase.lineItems).expiryTime)
     assert payment.status == SubscriptionPayment.Status.COMPLETED
     assert payment.provider_codename == google_in_app.codename
     assert payment.provider_transaction_id == app_notification['purchase_token']

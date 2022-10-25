@@ -412,10 +412,10 @@ def google_subscription_purchase(plan, now, days) -> GoogleSubscriptionPurchaseV
     return GoogleSubscriptionPurchaseV2(
         lineItems=[GoogleSubscriptionPurchaseLineItem(
             productId=plan.id,
-            expiryTime=(now + days(5)).isoformat(),
+            expiryTime=(now + days(5)).isoformat().replace('+00:00', 'Z'),
             autoRenewingPlan=GoogleAutoRenewingPlan(autoRenewEnabled=True),
         )],
-        startTime=now.isoformat(),
+        startTime=now.isoformat().replace('+00:00', 'Z'),
         subscriptionState=GoogleSubscriptionState.ACTIVE,
         linkedPurchaseToken=None,
         acknowledgementState=GoogleAcknowledgementState.ACKNOWLEDGED,

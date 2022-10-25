@@ -23,9 +23,10 @@ from rest_framework.status import HTTP_200_OK, HTTP_400_BAD_REQUEST
 
 from ...api.serializers import SubscriptionPaymentSerializer
 from ...models import Plan, SubscriptionPayment
+from ...utils import fromisoformat
 from .. import Provider
 from .exceptions import InvalidOperation
-from .models import AppNotification, GoogleAcknowledgementState, GoogleAutoRenewingBasePlanType, GoogleBasePlan, GoogleBasePlanState, GoogleDeveloperNotification, GoogleMoney, GooglePubSubData, GoogleRegionalBasePlanConfig, GoogleResubscribeState, GoogleSubscription, GoogleSubscriptionNotificationType, GoogleSubscriptionProrationMode, GoogleSubscriptionPurchaseV2, GoogleSubscriptionState, GoogleTestNotification, Metadata, MultiNotification
+from .models import AppNotification, GoogleAcknowledgementState, GoogleAutoRenewingBasePlanType, GoogleBasePlan, GoogleBasePlanState, GoogleDeveloperNotification, GoogleMoney, GooglePubSubData, GoogleRegionalBasePlanConfig, GoogleResubscribeState, GoogleSubscription, GoogleSubscriptionNotificationType, GoogleSubscriptionProrationMode, GoogleSubscriptionPurchaseV2, GoogleSubscriptionState, Metadata, MultiNotification
 
 log = logging.getLogger(__name__)
 
@@ -357,7 +358,7 @@ class GoogleInAppProvider(Provider):
         linked_token = purchase.linkedPurchaseToken
 
         purchase_item = one(purchase.lineItems)
-        purchase_end = datetime.fromisoformat(purchase_item.expiryTime)
+        purchase_end = fromisoformat(purchase_item.expiryTime)
         plan_pk = purchase_item.productId
 
         if not user and linked_token:
@@ -420,7 +421,7 @@ class GoogleInAppProvider(Provider):
                         status=SubscriptionPayment.Status.COMPLETED,
                         plan=Plan.objects.get(pk=plan_pk),
                         amount=None,
-                        subscription_start=datetime.fromisoformat(purchase.startTime),
+                        subscription_start=fromisoformat(purchase.startTime),
                         subscription_end=purchase_end,
                         metadata=Metadata(purchase=purchase).dict(),
                     )

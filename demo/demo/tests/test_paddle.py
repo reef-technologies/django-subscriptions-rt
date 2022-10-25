@@ -11,6 +11,7 @@ from subscriptions.models import Plan, Subscription, SubscriptionPayment
 from subscriptions.providers import get_provider
 from subscriptions.providers.paddle import PaddleProvider
 from subscriptions.tasks import check_unfinished_payments
+from subscriptions.utils import fromisoformat
 from tenacity import Retrying, TryAgain, stop_after_attempt, wait_fixed
 
 
@@ -148,11 +149,11 @@ def test_webhook(paddle, client, user_client, paddle_unconfirmed_payment, paddle
 
         # check that subscription started when webhook arrived
         subscription = subscriptions[0]
-        start = datetime.fromisoformat(subscription['start'].replace('Z', '+00:00'))
+        start = fromisoformat(subscription['start'])
         assert start - webhook_time < timedelta(seconds=10)
 
         # check that subscription lasts as much as stated in plan description
-        end = datetime.fromisoformat(subscription['end'].replace('Z', '+00:00'))
+        end = fromisoformat(subscription['end'])
         assert start + paddle_unconfirmed_payment.plan.charge_period == end
 
 
