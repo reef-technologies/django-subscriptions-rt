@@ -200,7 +200,7 @@ class GoogleAcknowledgementState(str, Enum):
 
 class GoogleAutoRenewingPlan(BaseModel):
     # https://developers.google.com/android-publisher/api-ref/rest/v3/purchases.subscriptionsv2#AutoRenewingPlan
-    autoRenewEnabled: bool
+    autoRenewEnabled: Optional[bool] = None
 
     class Config:
         extra = Extra.forbid
@@ -218,7 +218,8 @@ class GoogleSubscriptionPurchaseLineItem(BaseModel):
     # https://developers.google.com/android-publisher/api-ref/rest/v3/purchases.subscriptionsv2#SubscriptionPurchaseLineItem
     productId: str
     expiryTime: str
-    plan_type: Union[GoogleAutoRenewingPlan, GooglePrepaidPlan]
+    autoRenewingPlan: Optional[GoogleAutoRenewingPlan] = None
+    prepaidPlan: Optional[GooglePrepaidPlan] = None
 
     class Config:
         extra = Extra.forbid

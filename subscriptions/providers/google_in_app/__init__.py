@@ -221,7 +221,7 @@ class GoogleInAppProvider(Provider):
                         ),
                     ),
                 ],
-                plan_type=GoogleAutoRenewingBasePlanType(
+                autoRenewingBasePlanType=GoogleAutoRenewingBasePlanType(
                     billingPeriodDuration=cls.relativedelta_to_iso8601(plan.charge_period),
                     gracePeriodDuration=cls.relativedelta_to_iso8601(relativedelta(0)),
                     resubscribeState=GoogleResubscribeState.ACTIVE,

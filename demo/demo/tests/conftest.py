@@ -413,7 +413,7 @@ def google_subscription_purchase(plan, now, days) -> GoogleSubscriptionPurchaseV
         lineItems=[GoogleSubscriptionPurchaseLineItem(
             productId=plan.id,
             expiryTime=(now + days(5)).isoformat(),
-            plan_type=GoogleAutoRenewingPlan(autoRenewEnabled=True),
+            autoRenewingPlan=GoogleAutoRenewingPlan(autoRenewEnabled=True),
         )],
         startTime=now.isoformat(),
         subscriptionState=GoogleSubscriptionState.ACTIVE,
