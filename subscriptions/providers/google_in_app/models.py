@@ -34,6 +34,9 @@ class GoogleSubscriptionNotification(BaseModel):
 class GoogleTestNotification(BaseModel):
     version: str
 
+    class Config:
+        extra = Extra.forbid
+
 
 class GoogleDeveloperNotification(BaseModel):
     # https://developer.android.com/google/play/billing/rtdn-reference#sub
@@ -49,12 +52,12 @@ class GoogleDeveloperNotification(BaseModel):
 
 
 class GooglePubSubMessage(BaseModel):
-    attributes: dict
     data: str
     messageId: str
+    publishTime: str
 
     class Config:
-        extra = Extra.forbid
+        extra = Extra.ignore
 
     def decode(self) -> str:
         return b64decode(self.data).decode('utf8')
@@ -76,7 +79,7 @@ class AppNotification(BaseModel):
 
 
 class MultiNotification(BaseModel):
-    notification: Union[AppNotification, GooglePubSubData, GoogleTestNotification]
+    notification: Union[AppNotification, GooglePubSubData]
 
     class Config:
         extra = Extra.forbid

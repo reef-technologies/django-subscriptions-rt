@@ -275,11 +275,15 @@ class GoogleInAppProvider(Provider):
 
         if isinstance(notification, AppNotification):
             return self.handle_app_notification(notification, request.user)
+
         elif isinstance(notification, GooglePubSubData):
-            notification = GoogleDeveloperNotification.parse_raw(notification.message.decode())
+            raw_data = notification.message.decode()
+            notification = GoogleDeveloperNotification.parse_raw(raw_data)
+            if notification.testNotification:
+                return Response(status=HTTP_200_OK)
+
             return self.handle_google_notification(notification)
-        elif isinstance(notification, GoogleTestNotification):
-            return Response(status=HTTP_200_OK)
+
         else:
             raise ValueError(f'Unknown notification type {notification}')
 

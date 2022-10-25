@@ -428,9 +428,8 @@ def google_rtdn_notification_factory(settings, purchase_token, plan) -> Callable
     def build_google_rtdn_notification(type_: GoogleSubscriptionNotificationType):
         return {
             "message": {
-                "attributes": {
-                    "key": "value"
-                },
+                "messageId": "136969346945",
+                "publishTime": "2022-10-25T13:15:00.858Z",
                 "data": b64encode(json.dumps({
                     "version": '1.0',
                     "packageName": settings.GOOGLE_PLAY_PACKAGE_NAME,
@@ -442,7 +441,6 @@ def google_rtdn_notification_factory(settings, purchase_token, plan) -> Callable
                         'subscriptionId': plan.id,
                     },
                 }).encode('utf8')).decode('utf8'),
-                "messageId": "136969346945"
             },
             "subscription": "projects/myproject/subscriptions/mysubscription",
         }
@@ -457,4 +455,13 @@ def google_rtdn_notification(google_rtdn_notification_factory) -> dict:
 
 @pytest.fixture
 def test_notification() -> dict:
-    return {'version': 'trololo'}
+    return {
+        "message": {
+            "data": "eyJ2ZXJzaW9uIjoiMS4wIiwicGFja2FnZU5hbWUiOiJjb20ucHJvbWV0aGV1c3Bva2VyLmJhdHRsZSIsImV2ZW50VGltZU1pbGxpcyI6IjE2NjY3MDM3MDA0MTMiLCJ0ZXN0Tm90aWZpY2F0aW9uIjp7InZlcnNpb24iOiIxLjAifX0=",
+            "message_id": "6079043127548205",
+            "messageId": "6079043127548205",
+            "publish_time": "2022-10-25T13:15:00.858Z",
+            "publishTime": "2022-10-25T13:15:00.858Z",
+        },
+        "subscription": "projects/pc-api-8164987956662966187-422/subscriptions/subscription-notifications",
+    }
