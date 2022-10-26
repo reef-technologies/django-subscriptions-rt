@@ -1,9 +1,11 @@
 import base64
+import pathlib
 import unittest.mock
 from typing import (
     NamedTuple,
     Optional,
 )
+from unittest import mock
 
 import jwt.utils
 import pytest
@@ -137,8 +139,10 @@ def test__apple_root_certificate_not_set_up():
     # No certificate set up
     import subscriptions.providers.apple_in_app.app_store
     subscriptions.providers.apple_in_app.app_store.get_original_apple_certificate.cache_clear()
-    with pytest.raises(ConfigurationError):
-        AppleInAppProvider()
+    with mock.patch('subscriptions.providers.apple_in_app.app_store.get_default_certificate_path',
+                    return_value=pathlib.Path('./dummy.cer')):
+        with pytest.raises(ConfigurationError):
+            AppleInAppProvider()
 
 
 def test__no_certificates_in_the_header(root_certificate_group: CertificateGroup):

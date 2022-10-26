@@ -121,8 +121,9 @@ APPLE_BUNDLE_ID = environ.get('APPLE_BUNDLE_ID')
 # Shared secret that can be used to ask Apple about receipts. Obtainable from
 # https://help.apple.com/app-store-connect/#/devf341c0f01
 APPLE_SHARED_SECRET = environ.get('APPLE_SHARED_SECRET')
-# One can obtain it from https://www.apple.com/certificateauthority/
-APPLE_ROOT_CERTIFICATE_PATH = environ.get('APPLE_ROOT_CERTIFICATE_PATH', './apple_cert.cer')
+# Optional. One can obtain it from https://www.apple.com/certificateauthority/
+# Current certificate is also embedded into the application.
+# APPLE_ROOT_CERTIFICATE_PATH = environ.get('APPLE_ROOT_CERTIFICATE_PATH')
 
 AUTH_PASSWORD_VALIDATORS = [
     {

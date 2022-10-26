@@ -88,10 +88,11 @@ class AppleInAppProvider(Provider):
                 instance = request_class.parse_obj(payload)
                 return handler(request, instance)
             except ValidationError as validation_error:
-                validation_error_messages.append(validation_error.json())
+                validation_error_messages.append(str(validation_error))
 
         # Invalid, unhandled request.
-        logger.error('Failed matching the payload to any registered request: %s.', '\n'.join(validation_error_messages))
+        logger.error('Failed matching the payload to any registered request:\n%s.',
+                     '\n\n'.join(validation_error_messages))
         return Response(status=HTTP_400_BAD_REQUEST)
 
     def check_payments(self, payments: Iterable[SubscriptionPayment]):
