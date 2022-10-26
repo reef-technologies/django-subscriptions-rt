@@ -11,6 +11,7 @@ from subscriptions.providers.apple_in_app import (
     AppleAppStoreNotification,
     AppleReceiptValidationError,
     AppleVerifyReceiptResponse,
+    ProductIdChangedError,
 )
 from subscriptions.providers.apple_in_app.api import AppleReceiptRequest
 from subscriptions.providers.apple_in_app.app_store import (
@@ -83,18 +84,18 @@ def make_receipt_query() -> dict:
     return AppleReceiptRequest(transaction_receipt='test-receipt-string').dict()
 
 
-@pytest.fixture
-def patched_notification_class():
-    notification_class = AppStoreNotification
-    with mock.patch.object(notification_class, 'transaction_info', new=mock.MagicMock()):
-        yield notification_class
+@pytest.fixture(autouse=True)
+def patched_notification():
+    with mock.patch('subscriptions.providers.apple_in_app.AppStoreNotification.transaction_info',
+                    new_callable=mock.PropertyMock):
+        yield
 
 
-def make_notification_data(patched_notification_class: Type[AppStoreNotification],
-                           bundle_id: str,
+def make_notification_data(bundle_id: str,
                            product_id: str,
-                           is_renew: bool = True) -> AppStoreNotification:
-    result = patched_notification_class.parse_obj(
+                           is_renew: bool = True,
+                           original_transaction_id: str = 'test-original-transaction-id') -> AppStoreNotification:
+    result = AppStoreNotification.parse_obj(
         {
             'notification': AppStoreNotificationTypeV2.DID_RENEW.value if is_renew else AppStoreNotificationTypeV2.TEST.value,
             'subtype': AppStoreNotificationTypeV2Subtype.ACCEPTED.value,
@@ -108,23 +109,20 @@ def make_notification_data(patched_notification_class: Type[AppStoreNotification
             },
         }
     )
-    transaction_info = AppStoreTransactionInfo.parse_obj(
-        {
-            'appAccountToken': 'test-app-account-token',
-            'bundleId': bundle_id,
-            'purchaseDate': datetime.datetime(2022, 4, 15).timestamp(),
-            'expiresDate': datetime.datetime(2022, 5, 15).timestamp(),
-            'productId': product_id,
-            'transactionId': 'test-transaction-id',
-            'originalTransactionId': 'test-original-transaction-id',
-        }
-    )
-    result.transaction_info.return_value = transaction_info
+
+    result.transaction_info.app_account_token = 'test-app-account-token'
+    result.transaction_info.bundle_id = bundle_id
+    result.transaction_info.purchase_date = datetime.datetime(2022, 4, 15, tzinfo=datetime.timezone.utc)
+    result.transaction_info.expires_date = datetime.datetime(2022, 5, 15, tzinfo=datetime.timezone.utc)
+    result.transaction_info.product_id = product_id
+    result.transaction_info.transaction_id = 'test-transaction-id'
+    result.transaction_info.original_transaction_id = original_transaction_id
+
     return result
 
 
 def make_notification_query() -> dict:
-    return AppleAppStoreNotification(signedPayload='test-signed-payload').dict()
+    return {'signedPayload': 'test-signed-payload'}
 
 
 def test__valid_receipt_sent(user_client, apple_in_app, apple_product_id, apple_bundle_id, user):
@@ -180,42 +178,61 @@ def test__basic_receipt_with_status_returned(user_client):
 
 
 def test__app_store_notification__renew__product_id_changed(user_client,
-                                                            patched_notification_class,
                                                             apple_bundle_id,
                                                             apple_product_id):
+    transaction_id = 'special-transaction-id'
     # Create the subscription via API.
-    receipt_data = make_receipt_data(apple_product_id, apple_bundle_id)
+    receipt_data = make_receipt_data(
+        apple_product_id,
+        apple_bundle_id,
+        transaction_id=transaction_id,
+        original_transaction_id=transaction_id
+    )
     with mock.patch(RECEIPT_FETCH_FUNCTION) as mock_receipt:
         mock_receipt.return_value = receipt_data
         response = user_client.post(APPLE_API_WEBHOOK, make_receipt_query(), content_type='application/json')
         assert response.status_code == 200
 
     # Provide a notification with a different product id.
-    notification_data = make_notification_data(patched_notification_class, apple_bundle_id, apple_product_id + 'x')
+    notification_data = make_notification_data(
+        apple_bundle_id,
+        apple_product_id + 'x',
+        original_transaction_id=transaction_id
+    )
     with mock.patch(NOTIFICATION_PARSER) as mock_parser:
         mock_parser.return_value = notification_data
-        user_client.post(APPLE_API_WEBHOOK, make_notification_query(), content_type='application/json')
+        with pytest.raises(ProductIdChangedError):
+            user_client.post(APPLE_API_WEBHOOK, make_notification_query(), content_type='application/json')
 
 
 def test__app_store_notifications__renew__subscription_extended(user_client,
-                                                                patched_notification_class,
                                                                 apple_bundle_id,
                                                                 apple_product_id,
                                                                 user,
                                                                 apple_in_app):
+    transaction_id = 'special-transaction-id'
     # Create the subscription via API.
-    receipt_data = make_receipt_data(apple_product_id, apple_bundle_id)
+    receipt_data = make_receipt_data(
+        apple_product_id,
+        apple_bundle_id,
+        transaction_id=transaction_id,
+        original_transaction_id=transaction_id
+    )
     with mock.patch(RECEIPT_FETCH_FUNCTION) as mock_receipt:
         mock_receipt.return_value = receipt_data
         response = user_client.post(APPLE_API_WEBHOOK, make_receipt_query(), content_type='application/json')
-        assert response.status_code == 200
+        assert response.status_code == 200, response.content
 
     # Receive a notification about subscription extension.
-    notification_data = make_notification_data(patched_notification_class, apple_bundle_id, apple_product_id)
+    notification_data = make_notification_data(
+        apple_bundle_id,
+        apple_product_id,
+        original_transaction_id=transaction_id
+    )
     with mock.patch(NOTIFICATION_PARSER) as mock_parser:
         mock_parser.return_value = notification_data
         response = user_client.post(APPLE_API_WEBHOOK, make_notification_query(), content_type='application/json')
-        assert response.status_code == 200
+        assert response.status_code == 200, response.content
 
     all_subscriptions = list(SubscriptionPayment.objects.all())
     assert len(all_subscriptions) == 2
@@ -231,16 +248,17 @@ def test__app_store_notifications__renew__subscription_extended(user_client,
 
 
 def test__app_store_notification__invalid_signature(client):
+    # TODO
     pass
 
 
-def test__app_store_notification__not_renew_operation_skipped(user_client, patched_notification_class):
+def test__app_store_notification__not_renew_operation_skipped(user_client):
     # Provide a notification with a different product id.
     notification_data = \
-        make_notification_data(patched_notification_class, 'test-bundle', 'test-product', is_renew=False)
+        make_notification_data('test-bundle', 'test-product', is_renew=False)
     with mock.patch(NOTIFICATION_PARSER) as mock_parser:
         mock_parser.return_value = notification_data
         response = user_client.post(APPLE_API_WEBHOOK, make_notification_query(), content_type='application/json')
 
-    assert response == 200
+    assert response.status_code == 200, response.content
     assert len(SubscriptionPayment.objects.all()) == 0
