@@ -40,6 +40,7 @@ from .app_store import (
     AppStoreNotificationTypeV2,
     AppleAppStoreNotification,
     PayloadValidationError,
+    get_original_apple_certificate,
 )
 from .exceptions import (
     AppleInvalidOperation,
@@ -63,6 +64,8 @@ class AppleInAppProvider(Provider):
 
     def __post_init__(self):
         self.api = AppleAppStoreAPI(settings.APPLE_SHARED_SECRET)
+        # Check whether the Apple certificate is provided and is a valid certificate.
+        get_original_apple_certificate()
 
     def charge_online(self, user: AbstractBaseUser, plan: Plan, subscription: Optional[Subscription] = None,
                       quantity: int = 1) -> Tuple[SubscriptionPayment, str]:
