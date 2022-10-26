@@ -45,8 +45,7 @@ def are_certificates_identical(cert_1: crypto.X509, cert_2: crypto.X509) -> bool
     return cert_1.to_cryptography().public_bytes(Encoding.DER) == cert_2.to_cryptography().public_bytes(Encoding.DER)
 
 
-def get_default_certificate_path() -> pathlib.Path:
-    return pathlib.Path(__file__).resolve().parent / 'certs/AppleRootCertificate.cer'
+DEFAULT_ROOT_CERTIFICATE_PATH = pathlib.Path(__file__).resolve().parent / 'certs' / 'AppleRootCertificate.cer'
 
 
 def provide_warnings_for_old_certificate(certificate: crypto.X509) -> None:
@@ -65,11 +64,11 @@ def provide_warnings_for_old_certificate(certificate: crypto.X509) -> None:
 
 @functools.cache
 def get_original_apple_certificate() -> crypto.X509:
-    try:
-        cert_path = pathlib.Path(settings.APPLE_ROOT_CERTIFICATE_PATH)
-    except (AttributeError, TypeError):
+    if (cert_path_str := getattr(settings, 'APPLE_ROOT_CERTIFICATE_PATH', '')):
+        cert_path = pathlib.Path(cert_path_str)
+    else:
         logger.debug('Apple root certificate not provided. Using embedded one.', exc_info=True)
-        cert_path = get_default_certificate_path()
+        cert_path = DEFAULT_ROOT_CERTIFICATE_PATH
 
     if not cert_path.exists() or not cert_path.is_file():
         raise ConfigurationError('No root certificate for Apple provided (even the default one is missing). '
