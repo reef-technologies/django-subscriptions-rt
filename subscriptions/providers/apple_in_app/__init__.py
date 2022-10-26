@@ -10,12 +10,10 @@ from typing import (
 
 from django.conf import settings
 from django.contrib.auth.base_user import AbstractBaseUser
-from django.core.exceptions import (
-    SuspiciousOperation,
-    ValidationError,
-)
+from django.core.exceptions import SuspiciousOperation
 from django.db import transaction
 from more_itertools import one
+from pydantic import ValidationError
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.status import (
@@ -86,7 +84,6 @@ class AppleInAppProvider(Provider):
         for request_class, handler in handlers.items():
             with suppress(ValidationError):
                 instance = request_class.parse_obj(payload)
-            if instance is not None:
                 return handler(request, instance)
 
         # Invalid, unhandled request.

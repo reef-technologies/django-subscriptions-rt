@@ -129,9 +129,11 @@ class AppleAppStoreAPI:
             'password': self._shared_secret,
         }
         response = self._session.post(endpoint, json=payload, timeout=self.TIMEOUT_S)
+        if not response.ok:
+            logger.warning('Apple service returned response %s with data "%s" to payload "%s".',
+                           response.status_code, response.text, payload)
 
         try:
-            response.raise_for_status()
             json_data = response.json()
             return AppleVerifyReceiptResponse.parse_obj(json_data)
         except (json.JSONDecodeError, ValidationError, HTTPError) as parse_error:

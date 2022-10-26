@@ -10,6 +10,7 @@ import pytest
 from OpenSSL import crypto
 from django.test import override_settings
 
+from subscriptions.providers.apple_in_app import AppleInAppProvider
 from subscriptions.providers.apple_in_app.app_store import (
     PayloadValidationError,
     validate_and_fetch_apple_signed_payload,
@@ -134,10 +135,10 @@ def test__proper_signature(root_certificate_group: CertificateGroup):
 @override_settings(APPLE_ROOT_CERTIFICATE_PATH=None)
 def test__apple_root_certificate_not_set_up():
     # No certificate set up
-    root_certificate_group = make_cert_group(serial=1, is_ca=True)
-    # This time the "ok" test should rise configuration error.
+    import subscriptions.providers.apple_in_app.app_store
+    subscriptions.providers.apple_in_app.app_store.get_original_apple_certificate.cache_clear()
     with pytest.raises(ConfigurationError):
-        test__proper_signature(root_certificate_group)
+        AppleInAppProvider()
 
 
 def test__no_certificates_in_the_header(root_certificate_group: CertificateGroup):

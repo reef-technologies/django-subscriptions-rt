@@ -166,6 +166,19 @@ def test__invalid_bundle_id_in_the_receipt(user_client, apple_in_app, apple_prod
     assert len(SubscriptionPayment.objects.all()) == 0
 
 
+def test__basic_receipt_with_status_returned(user_client):
+    receipt_data = AppleVerifyReceiptResponse.parse_obj(
+        {'status': AppleValidationStatus.MALFORMED_DATA_OR_SERVICE_ISSUE.value}
+    )
+    with mock.patch(RECEIPT_FETCH_FUNCTION) as mock_receipt:
+        mock_receipt.return_value = receipt_data
+        with pytest.raises(AppleReceiptValidationError):
+            user_client.post(APPLE_API_WEBHOOK, make_receipt_query(), content_type='application/json')
+
+    assert len(SubscriptionPayment.objects.all()) == 0
+
+
+
 def test__app_store_notification__renew__product_id_changed(user_client,
                                                             patched_notification_class,
                                                             apple_bundle_id,
