@@ -112,7 +112,7 @@ def test__dont_retry_when_failed_request_is_not_retryable():
 
 def test__retry_in_case_of_service_error():
     responses = [
-        (404, '{}'),
+        (400, '{"status": %s}' % AppleValidationStatus.SANDBOX_RECEIPT_ON_PRODUCTION_ENV.value),
         (200, make_json_response_with_status(AppleValidationStatus.OK)),
     ]
     responses, call_list = make_api_call(responses)

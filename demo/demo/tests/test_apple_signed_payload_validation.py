@@ -1,15 +1,18 @@
 import base64
+import pathlib
 import unittest.mock
 from typing import (
     NamedTuple,
     Optional,
 )
+from unittest import mock
 
 import jwt.utils
 import pytest
 from OpenSSL import crypto
 from django.test import override_settings
 
+from subscriptions.providers.apple_in_app import AppleInAppProvider
 from subscriptions.providers.apple_in_app.app_store import (
     PayloadValidationError,
     validate_and_fetch_apple_signed_payload,
@@ -134,10 +137,12 @@ def test__proper_signature(root_certificate_group: CertificateGroup):
 @override_settings(APPLE_ROOT_CERTIFICATE_PATH=None)
 def test__apple_root_certificate_not_set_up():
     # No certificate set up
-    root_certificate_group = make_cert_group(serial=1, is_ca=True)
-    # This time the "ok" test should rise configuration error.
-    with pytest.raises(ConfigurationError):
-        test__proper_signature(root_certificate_group)
+    import subscriptions.providers.apple_in_app.app_store
+    subscriptions.providers.apple_in_app.app_store.get_original_apple_certificate.cache_clear()
+    with mock.patch('subscriptions.providers.apple_in_app.app_store.get_default_certificate_path',
+                    return_value=pathlib.Path('./dummy.cer')):
+        with pytest.raises(ConfigurationError):
+            AppleInAppProvider()
 
 
 def test__no_certificates_in_the_header(root_certificate_group: CertificateGroup):

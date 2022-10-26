@@ -1,4 +1,6 @@
 import datetime
+import json
+import logging
 from typing import ClassVar
 
 import requests
@@ -8,12 +10,15 @@ from pydantic import (
     Field,
     ValidationError,
 )
+from requests import HTTPError
 
 from .enums import (
     AppleEnvironment,
     AppleValidationStatus,
 )
 from .exceptions import InvalidAppleReceiptError
+
+logger = logging.getLogger(__name__)
 
 
 class AppleInApp(BaseModel):
@@ -66,11 +71,13 @@ class AppleVerifyReceiptResponse(BaseModel):
     }
 
     # The environment for which the receipt was generated.
-    environment: AppleEnvironment
+    environment: AppleEnvironment = Field(default=AppleEnvironment.PRODUCTION)
 
-    receipt: AppleReceipt
+    receipt: AppleReceipt = Field(default=None)
 
-    is_retryable: bool = Field(alias='is-retryable')
+    is_retryable: bool = Field(alias='is-retryable', default=False)
+
+    # Status will always be available. Remaining fields are optional, especially for malformed receipts.
     status: AppleValidationStatus
 
     @property
@@ -122,13 +129,16 @@ class AppleAppStoreAPI:
             'password': self._shared_secret,
         }
         response = self._session.post(endpoint, json=payload, timeout=self.TIMEOUT_S)
-        response.raise_for_status()
+        if not response.ok:
+            logger.warning('Apple service returned response %s with data "%s" to payload "%s".',
+                           response.status_code, response.text, payload)
 
-        json_data = response.json()
         try:
+            json_data = response.json()
             return AppleVerifyReceiptResponse.parse_obj(json_data)
-        except ValidationError as validation_error:
-            raise InvalidAppleReceiptError() from validation_error
+        except (json.JSONDecodeError, ValidationError, HTTPError) as parse_error:
+            logger.exception('Validation error for payload: "%s", response: "%s".', payload, response.text)
+            raise InvalidAppleReceiptError() from parse_error
 
 
 class AppleReceiptRequest(BaseModel):

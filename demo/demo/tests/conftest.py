@@ -14,12 +14,12 @@ from djmoney.money import Money
 from subscriptions.functions import get_remaining_amount, get_remaining_chunks
 from subscriptions.models import INFINITY, Plan, Quota, QuotaCache, Resource, Subscription, SubscriptionPayment, Usage
 from subscriptions.providers import get_provider, get_providers
+from subscriptions.providers.apple_in_app import AppleInAppProvider
 from subscriptions.providers.dummy import DummyProvider
 from subscriptions.providers.google_in_app import GoogleInAppProvider
 from subscriptions.providers.google_in_app.models import GoogleAcknowledgementState, GoogleAutoRenewingPlan, GoogleSubscriptionPurchaseLineItem, GoogleSubscriptionPurchaseV2, GoogleSubscriptionState, GoogleSubscriptionNotificationType
 from subscriptions.providers.paddle import PaddleProvider
 from subscriptions.tasks import charge_recurring_subscriptions
-
 
 @pytest.fixture
 def days():
@@ -273,6 +273,24 @@ def google_in_app(settings) -> str:
     get_providers.cache_clear()
     provider = get_provider()
     assert isinstance(provider, GoogleInAppProvider)
+    return provider
+
+
+@pytest.fixture
+def apple_bundle_id() -> str:
+    return 'test-bundle-id'
+
+
+@pytest.fixture
+def apple_in_app(settings, apple_bundle_id) -> AppleInAppProvider:
+    settings.SUBSCRIPTIONS_PAYMENT_PROVIDERS = [
+        'subscriptions.providers.apple_in_app.AppleInAppProvider',
+    ]
+    AppleInAppProvider.bundle_id = apple_bundle_id
+    get_provider.cache_clear()
+    get_providers.cache_clear()
+    provider = get_provider()
+    assert isinstance(provider, AppleInAppProvider)
     return provider
 
 

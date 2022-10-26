@@ -2,6 +2,7 @@ import base64
 import datetime
 import enum
 import functools
+import logging
 import pathlib
 from typing import (
     Any,
@@ -22,6 +23,11 @@ from subscriptions.providers.apple_in_app.exceptions import ConfigurationError
 from .enums import AppleEnvironment
 from .exceptions import PayloadValidationError
 
+logger = logging.getLogger(__name__)
+
+# A month before the warning appears. Assuming that instances are restarted every few days.
+CERTIFICATE_GRACE_PERIOD = datetime.timedelta(days=30)
+
 
 def load_certificate_from_bytes(certificate_data: bytes) -> crypto.X509:
     basic_cert = load_der_x509_certificate(certificate_data)
@@ -39,15 +45,39 @@ def are_certificates_identical(cert_1: crypto.X509, cert_2: crypto.X509) -> bool
     return cert_1.to_cryptography().public_bytes(Encoding.DER) == cert_2.to_cryptography().public_bytes(Encoding.DER)
 
 
+def get_default_certificate_path() -> pathlib.Path:
+    return pathlib.Path(__file__).resolve().parent / 'certs/AppleRootCertificate.cer'
+
+
+def provide_warnings_for_old_certificate(certificate: crypto.X509) -> None:
+    # Provided in format YYYYMMDDhhmmssZ
+    certificate_timestamp_bytes = certificate.get_notAfter()
+    if certificate_timestamp_bytes is None:
+        logger.warning('Provided certificate has no expiration date.')
+        return
+
+    certificate_end_time = datetime.datetime.strptime(certificate_timestamp_bytes.decode('ascii'), '%Y%m%d%H%M%SZ')
+    grace_period_start = certificate_end_time - CERTIFICATE_GRACE_PERIOD
+    if grace_period_start > datetime.datetime.now():
+        # TODO(kkalinowski): Consider downloading new one instead of providing this error.
+        logger.warning('Provided certificate ends at %s, consider replacing it.', certificate_end_time.isoformat())
+
+
 @functools.cache
 def get_original_apple_certificate() -> crypto.X509:
     try:
         cert_path = pathlib.Path(settings.APPLE_ROOT_CERTIFICATE_PATH)
-    except TypeError as type_error:
-        raise ConfigurationError('Invalid object passed as Apple certificate path.') from type_error
+    except (AttributeError, TypeError):
+        logger.debug('Apple root certificate not provided. Using embedded one.', exc_info=True)
+        cert_path = get_default_certificate_path()
+
     if not cert_path.exists() or not cert_path.is_file():
-        raise ConfigurationError('No root certificate for Apple provided. Check Django configuration settings.')
-    return load_certificate_from_bytes(cert_path.read_bytes())
+        raise ConfigurationError('No root certificate for Apple provided (even the default one is missing). '
+                                 'Check Django configuration settings.')
+
+    apple_root_certificate = load_certificate_from_bytes(cert_path.read_bytes())
+    provide_warnings_for_old_certificate(apple_root_certificate)
+    return apple_root_certificate
 
 
 def validate_and_fetch_apple_signed_payload(signed_payload: str) -> dict[str, Any]:
