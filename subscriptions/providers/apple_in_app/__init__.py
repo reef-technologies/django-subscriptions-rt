@@ -49,13 +49,14 @@ from .exceptions import (
 from .. import Provider
 from ...api.serializers import SubscriptionPaymentSerializer
 
-log = getLogger(__name__)
+logger = getLogger(__name__)
 
 
 @dataclass
 class AppleInAppProvider(Provider):
     # This is also name of the field in metadata of the Plan, that stores Apple App Store product id.
     codename: ClassVar[str] = 'apple_in_app'
+    bundle_id: ClassVar[str] = settings.APPLE_BUNDLE_ID
     api: AppleAppStoreAPI = None
 
     def __post_init__(self):
@@ -81,12 +82,16 @@ class AppleInAppProvider(Provider):
             AppleAppStoreNotification: self._handle_app_store,
         }
 
+        validation_error_messages = []
         for request_class, handler in handlers.items():
-            with suppress(ValidationError):
+            try:
                 instance = request_class.parse_obj(payload)
                 return handler(request, instance)
+            except ValidationError as validation_error:
+                validation_error_messages.append(validation_error.json())
 
         # Invalid, unhandled request.
+        logger.error('Failed matching the payload to any registered request: %s.', '\n'.join(validation_error_messages))
         return Response(status=HTTP_400_BAD_REQUEST)
 
     def check_payments(self, payments: Iterable[SubscriptionPayment]):
@@ -97,7 +102,7 @@ class AppleInAppProvider(Provider):
 
     @classmethod
     def _get_validated_in_app_product(cls, response: AppleVerifyReceiptResponse) -> AppleInApp:
-        if not response.is_valid or response.receipt.bundle_id != settings.APPLE_BUNDLE_ID:
+        if not response.is_valid or response.receipt.bundle_id != cls.bundle_id:
             raise AppleReceiptValidationError()
         return one(response.receipt.in_apps)
 
@@ -127,7 +132,7 @@ class AppleInAppProvider(Provider):
             }
             plan = Plan.objects.get(**search_kwargs)
         except Plan.DoesNotExist:
-            log.warning('Plan for apple in-app purchase "%s" not found.', single_in_app.product_id)
+            logger.warning('Plan for apple in-app purchase "%s" not found.', single_in_app.product_id)
             return Response(status=HTTP_404_NOT_FOUND)
 
         # Create subscription payment. Subscription is created automatically.
@@ -166,9 +171,9 @@ class AppleInAppProvider(Provider):
         # As for expirations – these are handled on our side anyway, that would be only an additional validation.
         # In all other cases we're just returning "200 OK" to let the App Store know that we're received the message.
         if payload.notification != AppStoreNotificationTypeV2.DID_RENEW:
-            log.info('Received apple notification %s and ignored it. Payload: %s',
-                     payload.notification,
-                     str(payload))
+            logger.info('Received apple notification %s and ignored it. Payload: %s',
+                        payload.notification,
+                        str(payload))
             return Response(status=HTTP_200_OK)
 
         # Find the original transaction, fetch the user, create a new subscription payment.
