@@ -10,6 +10,7 @@ from pydantic import (
     Field,
     ValidationError,
 )
+from requests import HTTPError
 
 from .enums import (
     AppleEnvironment,
@@ -128,12 +129,12 @@ class AppleAppStoreAPI:
             'password': self._shared_secret,
         }
         response = self._session.post(endpoint, json=payload, timeout=self.TIMEOUT_S)
-        response.raise_for_status()
 
         try:
+            response.raise_for_status()
             json_data = response.json()
             return AppleVerifyReceiptResponse.parse_obj(json_data)
-        except (json.JSONDecodeError, ValidationError) as parse_error:
+        except (json.JSONDecodeError, ValidationError, HTTPError) as parse_error:
             logger.exception('Validation error for payload: "%s", response: "%s".', payload, response.text)
             raise InvalidAppleReceiptError() from parse_error
 

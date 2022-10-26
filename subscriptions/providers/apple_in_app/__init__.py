@@ -58,8 +58,6 @@ log = getLogger(__name__)
 class AppleInAppProvider(Provider):
     # This is also name of the field in metadata of the Plan, that stores Apple App Store product id.
     codename: ClassVar[str] = 'apple_in_app'
-    bundle_id: ClassVar[str] = settings.APPLE_BUNDLE_ID
-
     api: AppleAppStoreAPI = None
 
     def __post_init__(self):
@@ -102,7 +100,7 @@ class AppleInAppProvider(Provider):
 
     @classmethod
     def _get_validated_in_app_product(cls, response: AppleVerifyReceiptResponse) -> AppleInApp:
-        if not response.is_valid or response.receipt.bundle_id != cls.bundle_id:
+        if not response.is_valid or response.receipt.bundle_id != settings.APPLE_BUNDLE_ID:
             raise AppleReceiptValidationError()
         return one(response.receipt.in_apps)
 
