@@ -1,56 +1,25 @@
 import json
 from base64 import b64encode
-from datetime import (
-    datetime,
-    timedelta,
-    timezone as tz,
-)
+from datetime import datetime, timedelta
+from datetime import timezone as tz
 from decimal import Decimal
 from functools import wraps
-from typing import (
-    Callable,
-    List,
-)
+from typing import Callable, List
 
 import pytest
 from dateutil.relativedelta import relativedelta
 from django.contrib.auth import get_user_model
 from django.test import Client
 from djmoney.money import Money
-
-from subscriptions.functions import (
-    get_remaining_amount,
-    get_remaining_chunks,
-)
-from subscriptions.models import (
-    INFINITY,
-    Plan,
-    Quota,
-    QuotaCache,
-    Resource,
-    Subscription,
-    SubscriptionPayment,
-    Usage,
-)
-from subscriptions.providers import (
-    Provider,
-    get_provider,
-    get_providers,
-)
+from subscriptions.functions import get_remaining_amount, get_remaining_chunks
+from subscriptions.models import INFINITY, Plan, Quota, QuotaCache, Resource, Subscription, SubscriptionPayment, Usage
+from subscriptions.providers import get_provider, get_providers
 from subscriptions.providers.apple_in_app import AppleInAppProvider
 from subscriptions.providers.dummy import DummyProvider
 from subscriptions.providers.google_in_app import GoogleInAppProvider
-from subscriptions.providers.google_in_app.models import (
-    GoogleAcknowledgementState,
-    GoogleAutoRenewingPlan,
-    GoogleSubscriptionNotificationType,
-    GoogleSubscriptionPurchaseLineItem,
-    GoogleSubscriptionPurchaseV2,
-    GoogleSubscriptionState,
-)
+from subscriptions.providers.google_in_app.models import GoogleAcknowledgementState, GoogleAutoRenewingPlan, GoogleSubscriptionPurchaseLineItem, GoogleSubscriptionPurchaseV2, GoogleSubscriptionState, GoogleSubscriptionNotificationType
 from subscriptions.providers.paddle import PaddleProvider
 from subscriptions.tasks import charge_recurring_subscriptions
-
 
 @pytest.fixture
 def days():
@@ -269,6 +238,18 @@ def five_subscriptions(db, plan, user, now, days) -> List[Subscription]:
 def user_client(client, user) -> Client:
     client.force_login(user)
     return client
+
+
+@pytest.fixture
+def dummy(settings) -> str:
+    settings.SUBSCRIPTIONS_PAYMENT_PROVIDERS = [
+        'subscriptions.providers.dummy.DummyProvider',
+    ]
+    get_provider.cache_clear()
+    get_providers.cache_clear()
+    provider = get_provider()
+    assert isinstance(provider, DummyProvider)
+    return provider
 
 
 @pytest.fixture
