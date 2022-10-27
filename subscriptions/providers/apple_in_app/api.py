@@ -142,11 +142,6 @@ class AppleAppStoreAPI:
             'password': self._shared_secret,
         }
 
-        # START DEBUG
-        # To be removed after a single transaction receipt is handled.
-        logger.warning('Receipt fetching payload: %s', payload)
-        # EO DEBUG
-
         response = self._session.post(endpoint, json=payload, timeout=self.TIMEOUT_S)
         if not response.ok:
             logger.warning('Apple service returned response %s with data "%s" to payload "%s".',

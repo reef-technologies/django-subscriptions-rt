@@ -45,7 +45,7 @@ def are_certificates_identical(cert_1: crypto.X509, cert_2: crypto.X509) -> bool
     return cert_1.to_cryptography().public_bytes(Encoding.DER) == cert_2.to_cryptography().public_bytes(Encoding.DER)
 
 
-DEFAULT_ROOT_CERTIFICATE_PATH = pathlib.Path(__file__).resolve().parent / 'certs' / 'AppleRootCertificate.cer'
+DEFAULT_ROOT_CERTIFICATE_PATH = pathlib.Path(__file__).resolve().parent / 'certs' / 'AppleRootCA-G3.cer'
 
 
 def provide_warnings_for_old_certificate(certificate: crypto.X509) -> None:

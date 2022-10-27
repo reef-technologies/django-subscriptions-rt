@@ -103,22 +103,20 @@ class AppleInAppProvider(Provider):
                 raise AppleSubscriptionNotCompletedError(payment.provider_transaction_id)
 
     @classmethod
-    def _is_receipt_valid(cls, response: AppleVerifyReceiptResponse) -> None:
+    def _raise_if_invalid(cls, response: AppleVerifyReceiptResponse) -> None:
         if not response.is_valid or response.receipt.bundle_id != cls.bundle_id:
             raise AppleReceiptValidationError()
 
     def _handle_single_receipt_info(self,
                                     user: User,
                                     receipt_info: AppleLatestReceiptInfo) -> Optional[SubscriptionPayment]:
+        if receipt_info.cancellation_date is not None:
+            logger.error('Found a cancellation date in receipt: %s', receipt_info)
+            return None
+
         with suppress(SubscriptionPayment.DoesNotExist):  # noqa (DoesNotExist seems not to be an exception for PyCharm)
             payment = SubscriptionPayment.objects.get(provider_codename=self.codename,
                                                       provider_transaction_id=receipt_info.transaction_id)
-
-            # User was refunded.
-            if receipt_info.cancellation_date is not None:
-                payment.subscription_end = receipt_info.cancellation_date
-                payment.save()
-
             return payment
 
         # Find the right plan to create subscription.
@@ -147,7 +145,7 @@ class AppleInAppProvider(Provider):
             subscription_start=receipt_info.purchase_date,
             # If the cancellation date is set, it means that the user was refunded and for whatever reason
             # we weren't notified about this purchase.
-            subscription_end=receipt_info.cancellation_date or receipt_info.expires_date,
+            subscription_end=receipt_info.expires_date,
         )
         subscription_payment.subscription.auto_prolong = False
         subscription_payment.save()
@@ -160,7 +158,7 @@ class AppleInAppProvider(Provider):
 
         # Validate the receipt. Fetch the status and product.
         receipt_data = self.api.fetch_receipt_data(receipt)
-        self._is_receipt_valid(receipt_data)
+        self._raise_if_invalid(receipt_data)
 
         if not receipt_data.latest_receipt_info:  # Either None or empty list.
             raise InvalidAppleReceiptError('No latest receipt info provided, no recurring subscriptions to check.')
@@ -175,11 +173,11 @@ class AppleInAppProvider(Provider):
             if latest_payment is None or payment.subscription_end > latest_payment.subscription_end:
                 latest_payment = payment
 
-        # Return the latest payment or empty object if the plans are not properly assigned.
-        data = {}
-        if latest_payment is not None:
-            data = SubscriptionPaymentSerializer(latest_payment).data
-        return Response(data, status=HTTP_200_OK)
+        if latest_payment is None:
+            logger.warning('No subscription information provided in the payload receipt.')
+            return Response(status=HTTP_400_BAD_REQUEST)
+
+        return Response(SubscriptionPaymentSerializer(latest_payment).data, status=HTTP_200_OK)
 
     @transaction.atomic
     def _handle_app_store(self, _request: Request, payload: AppleAppStoreNotification) -> Response:
