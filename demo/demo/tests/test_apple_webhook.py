@@ -102,7 +102,7 @@ def make_notification_data(bundle_id: str,
                            original_transaction_id: str = 'test-original-transaction-id') -> AppStoreNotification:
     result = AppStoreNotification.parse_obj(
         {
-            'notification': AppStoreNotificationTypeV2.DID_RENEW.value if is_renew else AppStoreNotificationTypeV2.TEST.value,
+            'notificationType': AppStoreNotificationTypeV2.DID_RENEW.value if is_renew else AppStoreNotificationTypeV2.TEST.value,
             'subtype': AppStoreNotificationTypeV2Subtype.ACCEPTED.value,
             'notificationUUID': '00000000-0000-0000-0000-000000000000',
             'data': {

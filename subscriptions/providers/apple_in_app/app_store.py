@@ -219,7 +219,8 @@ class AppStoreNotificationData(BaseModel):
     class Config:
         extra = 'ignore'
 
-    app_apple_id: int = Field(alias='appAppleId')
+    # Not present in sandbox env.
+    app_apple_id: int = Field(alias='appAppleId', default=-1)
     bundle_id: str = Field(alias='bundleId')
     bundle_version: str = Field(alias='bundleVersion')
     environment: AppleEnvironment
@@ -238,7 +239,7 @@ class AppStoreNotification(BaseModel):
     class Config:
         extra = 'ignore'
 
-    notification: AppStoreNotificationTypeV2
+    notification: AppStoreNotificationTypeV2 = Field(alias='notificationType')
     subtype: AppStoreNotificationTypeV2Subtype
     # Used to deduplicate notifications.
     notification_uuid: str = Field(alias='notificationUUID')
