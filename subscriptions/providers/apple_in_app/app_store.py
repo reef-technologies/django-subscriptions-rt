@@ -194,8 +194,8 @@ class AppStoreTransactionInfo(BaseModel):
     class Config:
         extra = 'ignore'
 
-    # UUID set by the application, empty if not set.
-    app_account_token: str = Field(alias='appAccountToken')
+    # UUID set by the application, missing if not set.
+    app_account_token: str = Field(alias='appAccountToken', default=None)
     bundle_id: str = Field(alias='bundleId')
 
     purchase_date: datetime.datetime = Field(alias='purchaseDate')
