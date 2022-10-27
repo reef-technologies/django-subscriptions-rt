@@ -240,7 +240,8 @@ class AppStoreNotification(BaseModel):
         extra = 'ignore'
 
     notification: AppStoreNotificationTypeV2 = Field(alias='notificationType')
-    subtype: AppStoreNotificationTypeV2Subtype
+    # May be absent.
+    subtype: Optional[AppStoreNotificationTypeV2Subtype] = Field(default=None)
     # Used to deduplicate notifications.
     notification_uuid: str = Field(alias='notificationUUID')
 
