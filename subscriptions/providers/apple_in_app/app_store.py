@@ -57,17 +57,17 @@ def provide_warnings_for_old_certificate(certificate: crypto.X509) -> None:
 
     certificate_end_time = datetime.datetime.strptime(certificate_timestamp_bytes.decode('ascii'), '%Y%m%d%H%M%SZ')
     grace_period_start = certificate_end_time - CERTIFICATE_GRACE_PERIOD
-    if grace_period_start > datetime.datetime.now():
+    if datetime.datetime.now() > grace_period_start:
         # TODO(kkalinowski): Consider downloading new one instead of providing this error.
         logger.warning('Provided certificate ends at %s, consider replacing it.', certificate_end_time.isoformat())
 
 
 @functools.cache
 def get_original_apple_certificate() -> crypto.X509:
-    if (cert_path_str := getattr(settings, 'APPLE_ROOT_CERTIFICATE_PATH', '')):
+    if cert_path_str := getattr(settings, 'APPLE_ROOT_CERTIFICATE_PATH', ''):
         cert_path = pathlib.Path(cert_path_str)
     else:
-        logger.debug('Apple root certificate not provided. Using embedded one.', exc_info=True)
+        logger.info('Apple root certificate not provided. Using embedded one.')
         cert_path = DEFAULT_ROOT_CERTIFICATE_PATH
 
     if not cert_path.exists() or not cert_path.is_file():

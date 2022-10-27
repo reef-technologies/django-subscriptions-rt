@@ -188,6 +188,7 @@ class AppleInAppProvider(Provider):
         try:
             payload = AppStoreNotification.from_signed_payload(signed_payload)
         except PayloadValidationError as exception:
+            logger.exception('Invalid payload received from the notification endpoint: "%s"', signed_payload)
             raise SuspiciousOperation() from exception
 
         # We're only handling an actual renewal event. The rest means that,
