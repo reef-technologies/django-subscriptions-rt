@@ -53,6 +53,17 @@ def make_receipt_data(product_id: str,
             'environment': 'Production',
             'is-retryable': False,
             'status': AppleValidationStatus.OK.value if is_valid else AppleValidationStatus.INTERNAL_SERVICE_ERROR.value,
+            'latest_receipt_info': [
+                {
+                    'purchase_date_ms': datetime.datetime(2022, 3, 15).timestamp(),
+                    'expires_date_ms': datetime.datetime(2022, 4, 15).timestamp(),
+                    'product_id': product_id,
+                    'quantity': 1,
+                    'original_transaction_id': original_transaction_id,
+                    'transaction_id': transaction_id,
+                    'web_order_line_item_id': transaction_id,
+                }
+            ],
             'receipt': {
                 'application_version': 'test-version',
                 'bundle_id': bundle_id,

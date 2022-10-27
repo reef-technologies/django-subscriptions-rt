@@ -157,11 +157,6 @@ class AppleInAppProvider(Provider):
     def _handle_receipt(self, request: Request, payload: AppleReceiptRequest) -> Response:
         receipt = payload.transaction_receipt
 
-        # START DEBUG
-        # To be removed after a single transaction receipt is handled.
-        logger.warning('Full transaction receipt: %s', receipt)
-        # EO DEBUG
-
         # Validate the receipt. Fetch the status and product.
         receipt_data = self.api.fetch_receipt_data(receipt)
         self._is_receipt_valid(receipt_data)

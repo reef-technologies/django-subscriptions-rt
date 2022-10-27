@@ -140,7 +140,7 @@ def test__apple_root_certificate_not_set_up():
     import subscriptions.providers.apple_in_app.app_store
     subscriptions.providers.apple_in_app.app_store.get_original_apple_certificate.cache_clear()
     with mock.patch('subscriptions.providers.apple_in_app.app_store.DEFAULT_ROOT_CERTIFICATE_PATH',
-                    return_value=pathlib.Path('./dummy.cer')):
+                    new=pathlib.Path('./dummy.cer')):
         with pytest.raises(ConfigurationError):
             AppleInAppProvider()
 
