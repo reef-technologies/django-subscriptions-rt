@@ -10,16 +10,15 @@ from typing import (
 
 from django.conf import settings
 from django.contrib.auth.base_user import AbstractBaseUser
+from django.contrib.auth.models import User
 from django.core.exceptions import SuspiciousOperation
 from django.db import transaction
-from more_itertools import one
 from pydantic import ValidationError
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.status import (
     HTTP_200_OK,
     HTTP_400_BAD_REQUEST,
-    HTTP_404_NOT_FOUND,
 )
 
 from subscriptions.models import (
@@ -30,6 +29,7 @@ from subscriptions.models import (
 from .api import (
     AppleAppStoreAPI,
     AppleInApp,
+    AppleLatestReceiptInfo,
     AppleReceiptRequest,
     AppleVerifyReceiptResponse,
 )
@@ -102,61 +102,88 @@ class AppleInAppProvider(Provider):
                 raise AppleSubscriptionNotCompletedError(payment.provider_transaction_id)
 
     @classmethod
-    def _get_validated_in_app_product(cls, response: AppleVerifyReceiptResponse) -> AppleInApp:
+    def _is_receipt_valid(cls, response: AppleVerifyReceiptResponse) -> None:
         if not response.is_valid or response.receipt.bundle_id != cls.bundle_id:
             raise AppleReceiptValidationError()
-        return one(response.receipt.in_apps)
+
+    def _handle_single_receipt_info(self,
+                                    user: User,
+                                    receipt_info: AppleLatestReceiptInfo) -> Optional[SubscriptionPayment]:
+        with suppress(SubscriptionPayment.DoesNotExist):  # noqa (DoesNotExist seems not to be an exception for PyCharm)
+            payment = SubscriptionPayment.objects.get(provider_codename=self.codename,
+                                                      provider_transaction_id=receipt_info.transaction_id)
+
+            # User was refunded.
+            if receipt_info.cancellation_date is not None:
+                payment.subscription_end = receipt_info.cancellation_date
+                payment.save()
+
+            return payment
+
+        # Find the right plan to create subscription.
+        try:
+            search_kwargs = {
+                f'metadata__{self.codename}': receipt_info.product_id
+            }
+            plan = Plan.objects.get(**search_kwargs)
+        except Plan.DoesNotExist:
+            # This means that something wasn't connected as needed.
+            logger.exception('Plan for apple in-app purchase "%s" not found.', receipt_info.product_id)
+            return None
+
+        # Create subscription payment. Subscription is created automatically.
+        subscription_payment = SubscriptionPayment.objects.create(
+            provider_codename=self.codename,
+            provider_transaction_id=receipt_info.transaction_id,
+            # NOTE(kkalinowski): from my understanding, we can only receive receipt after the person has paid
+            # but the transaction (from the perspective of the app) might have not yet finished. Money were spent.
+            status=SubscriptionPayment.Status.COMPLETED,
+            # In-app purchase doesn't report the money.
+            # We mark it as None to indicate we don't know how much did it cost.
+            amount=None,
+            user=user,
+            plan=plan,
+            subscription_start=receipt_info.purchase_date,
+            # If the cancellation date is set, it means that the user was refunded and for whatever reason
+            # we weren't notified about this purchase.
+            subscription_end=receipt_info.cancellation_date or receipt_info.expires_date,
+        )
+        subscription_payment.subscription.auto_prolong = False
+        subscription_payment.save()
+
+        return subscription_payment
 
     @transaction.atomic
     def _handle_receipt(self, request: Request, payload: AppleReceiptRequest) -> Response:
         receipt = payload.transaction_receipt
 
+        # START DEBUG
+        # To be removed after a single transaction receipt is handled.
+        logger.warning('Full transaction receipt: %s', receipt)
+        # EO DEBUG
+
         # Validate the receipt. Fetch the status and product.
         receipt_data = self.api.fetch_receipt_data(receipt)
-        single_in_app = self._get_validated_in_app_product(receipt_data)
+        self._is_receipt_valid(receipt_data)
 
-        # Check whether this receipt is anyhow interesting:
-        with suppress(SubscriptionPayment.DoesNotExist):  # noqa (DoesNotExist seems not to be an exception for PyCharm)
-            payment = SubscriptionPayment.objects.get(provider_codename=self.codename,
-                                                      provider_transaction_id=single_in_app.transaction_id)
-            # We've already handled this. And all the messages coming to us from iOS should be AFTER
-            # the client money were removed.
-            return Response(
-                SubscriptionPaymentSerializer(payment).data,
-                status=HTTP_200_OK,
-            )
+        assert receipt_data.latest_receipt_info is not None, f'Latest receipt info not provided.'
+        assert len(receipt_data.latest_receipt_info) > 0, f'No receipts for subscriptions passed.'
 
-        # Find the right plan to create subscription.
-        try:
-            search_kwargs = {
-                f'metadata__{self.codename}': single_in_app.product_id
-            }
-            plan = Plan.objects.get(**search_kwargs)
-        except Plan.DoesNotExist:
-            logger.warning('Plan for apple in-app purchase "%s" not found.', single_in_app.product_id)
-            return Response(status=HTTP_404_NOT_FOUND)
+        latest_payment = None
+        for receipt_info in receipt_data.latest_receipt_info:
+            # We receive all the elements and check whether we've actually activated them.
+            payment = self._handle_single_receipt_info(request.user, receipt_info)
+            if payment is None:
+                continue
 
-        # Create subscription payment. Subscription is created automatically.
-        subscription_payment = SubscriptionPayment.objects.create(
-            provider_codename=self.codename,
-            provider_transaction_id=single_in_app.transaction_id,
-            status=SubscriptionPayment.Status.COMPLETED,
-            # In-app purchase doesn't report the money.
-            # We mark it as None to indicate we don't know how much did it cost.
-            amount=None,
-            user=request.user,
-            plan=plan,
-            subscription_start=single_in_app.purchase_date,
-            subscription_end=single_in_app.expires_date,
-        )
-        subscription_payment.subscription.auto_prolong = False
-        subscription_payment.save()
+            if latest_payment is None or payment.subscription_end > latest_payment.subscription_end:
+                latest_payment = payment
 
-        # Return the payment.
-        return Response(
-            SubscriptionPaymentSerializer(subscription_payment).data,
-            status=HTTP_200_OK,
-        )
+        # Return the latest payment or empty object if the plans are not properly assigned.
+        data = {}
+        if latest_payment is not None:
+            data = SubscriptionPaymentSerializer(latest_payment).data
+        return Response(data, status=HTTP_200_OK)
 
     @transaction.atomic
     def _handle_app_store(self, _request: Request, payload: AppleAppStoreNotification) -> Response:
