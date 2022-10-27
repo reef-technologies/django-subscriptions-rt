@@ -9,6 +9,7 @@ from subscriptions.providers.apple_in_app import (
     AppStoreNotification,
     AppleReceiptValidationError,
     AppleVerifyReceiptResponse,
+    InvalidAppleReceiptError,
     ProductIdChangedError,
 )
 from subscriptions.providers.apple_in_app.api import AppleReceiptRequest
@@ -156,6 +157,16 @@ def test__invalid_receipt_sent(user_client, apple_in_app, apple_product_id, appl
     receipt_data = make_receipt_data(apple_product_id, apple_bundle_id, is_valid=False)
     with mock.patch(RECEIPT_FETCH_FUNCTION, return_value=receipt_data):
         with pytest.raises(AppleReceiptValidationError):
+            user_client.post(APPLE_API_WEBHOOK, make_receipt_query(), content_type='application/json')
+
+    assert not SubscriptionPayment.objects.exists()
+
+
+def test__no_latest_receipt_info_passed(user_client, apple_in_app, apple_product_id, apple_bundle_id):
+    receipt_data = make_receipt_data(apple_product_id, apple_bundle_id, is_valid=True)
+    receipt_data.latest_receipt_info = None
+    with mock.patch(RECEIPT_FETCH_FUNCTION, return_value=receipt_data):
+        with pytest.raises(InvalidAppleReceiptError):
             user_client.post(APPLE_API_WEBHOOK, make_receipt_query(), content_type='application/json')
 
     assert not SubscriptionPayment.objects.exists()

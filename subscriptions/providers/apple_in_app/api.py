@@ -85,8 +85,8 @@ class AppleVerifyReceiptResponse(BaseModel):
     # The environment for which the receipt was generated.
     environment: AppleEnvironment = Field(default=AppleEnvironment.PRODUCTION)
 
-    latest_receipt_info: list[AppleLatestReceiptInfo] = Field(default=None)
-    receipt: AppleReceipt = Field(default=None)
+    latest_receipt_info: Optional[list[AppleLatestReceiptInfo]] = Field(default=None)
+    receipt: Optional[AppleReceipt] = Field(default=None)
 
     is_retryable: bool = Field(alias='is-retryable', default=False)
 

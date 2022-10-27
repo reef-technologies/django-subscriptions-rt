@@ -44,6 +44,7 @@ from .exceptions import (
     AppleInvalidOperation,
     AppleReceiptValidationError,
     AppleSubscriptionNotCompletedError,
+    InvalidAppleReceiptError,
     ProductIdChangedError,
 )
 from .. import Provider
@@ -161,8 +162,8 @@ class AppleInAppProvider(Provider):
         receipt_data = self.api.fetch_receipt_data(receipt)
         self._is_receipt_valid(receipt_data)
 
-        assert receipt_data.latest_receipt_info is not None, f'Latest receipt info not provided.'
-        assert len(receipt_data.latest_receipt_info) > 0, f'No receipts for subscriptions passed.'
+        if not receipt_data.latest_receipt_info:  # Either None or empty list.
+            raise InvalidAppleReceiptError('No latest receipt info provided, no recurring subscriptions to check.')
 
         latest_payment = None
         for receipt_info in receipt_data.latest_receipt_info:
