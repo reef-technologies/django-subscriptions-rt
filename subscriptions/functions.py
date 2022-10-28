@@ -139,7 +139,7 @@ def get_remaining_chunks(
 
         # check whether limit was exceeded (== amount was fully covered by chunks consumed)
         if amount:
-            raise QuotaLimitExceeded(f'Quota limit exceeded: {date=} {amount=}')
+            log.error('Quota limit exceeded: usage date=%s overused=%s', date, amount)
 
     # ---- now calculate remaining amount at `at` ----
 
