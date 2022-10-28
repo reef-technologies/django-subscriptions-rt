@@ -24,21 +24,21 @@ class Executable:
 
 
 @pytest.mark.skip()
-def test_plan_push(google_in_app, plan):
+def test_plan_push(google_in_app, plan_with_google):
     # when the plan in not in google -> push it
 
     with mock.patch(
         google_in_app.subscriptions_api,
         'list',
         return_value=Executable([
-            GoogleSubscription(productId=plan.codename + '-trololo'),  # some other ID
+            GoogleSubscription(productId='trololo'),  # some other ID
         ]),
     ), mock.patch(
         google_in_app.subscriptions_api,
         'create',
         return_value=Executable(),
     ):
-        google_subscription_dict = google_in_app.as_google_subscription(plan).dict()
+        google_subscription_dict = google_in_app.as_google_subscription(plan_with_google).dict()
 
         google_in_app.sync_plans()
         google_in_app.subscriptions_api.create.assert_called_with(
@@ -46,18 +46,18 @@ def test_plan_push(google_in_app, plan):
             body=google_subscription_dict,
         )
 
-        plan = Plan.objects.get(pk=plan.pk)
+        plan = Plan.objects.get(pk=plan_with_google.pk)
         assert plan.metadata[google_in_app.codename] == google_subscription_dict
 
 
 @pytest.mark.skip()
-def test_plan_sync(google_in_app, plan):
+def test_plan_sync(google_in_app, plan_with_google):
     # when plan differs from what is in google -> push updates to google
     ...  # TODO
 
 
 @pytest.mark.skip()
-def test_subscription_deactivation(google_in_app, plan):
+def test_subscription_deactivation(google_in_app, plan_with_google):
     # google has a subscription but there's no enabled plan -> archive the subscription
     ...  # TODO
 
@@ -119,7 +119,7 @@ def test_webhook_for_app_notification_unauthorized(google_in_app, app_notificati
     assert response.status_code == 403, response.content
 
 
-def test_webhook_for_app_notification(google_in_app, app_notification, user_client, google_subscription_purchase):
+def test_webhook_for_app_notification(google_in_app, app_notification, user_client, google_subscription_purchase, plan_with_google):
     assert not Subscription.objects.exists()
     assert not SubscriptionPayment.objects.exists()
 
@@ -138,7 +138,7 @@ def test_webhook_for_app_notification(google_in_app, app_notification, user_clie
     assert payment.provider_transaction_id == app_notification['purchase_token']
 
 
-def test_webhook_for_app_notification_duplicate(google_in_app, app_notification, user_client, google_subscription_purchase):
+def test_webhook_for_app_notification_duplicate(google_in_app, app_notification, user_client, google_subscription_purchase, plan_with_google):
     assert not SubscriptionPayment.objects.exists()
     assert not Subscription.objects.exists()
 
@@ -151,7 +151,7 @@ def test_webhook_for_app_notification_duplicate(google_in_app, app_notification,
             assert Subscription.objects.count() == 1
 
 
-def test_webhook_linked_token_dismissing(google_in_app, app_notification, user_client, google_subscription_purchase, user, plan):
+def test_webhook_linked_token_dismissing(google_in_app, app_notification, user_client, google_subscription_purchase, user, plan_with_google):
     linked_token = 'trololo'
 
     payment = SubscriptionPayment.objects.create(
@@ -159,7 +159,7 @@ def test_webhook_linked_token_dismissing(google_in_app, app_notification, user_c
         provider_transaction_id=linked_token,
         status=SubscriptionPayment.Status.COMPLETED,
         user=user,
-        plan=plan,
+        plan=plan_with_google,
     )
     assert payment.subscription_end > now()
     assert payment.subscription.end > now()
@@ -177,19 +177,19 @@ def test_webhook_linked_token_dismissing(google_in_app, app_notification, user_c
     assert payment.subscription.end < now()
 
 
-def test_google_notification_without_app_notification(google_in_app, client, google_subscription_purchase, google_rtdn_notification):
+def test_google_notification_without_app_notification(db, google_in_app, client, google_subscription_purchase, google_rtdn_notification):
     with mock.patch('subscriptions.providers.google_in_app.GoogleInAppProvider.get_purchase', return_value=google_subscription_purchase):
         response = client.post('/api/webhook/google_in_app/', google_rtdn_notification, content_type="application/json")
         assert response.status_code == 200, response.content
 
 
-def test_event_status_check(google_in_app, purchase_token, user, plan, client, google_subscription_purchase, google_rtdn_notification):
+def test_event_status_check(google_in_app, purchase_token, user, plan_with_google, client, google_subscription_purchase, google_rtdn_notification):
     SubscriptionPayment.objects.create(
         provider_codename=google_in_app.codename,
         provider_transaction_id=purchase_token,
         status=SubscriptionPayment.Status.COMPLETED,
         user=user,
-        plan=plan,
+        plan=plan_with_google,
     )
 
     # TODO: not all cases covered
@@ -201,7 +201,7 @@ def test_event_status_check(google_in_app, purchase_token, user, plan, client, g
             assert response.status_code == 400, response.content
 
 
-def test_purchase_acknowledgement(google_in_app, user_client, google_subscription_purchase, app_notification, plan):
+def test_purchase_acknowledgement(google_in_app, user_client, google_subscription_purchase, app_notification, plan_with_google):
     with mock.patch.object(google_subscription_purchase, 'acknowledgementState', GoogleAcknowledgementState.PENDING):
         with mock.patch(
             'subscriptions.providers.google_in_app.GoogleInAppProvider.get_purchase',
@@ -215,7 +215,7 @@ def test_purchase_acknowledgement(google_in_app, user_client, google_subscriptio
             assert Subscription.objects.exists()
             google_in_app.acknowledge.assert_called_with(
                 packageName=google_in_app.package_name,
-                subscriptionId=str(plan.codename),
+                subscriptionId=plan_with_google.metadata[google_in_app.codename]['productId'],
                 token=app_notification['purchase_token'],
                 body=mock.ANY,
             )
@@ -225,7 +225,7 @@ def test_check_event():
     ...  # TODO
 
 
-def test_purchase_flow(google_in_app, purchase_token, user, plan, client, user_client, app_notification, google_subscription_purchase, google_rtdn_notification_factory, now, days):
+def test_purchase_flow(google_in_app, purchase_token, user, plan_with_google, client, user_client, app_notification, google_subscription_purchase, google_rtdn_notification_factory, now, days):
     with mock.patch('subscriptions.providers.google_in_app.GoogleInAppProvider.get_purchase', return_value=google_subscription_purchase):
         response = user_client.post('/api/webhook/google_in_app/', app_notification, content_type="application/json")
         assert response.status_code == 200, response.content

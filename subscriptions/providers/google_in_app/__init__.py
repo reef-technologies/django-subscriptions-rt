@@ -73,6 +73,22 @@ class GoogleInAppProvider(Provider):
         self.api = build('androidpublisher', 'v3', http=http)
         self.subscriptions_api = self.subscriptions_api or self.api.monetization().subscriptions()
 
+    @classmethod
+    def get_google_id(cls, plan: Plan) -> str:
+        with suppress(KeyError):
+            raw_data = plan.metadata[cls.codename]
+            with suppress(ValidationError):
+                google_subscription = GoogleSubscription.parse_obj(raw_data)
+                return google_subscription.productId
+
+        return plan.codename
+
+    @classmethod
+    def get_plan_by_google_id(cls, google_id: str) -> Plan:
+        return Plan.objects.get(**{
+            f'metadata__{cls.codename}__productId': google_id,
+        })
+
     def charge_offline(self, *args, **kwargs) -> SubscriptionPayment:
         # don't try to prolong the subscription on our side
         raise InvalidOperation(f'Offline charge not supported for {self.codename}')
@@ -146,8 +162,8 @@ class GoogleInAppProvider(Provider):
 
                 self.subscription_api.basePlans().deactivate(
                     packageName=self.package_name,
-                    productId=plan.codename,
-                    basePlanId=plan.codename,
+                    productId=google_subscription.productId,
+                    basePlanId=one(google_subscription.basePlans).basePlanId,
                 ).execute()
 
             # google_subscription.'status': GoogleSubscriptionStatus.INACTIVE,
@@ -163,18 +179,19 @@ class GoogleInAppProvider(Provider):
 
             # enable / disable base plan if needed
             base_plan = one(google_subscription.basePlans)
+            google_id = self.get_google_id(plan)
             if base_plan.state == GoogleBasePlanState.ACTIVE and not plan.is_enabled:
                 self.subscriptions_api.basePlans().deactivate(
                     packageName=self.package_name,
-                    productId=plan.codename,
-                    basePlanId=plan.codename,
+                    productId=google_id,
+                    basePlanId=google_id,
                 ).execute()
                 base_plan.state = GoogleBasePlanState.INACTIVE
             elif base_plan.state == GoogleBasePlanState.INACTIVE and plan.is_enabled:
                 self.subscriptions_api.basePlans().activate(
                     packageName=self.package_name,
-                    productId=plan.codename,
-                    basePlanId=plan.codename,
+                    productId=google_id,
+                    basePlanId=google_id,
                 ).execute()
                 base_plan.state = GoogleBasePlanState.ACTIVE
 
@@ -205,11 +222,12 @@ class GoogleInAppProvider(Provider):
     @classmethod
     def as_google_subscription(cls, plan: Plan) -> GoogleSubscription:
         # https://support.google.com/googleplay/android-developer/answer/12154973?hl=en
+        google_id = cls.get_google_id(plan)
         return GoogleSubscription(
             packageName=cls.package_name,
-            productId=plan.codename,
+            productId=google_id,
             basePlans=[GoogleBasePlan(
-                basePlanId=plan.codename,
+                basePlanId=google_id,
                 state=GoogleBasePlanState.ACTIVE if plan.is_enabled else GoogleBasePlanState.INACTIVE,
                 regionalConfigs=[
                     GoogleRegionalBasePlanConfig(
@@ -358,8 +376,8 @@ class GoogleInAppProvider(Provider):
         linked_token = purchase.linkedPurchaseToken
 
         purchase_item = one(purchase.lineItems)
+        product_id = purchase_item.productId
         purchase_end = fromisoformat(purchase_item.expiryTime)
-        plan_codename = purchase_item.productId
 
         if not user and linked_token:
             user = self.get_user_by_token(linked_token)
@@ -413,13 +431,14 @@ class GoogleInAppProvider(Provider):
                 assert last_payment.subscription_end == purchase_end
 
             elif event == GoogleSubscriptionNotificationType.PURCHASED:
+                plan = self.get_plan_by_google_id(product_id)
                 last_payment, _ = SubscriptionPayment.objects.get_or_create(
                     provider_codename=self.codename,
                     provider_transaction_id=purchase_token,
                     defaults=dict(
                         user=user,
                         status=SubscriptionPayment.Status.COMPLETED,
-                        plan=Plan.objects.get(codename=plan_codename),
+                        plan=plan,
                         amount=None,
                         subscription_start=fromisoformat(purchase.startTime),
                         subscription_end=purchase_end,
@@ -471,7 +490,7 @@ class GoogleInAppProvider(Provider):
             if purchase.acknowledgementState == GoogleAcknowledgementState.PENDING and subscription:
                 self.acknowledge(
                     packageName=self.package_name,
-                    subscriptionId=plan_codename,
+                    subscriptionId=product_id,
                     token=purchase_token,
                     body={
                         'developerPayload': json.dumps({

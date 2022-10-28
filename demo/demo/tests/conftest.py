@@ -17,9 +17,10 @@ from subscriptions.providers import get_provider, get_providers
 from subscriptions.providers.apple_in_app import AppleInAppProvider
 from subscriptions.providers.dummy import DummyProvider
 from subscriptions.providers.google_in_app import GoogleInAppProvider
-from subscriptions.providers.google_in_app.models import GoogleAcknowledgementState, GoogleAutoRenewingPlan, GoogleSubscriptionPurchaseLineItem, GoogleSubscriptionPurchaseV2, GoogleSubscriptionState, GoogleSubscriptionNotificationType
+from subscriptions.providers.google_in_app.models import GoogleAcknowledgementState, GoogleAutoRenewingPlan, GoogleSubscription, GoogleSubscriptionNotificationType, GoogleSubscriptionPurchaseLineItem, GoogleSubscriptionPurchaseV2, GoogleSubscriptionState
 from subscriptions.providers.paddle import PaddleProvider
 from subscriptions.tasks import charge_recurring_subscriptions
+
 
 @pytest.fixture
 def days():
@@ -426,10 +427,15 @@ def app_notification(purchase_token) -> dict:
 
 
 @pytest.fixture
-def google_subscription_purchase(plan, now, days) -> GoogleSubscriptionPurchaseV2:
+def google_plan_id() -> str:
+    return 'some-crazy-name'
+
+
+@pytest.fixture
+def google_subscription_purchase(now, days, google_plan_id) -> GoogleSubscriptionPurchaseV2:
     return GoogleSubscriptionPurchaseV2(
         lineItems=[GoogleSubscriptionPurchaseLineItem(
-            productId=plan.codename,
+            productId=google_plan_id,
             expiryTime=(now + days(5)).isoformat().replace('+00:00', 'Z'),
             autoRenewingPlan=GoogleAutoRenewingPlan(autoRenewEnabled=True),
         )],
@@ -441,7 +447,23 @@ def google_subscription_purchase(plan, now, days) -> GoogleSubscriptionPurchaseV
 
 
 @pytest.fixture
-def google_rtdn_notification_factory(settings, purchase_token, plan) -> Callable:
+def google_subscription(settings, google_plan_id) -> GoogleSubscription:
+    return GoogleSubscription(
+        packageName=settings.GOOGLE_PLAY_PACKAGE_NAME,
+        productId=google_plan_id,
+        basePlans=[],
+    )
+
+
+@pytest.fixture
+def plan_with_google(google_in_app, plan, google_subscription) -> Plan:
+    plan.metadata[google_in_app.codename] = google_subscription.dict()
+    plan.save()
+    return plan
+
+
+@pytest.fixture
+def google_rtdn_notification_factory(settings, google_in_app, purchase_token, google_plan_id) -> Callable:
 
     def build_google_rtdn_notification(type_: GoogleSubscriptionNotificationType):
         return {
@@ -456,7 +478,7 @@ def google_rtdn_notification_factory(settings, purchase_token, plan) -> Callable
                         'version': '1.0',
                         'notificationType': type_,
                         'purchaseToken': purchase_token,
-                        'subscriptionId': plan.codename,
+                        'subscriptionId': google_plan_id,
                     },
                 }).encode('utf8')).decode('utf8'),
             },
