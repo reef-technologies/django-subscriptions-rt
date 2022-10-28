@@ -210,6 +210,8 @@ class AppleInAppProvider(Provider):
         subscription_payment.provider_transaction_id = transaction_info.transaction_id
         subscription_payment.subscription_start = transaction_info.purchase_date
         subscription_payment.subscription_end = transaction_info.expires_date
+        subscription_payment.created = None
+        subscription_payment.updated = None
         subscription_payment.save()
 
         return Response(status=HTTP_200_OK)
