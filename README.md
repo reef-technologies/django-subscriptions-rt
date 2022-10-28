@@ -59,7 +59,17 @@ It is costy - calculates resources for each authenticated user's request! May be
 
 # Payment providers
 
-## Apple in-app purchase
+## Website
+
+### Paddle
+
+
+
+## Mobile apps
+
+Mobile apps are example of providers where most of the job is done on 3rd-party and backend only has to keep database up-to-date.
+
+### App store
 
 Workflow from the mobile application perspective:
 
@@ -95,6 +105,13 @@ Currently, only `version 2` of the notifications is supported.
 3) New `SubscriptionPayment` is created, using expiration date provided in the notification
 
 ## Google in-app purchase
+
+Automatic sync of plans between Google Play and the backend (BE) is not implemented yet, so operator should keep both in sync manually:
+
+* Plans on BE and Subscriptions on Google <- how to sync
+* Changes made on BE won't affect Google Play purchases, so don't touch it. All information is _pulled_ from Google Play to BE automatically, and BE admin should only be used to read data.
+* Subscription pause is not supported by BE and should be disabled in Google Play.
+* Grace period is not supported by BE and should be disabled in Google Play.
 
 Workflow:
 
