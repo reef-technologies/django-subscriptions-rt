@@ -134,6 +134,7 @@ def make_notification_data(product_id: str,
     result.transaction_info.product_id = product_id
     result.transaction_info.transaction_id = transaction_id
     result.transaction_info.original_transaction_id = original_transaction_id
+    result.transaction_info.revocation_date = datetime.datetime(2022, 3, 30, tzinfo=datetime.timezone.utc)
 
     return result
 
@@ -308,7 +309,7 @@ def test__app_store_notifications__renew__subscription_extended(user_client,
         apple_product_id,
         apple_bundle_id,
         transaction_id=transaction_id,
-        original_transaction_id=transaction_id
+        original_transaction_id=transaction_id,
     )
     with mock.patch(RECEIPT_FETCH_FUNCTION, return_value=receipt_data):  # as mock_receipt:
         # mock_receipt.return_value = receipt_data
@@ -320,7 +321,7 @@ def test__app_store_notifications__renew__subscription_extended(user_client,
         apple_product_id,
         apple_bundle_id,
         transaction_id=renewal_transaction_id,
-        original_transaction_id=transaction_id
+        original_transaction_id=transaction_id,
     )
     with mock.patch(NOTIFICATION_PARSER, return_value=notification_data):  # as mock_parser:
         # mock_parser.return_value = notification_data
@@ -353,3 +354,44 @@ def test__app_store_notification__not_renew_operation_skipped(user_client):
 
     assert response.status_code == 200, response.content
     assert not SubscriptionPayment.objects.exists()
+
+
+def test__app_store_notifications__refund(user_client,
+                                          apple_bundle_id,
+                                          apple_product_id,
+                                          user,
+                                          apple_in_app):
+    transaction_id = 'special-transaction-id'
+    # Create the subscription via API.
+    receipt_data = make_receipt_data(
+        apple_product_id,
+        apple_bundle_id,
+        transaction_id=transaction_id,
+        original_transaction_id=transaction_id,
+    )
+    with mock.patch(RECEIPT_FETCH_FUNCTION, return_value=receipt_data):  # as mock_receipt:
+        # mock_receipt.return_value = receipt_data
+        response = user_client.post(APPLE_API_WEBHOOK, make_receipt_query(), content_type='application/json')
+        assert response.status_code == 200, response.content
+
+    # Receive a notification about subscription extension.
+    notification_data = make_notification_data(
+        apple_product_id,
+        apple_bundle_id,
+        notification_type=AppStoreNotificationTypeV2.REFUND,
+        transaction_id=transaction_id,
+        original_transaction_id=transaction_id,
+    )
+    with mock.patch(NOTIFICATION_PARSER, return_value=notification_data):  # as mock_parser:
+        # mock_parser.return_value = notification_data
+        response = user_client.post(APPLE_API_WEBHOOK, make_notification_query(), content_type='application/json')
+        assert response.status_code == 200, response.content
+
+    assert SubscriptionPayment.objects.count() == 1
+
+    payment = SubscriptionPayment.objects.get(provider_transaction_id=transaction_id)
+    transaction_info = notification_data.transaction_info
+    assert payment.user == user
+    assert payment.plan.metadata[apple_in_app.codename] == transaction_info.product_id
+    assert payment.provider_codename == apple_in_app.codename
+    assert payment.subscription_end == transaction_info.revocation_date
