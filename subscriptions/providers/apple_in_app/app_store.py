@@ -45,7 +45,7 @@ def are_certificates_identical(cert_1: crypto.X509, cert_2: crypto.X509) -> bool
     return cert_1.to_cryptography().public_bytes(Encoding.DER) == cert_2.to_cryptography().public_bytes(Encoding.DER)
 
 
-DEFAULT_ROOT_CERTIFICATE_PATH = pathlib.Path(__file__).resolve().parent / 'certs' / 'AppleRootCertificate.cer'
+DEFAULT_ROOT_CERTIFICATE_PATH = pathlib.Path(__file__).resolve().parent / 'certs' / 'AppleRootCA-G3.cer'
 
 
 def provide_warnings_for_old_certificate(certificate: crypto.X509) -> None:
@@ -57,17 +57,18 @@ def provide_warnings_for_old_certificate(certificate: crypto.X509) -> None:
 
     certificate_end_time = datetime.datetime.strptime(certificate_timestamp_bytes.decode('ascii'), '%Y%m%d%H%M%SZ')
     grace_period_start = certificate_end_time - CERTIFICATE_GRACE_PERIOD
-    if grace_period_start > datetime.datetime.now():
+    if datetime.datetime.now() > grace_period_start:
         # TODO(kkalinowski): Consider downloading new one instead of providing this error.
         logger.warning('Provided certificate ends at %s, consider replacing it.', certificate_end_time.isoformat())
 
 
 @functools.cache
 def get_original_apple_certificate() -> crypto.X509:
-    if (cert_path_str := getattr(settings, 'APPLE_ROOT_CERTIFICATE_PATH', '')):
+    # TODO(kkalinowski): get not one, but all root certificates. There's 5 of them and the current one was handpicked.
+    if cert_path_str := getattr(settings, 'APPLE_ROOT_CERTIFICATE_PATH', ''):
         cert_path = pathlib.Path(cert_path_str)
     else:
-        logger.debug('Apple root certificate not provided. Using embedded one.', exc_info=True)
+        logger.info('Apple root certificate not provided. Using embedded one.')
         cert_path = DEFAULT_ROOT_CERTIFICATE_PATH
 
     if not cert_path.exists() or not cert_path.is_file():
@@ -194,12 +195,13 @@ class AppStoreTransactionInfo(BaseModel):
     class Config:
         extra = 'ignore'
 
-    # UUID set by the application, empty if not set.
-    app_account_token: str = Field(alias='appAccountToken')
+    # UUID set by the application, missing if not set.
+    app_account_token: str = Field(alias='appAccountToken', default=None)
     bundle_id: str = Field(alias='bundleId')
 
     purchase_date: datetime.datetime = Field(alias='purchaseDate')
     expires_date: datetime.datetime = Field(alias='expiresDate')
+    revocation_date: Optional[datetime.datetime] = Field(alias='revocationDate', default=None)
 
     product_id: str = Field(alias='productId')
     transaction_id: str = Field(alias='transactionId')
@@ -219,7 +221,8 @@ class AppStoreNotificationData(BaseModel):
     class Config:
         extra = 'ignore'
 
-    app_apple_id: int = Field(alias='appAppleId')
+    # Not present in sandbox env.
+    app_apple_id: int = Field(alias='appAppleId', default=-1)
     bundle_id: str = Field(alias='bundleId')
     bundle_version: str = Field(alias='bundleVersion')
     environment: AppleEnvironment
@@ -238,8 +241,9 @@ class AppStoreNotification(BaseModel):
     class Config:
         extra = 'ignore'
 
-    notification: AppStoreNotificationTypeV2
-    subtype: AppStoreNotificationTypeV2Subtype
+    notification: AppStoreNotificationTypeV2 = Field(alias='notificationType')
+    # May be absent.
+    subtype: Optional[AppStoreNotificationTypeV2Subtype] = Field(default=None)
     # Used to deduplicate notifications.
     notification_uuid: str = Field(alias='notificationUUID')
 

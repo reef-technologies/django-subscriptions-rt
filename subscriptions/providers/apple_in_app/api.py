@@ -1,7 +1,10 @@
 import datetime
 import json
 import logging
-from typing import ClassVar
+from typing import (
+    ClassVar,
+    Optional,
+)
 
 import requests
 import tenacity
@@ -33,6 +36,8 @@ class AppleInApp(BaseModel):
     purchase_date: datetime.datetime = Field(alias='purchase_date_ms')
     # From documentation: The time a subscription expires or when it will renew.
     expires_date: datetime.datetime = Field(alias='expires_date_ms')
+    # Only available if it was cancelled or refunded.
+    cancellation_date: Optional[datetime.datetime] = Field(alias='cancellation_date_ms', default=None)
 
     product_id: str
     quantity: int
@@ -44,6 +49,13 @@ class AppleInApp(BaseModel):
     # A unique identifier for purchase events across devices, including subscription-renewal events.
     # This value is the primary key for identifying subscription purchases.
     web_order_line_item_id: str
+
+
+class AppleLatestReceiptInfo(AppleInApp):
+    # The full model is described here:
+    # https://developer.apple.com/documentation/appstorereceipts/responsebody/latest_receipt_info
+    # This class differs, but all the key fields are still available.
+    pass
 
 
 class AppleReceipt(BaseModel):
@@ -73,7 +85,8 @@ class AppleVerifyReceiptResponse(BaseModel):
     # The environment for which the receipt was generated.
     environment: AppleEnvironment = Field(default=AppleEnvironment.PRODUCTION)
 
-    receipt: AppleReceipt = Field(default=None)
+    latest_receipt_info: Optional[list[AppleLatestReceiptInfo]] = Field(default=None)
+    receipt: Optional[AppleReceipt] = Field(default=None)
 
     is_retryable: bool = Field(alias='is-retryable', default=False)
 
@@ -128,6 +141,7 @@ class AppleAppStoreAPI:
             'receipt-data': receipt_data,
             'password': self._shared_secret,
         }
+
         response = self._session.post(endpoint, json=payload, timeout=self.TIMEOUT_S)
         if not response.ok:
             logger.warning('Apple service returned response %s with data "%s" to payload "%s".',
