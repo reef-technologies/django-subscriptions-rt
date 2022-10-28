@@ -64,6 +64,7 @@ def provide_warnings_for_old_certificate(certificate: crypto.X509) -> None:
 
 @functools.cache
 def get_original_apple_certificate() -> crypto.X509:
+    # TODO(kkalinowski): get not one, but all root certificates. There's 5 of them and the current one was handpicked.
     if cert_path_str := getattr(settings, 'APPLE_ROOT_CERTIFICATE_PATH', ''):
         cert_path = pathlib.Path(cert_path_str)
     else:
