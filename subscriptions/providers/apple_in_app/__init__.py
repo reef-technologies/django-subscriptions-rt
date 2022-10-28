@@ -259,7 +259,6 @@ class AppleInAppProvider(Provider):
         # 1. We shorten the current subscription and subscription payment to current start of the period.
         # 2. We add a new subscription with a new plan.
 
-        # Find the latest apple payment by this user.
         latest_payment = self._get_latest_transaction(transaction_info.original_transaction_id)
         # Purchase date is the time when we should stop the previous subscription.
         previous_payment_end_time = transaction_info.purchase_date
