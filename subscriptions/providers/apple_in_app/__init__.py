@@ -2,6 +2,7 @@ from contextlib import suppress
 from dataclasses import dataclass
 from logging import getLogger
 from typing import (
+    Callable,
     ClassVar,
     Iterable,
     Optional,
@@ -84,8 +85,7 @@ class AppleInAppProvider(Provider):
         }
 
         validation_error_messages = []
-        run_handler = None
-        instance = None
+
         for request_class, handler in handlers.items():
             try:
                 instance = request_class.parse_obj(payload)
@@ -94,9 +94,8 @@ class AppleInAppProvider(Provider):
                 break
             except ValidationError as validation_error:
                 validation_error_messages.append(str(validation_error))
-
-        if run_handler is None or instance is None:
-            # Invalid, unhandled request.
+        else:
+            # Came to an end without breaking.
             logger.error('Failed matching the payload to any registered request:\n%s.',
                          '\n\n'.join(validation_error_messages))
             return Response(status=HTTP_400_BAD_REQUEST)
@@ -221,8 +220,11 @@ class AppleInAppProvider(Provider):
             AppStoreNotificationTypeV2Subtype.DOWNGRADE,
         }, f'Unsupported notification subtype received for subscription change: {notification.subtype}.'
 
+        transaction_info = notification.transaction_info
+
         if notification.subtype == AppStoreNotificationTypeV2Subtype.DOWNGRADE:
-            logger.info('User %s requested a downgrade to %s. This will happen during the next renewal.', )
+            logger.info('User %s requested a downgrade to %s. This will happen during the next renewal.',
+                        user.get_username(), transaction_info.product_id)
             return Response(status=HTTP_200_OK)
 
         # We handle this in two steps:
@@ -233,9 +235,9 @@ class AppleInAppProvider(Provider):
         latest_payment = SubscriptionPayment.objects.filter(
             provider_codename=self.codename,
             user=user,
-        ).latest()
+        ).order_by('subscription_end').last()
         # Purchase date is the time when we should stop the previous subscription.
-        previous_payment_end_time = notification.transaction_info.purchase_date
+        previous_payment_end_time = transaction_info.purchase_date
 
         # Ensuring that subscription ends earlier before making the payment end earlier.
         latest_payment.subscription.end = previous_payment_end_time
@@ -256,12 +258,13 @@ class AppleInAppProvider(Provider):
             logger.exception('Invalid payload received from the notification endpoint: "%s"', signed_payload)
             raise SuspiciousOperation() from exception
 
-        notification_handling = {
+        notification_handling: dict[AppStoreNotificationTypeV2,
+                                    Callable[[AbstractBaseUser, AppStoreNotification], Response]] = {
             AppStoreNotificationTypeV2.DID_RENEW: self._handle_renewal,
             AppStoreNotificationTypeV2.DID_CHANGE_RENEWAL_PREF: self._handle_subscription_change,
         }
 
-        # We're only handling a handful of evente. The rest means that,
+        # We're only handling a handful of events. The rest means that,
         # for whatever reason, it failed, or we don't care about them for now.
         # As for expirations – these are handled on our side anyway, that would be only an additional validation.
         # In all other cases we're just returning "200 OK" to let the App Store know that we're received the message.

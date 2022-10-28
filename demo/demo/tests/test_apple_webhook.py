@@ -115,7 +115,7 @@ def make_notification_data(product_id: str,
     result = AppStoreNotification.parse_obj(
         {
             'notificationType': notification_type.value,
-            'subtype': subtype.value if subtype is not None else None,
+            'subtype': subtype and subtype.value,
             'notificationUUID': '00000000-0000-0000-0000-000000000000',
             'data': {
                 'appAppleId': 12345,
@@ -204,12 +204,12 @@ def test__basic_receipt_with_status_returned(user_client):
     assert not SubscriptionPayment.objects.exists()
 
 
-def test__app_store_notification__renew__product_id_changed(user_client,
-                                                            apple_in_app,
-                                                            user,
-                                                            apple_bundle_id,
-                                                            apple_product_id,
-                                                            apple_bigger_product_id):
+def test__app_store_notification__product_upgrade(user_client,
+                                                  apple_in_app,
+                                                  user,
+                                                  apple_bundle_id,
+                                                  apple_product_id,
+                                                  apple_bigger_product_id):
     transaction_id = 'special-transaction-id'
     new_transaction_id = 'upgrade-transaction-id'
     # Create the subscription via API.
@@ -253,6 +253,47 @@ def test__app_store_notification__renew__product_id_changed(user_client,
     assert payment.subscription_start == transaction_info.purchase_date
     assert payment.subscription_end == transaction_info.expires_date
 
+
+def test__app_store_notification__product_downgrade(user_client,
+                                                    apple_in_app,
+                                                    user,
+                                                    apple_bundle_id,
+                                                    apple_product_id,
+                                                    apple_bigger_product_id):
+    transaction_id = 'special-transaction-id'
+    new_transaction_id = 'upgrade-transaction-id'
+    # Create the subscription via API.
+    receipt_data = make_receipt_data(
+        apple_bigger_product_id,
+        apple_bundle_id,
+        transaction_id=transaction_id,
+        original_transaction_id=transaction_id,
+    )
+    with mock.patch(RECEIPT_FETCH_FUNCTION, return_value=receipt_data):
+        response = user_client.post(APPLE_API_WEBHOOK, make_receipt_query(), content_type='application/json')
+        assert response.status_code == 200
+
+    # Provide a notification with a different product id.
+    notification_data = make_notification_data(
+        apple_product_id,
+        apple_bundle_id,
+        notification_type=AppStoreNotificationTypeV2.DID_CHANGE_RENEWAL_PREF,
+        subtype=AppStoreNotificationTypeV2Subtype.DOWNGRADE,
+        transaction_id=new_transaction_id,
+        original_transaction_id=transaction_id,
+    )
+    with mock.patch(NOTIFICATION_PARSER, return_value=notification_data):
+        response = user_client.post(APPLE_API_WEBHOOK, make_notification_query(), content_type='application/json')
+        assert response.status_code == 200
+
+    # Other object will appear on renew for downgrades.
+    assert SubscriptionPayment.objects.count() == 1
+
+    payment = SubscriptionPayment.objects.get(provider_transaction_id=transaction_id)
+    assert payment.user == user
+    assert payment.plan.metadata[apple_in_app.codename] == apple_bigger_product_id
+    assert payment.subscription.plan.metadata[apple_in_app.codename] == apple_bigger_product_id
+    assert payment.status == SubscriptionPayment.Status.COMPLETED
 
 
 def test__app_store_notifications__renew__subscription_extended(user_client,
