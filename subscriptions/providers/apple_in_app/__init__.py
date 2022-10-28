@@ -36,6 +36,7 @@ from .api import (
 from .app_store import (
     AppStoreNotification,
     AppStoreNotificationTypeV2,
+    AppStoreNotificationTypeV2Subtype,
     AppleAppStoreNotification,
     PayloadValidationError,
     get_original_apple_certificate,
@@ -114,6 +115,12 @@ class AppleInAppProvider(Provider):
         if not response.is_valid or response.receipt.bundle_id != cls.bundle_id:
             raise AppleReceiptValidationError()
 
+    def _get_plan_for_product_id(self, product_id: str) -> Plan:
+        search_kwargs = {
+            f'metadata__{self.codename}': product_id,
+        }
+        return Plan.objects.get(**search_kwargs)
+
     def _handle_single_receipt_info(self,
                                     user: User,
                                     receipt_info: AppleLatestReceiptInfo) -> Optional[SubscriptionPayment]:
@@ -128,10 +135,7 @@ class AppleInAppProvider(Provider):
 
         # Find the right plan to create subscription.
         try:
-            search_kwargs = {
-                f'metadata__{self.codename}': receipt_info.product_id
-            }
-            plan = Plan.objects.get(**search_kwargs)
+            plan = self._get_plan_for_product_id(receipt_info.product_id)
         except Plan.DoesNotExist:
             # This means that something wasn't connected as needed.
             logger.exception('Plan for apple in-app purchase "%s" not found.', receipt_info.product_id)
@@ -186,44 +190,88 @@ class AppleInAppProvider(Provider):
 
         return Response(SubscriptionPaymentSerializer(latest_payment).data, status=HTTP_200_OK)
 
+    def _handle_renewal(self, _user: AbstractBaseUser, notification: AppStoreNotification) -> Response:
+        transaction_info = notification.transaction_info
+
+        # This gets us the very first transaction that happened for this person.
+        subscription_payment = SubscriptionPayment.objects.get(
+            provider_codename=self.codename,
+            provider_transaction_id=transaction_info.original_transaction_id,
+        )
+
+        # Information about this should've been received earlier via change, but downgrades are to happen
+        # only at the start of new cycle. So we handle them here.
+        current_product_id = subscription_payment.plan.metadata.get(self.codename)
+        if current_product_id != transaction_info.product_id:
+            subscription_payment.plan = self._get_plan_for_product_id(transaction_info.product_id)
+            # Create a new subscription.
+            subscription_payment.subscription = None
+
+        subscription_payment.pk = None
+        # Updating relevant fields.
+        subscription_payment.provider_transaction_id = transaction_info.transaction_id
+        subscription_payment.subscription_start = transaction_info.purchase_date
+        subscription_payment.subscription_end = transaction_info.expires_date
+        subscription_payment.save()
+
+        return Response(status=HTTP_200_OK)
+
+    def _handle_subscription_change(self, user: AbstractBaseUser, notification: AppStoreNotification) -> Response:
+        assert notification.subtype in {
+            AppStoreNotificationTypeV2Subtype.UPGRADE,
+            AppStoreNotificationTypeV2Subtype.DOWNGRADE,
+        }, f'Unsupported notification subtype received for subscription change: {notification.subtype}.'
+
+        if notification.subtype == AppStoreNotificationTypeV2Subtype.DOWNGRADE:
+            logger.info('User %s requested a downgrade to %s. This will happen during the next renewal.', )
+            return Response(status=HTTP_200_OK)
+
+        # We handle this in two steps:
+        # 1. We shorten the current subscription and subscription payment to current start of the period.
+        # 2. We add a new subscription with a new plan.
+
+        # Find the latest apple payment by this user.
+        latest_payment = SubscriptionPayment.objects.filter(
+            provider_codename=self.codename,
+            user=user,
+        ).latest()
+        # Purchase date is the time when we should stop the previous subscription.
+        previous_payment_end_time = notification.transaction_info.purchase_date
+
+        # Ensuring that subscription ends earlier before making the payment end earlier.
+        latest_payment.subscription.end = previous_payment_end_time
+        latest_payment.subscription.save()
+        latest_payment.subscription_end = previous_payment_end_time
+        latest_payment.save()
+
+        # Creating a new subscription with a new plan.
+        return self._handle_renewal(user, notification)
+
     @transaction.atomic
-    def _handle_app_store(self, _request: Request, payload: AppleAppStoreNotification) -> Response:
+    def _handle_app_store(self, request: Request, payload: AppleAppStoreNotification) -> Response:
         signed_payload = payload.signed_payload
 
         try:
-            payload = AppStoreNotification.from_signed_payload(signed_payload)
+            notification_object = AppStoreNotification.from_signed_payload(signed_payload)
         except PayloadValidationError as exception:
             logger.exception('Invalid payload received from the notification endpoint: "%s"', signed_payload)
             raise SuspiciousOperation() from exception
 
-        # We're only handling an actual renewal event. The rest means that,
+        notification_handling = {
+            AppStoreNotificationTypeV2.DID_RENEW: self._handle_renewal,
+            AppStoreNotificationTypeV2.DID_CHANGE_RENEWAL_PREF: self._handle_subscription_change,
+        }
+
+        # We're only handling a handful of evente. The rest means that,
         # for whatever reason, it failed, or we don't care about them for now.
         # As for expirations – these are handled on our side anyway, that would be only an additional validation.
         # In all other cases we're just returning "200 OK" to let the App Store know that we're received the message.
-        if payload.notification != AppStoreNotificationTypeV2.DID_RENEW:
-            logger.info('Received apple notification %s and ignored it. Payload: %s',
-                        payload.notification,
+        handler = notification_handling.get(notification_object.notification, None)
+        if handler is None:
+            logger.info('Received apple notification %s (%s) and ignored it. Payload: %s',
+                        notification_object.notification,
+                        notification_object.subtype,
                         str(payload))
             return Response(status=HTTP_200_OK)
 
-        # Find the original transaction, fetch the user, create a new subscription payment.
-        # Note – if we didn't find it, something is really wrong. This notification is only for subsequent payments.
-        subscription_payment = SubscriptionPayment.objects.get(
-            provider_codename=self.codename,
-            provider_transaction_id=payload.transaction_info.original_transaction_id,
-        )
-
-        # Currently, we don't support changing of the product ID. Assert here will let us know if anyone did that.
-        # In case the field is not available in metadata, the product ID error will still be raised.
-        current_product_id = subscription_payment.plan.metadata.get(self.codename)
-        if current_product_id != payload.transaction_info.product_id:
-            raise ProductIdChangedError(current_product_id, payload.transaction_info.product_id)
-
-        subscription_payment.pk = None
-        # Updating relevant fields.
-        subscription_payment.provider_transaction_id = payload.transaction_info.transaction_id
-        subscription_payment.subscription_start = payload.transaction_info.purchase_date
-        subscription_payment.subscription_end = payload.transaction_info.expires_date
-        subscription_payment.save()
-
-        return Response(status=HTTP_200_OK)
+        return handler(request.user, notification_object)

@@ -16,12 +16,6 @@ class AppleSubscriptionNotCompletedError(SubscriptionError):
                          f'found to be not in a COMPLETED state.')
 
 
-class ProductIdChangedError(SubscriptionError):
-    def __init__(self, old_product_id: str, new_product_id: str):
-        super().__init__(f'Unexpected change of the product id occurred during renewal. '
-                         f'{old_product_id=}, {new_product_id=}.')
-
-
 class AppleReceiptValidationError(PaymentError):
     def __init__(self):
         self.code = 'invalid_receipt'
