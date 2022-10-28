@@ -46,7 +46,6 @@ from .exceptions import (
     AppleReceiptValidationError,
     AppleSubscriptionNotCompletedError,
     InvalidAppleReceiptError,
-    ProductIdChangedError,
 )
 from .. import Provider
 from ...api.serializers import SubscriptionPaymentSerializer
