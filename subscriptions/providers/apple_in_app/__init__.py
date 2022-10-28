@@ -14,7 +14,10 @@ from django.contrib.auth.base_user import AbstractBaseUser
 from django.contrib.auth.models import User
 from django.core.exceptions import SuspiciousOperation
 from django.db import transaction
-from pydantic import ValidationError
+from pydantic import (
+    BaseModel,
+    ValidationError,
+)
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.status import (
@@ -54,12 +57,17 @@ from ...api.serializers import SubscriptionPaymentSerializer
 logger = getLogger(__name__)
 
 
+class AppleInAppMetadata(BaseModel):
+    original_transaction_id: str
+
+
 @dataclass
 class AppleInAppProvider(Provider):
     # This is also name of the field in metadata of the Plan, that stores Apple App Store product id.
     codename: ClassVar[str] = 'apple_in_app'
     bundle_id: ClassVar[str] = settings.APPLE_BUNDLE_ID
     api: AppleAppStoreAPI = None
+    metadata_class = AppleInAppMetadata
 
     def __post_init__(self):
         self.api = AppleAppStoreAPI(settings.APPLE_SHARED_SECRET)
@@ -119,16 +127,26 @@ class AppleInAppProvider(Provider):
         }
         return Plan.objects.get(**search_kwargs)
 
+    def _get_latest_transaction(self, original_transaction_id: str) -> SubscriptionPayment:
+        return SubscriptionPayment.objects.filter(
+            provider_codename=self.codename,
+            metadata__original_transaction_id=original_transaction_id,
+        ).order_by('subscription_end').last()
+
     def _handle_single_receipt_info(self,
                                     user: User,
                                     receipt_info: AppleLatestReceiptInfo) -> Optional[SubscriptionPayment]:
         if receipt_info.cancellation_date is not None:
-            logger.error('Found a cancellation date in receipt: %s', receipt_info)
+            # Cancellation/refunds are handled via notifications, we skip them during receipt handling to simplify.
+            logger.warning('Found a cancellation date in receipt: %s, ignoring this receipt.', receipt_info)
             return None
 
         with suppress(SubscriptionPayment.DoesNotExist):  # noqa (DoesNotExist seems not to be an exception for PyCharm)
-            payment = SubscriptionPayment.objects.get(provider_codename=self.codename,
-                                                      provider_transaction_id=receipt_info.transaction_id)
+            payment = SubscriptionPayment.objects.get(
+                provider_codename=self.codename,
+                provider_transaction_id=receipt_info.transaction_id,
+                metadata__original_transaction_id=receipt_info.original_transaction_id,
+            )
             return payment
 
         # Find the right plan to create subscription.
@@ -157,6 +175,8 @@ class AppleInAppProvider(Provider):
             subscription_end=receipt_info.expires_date,
         )
         subscription_payment.subscription.auto_prolong = False
+        # Note: initial transaction is the one that has the same original transaction id and transaction id.
+        subscription_payment.meta = AppleInAppMetadata(original_transaction_id=receipt_info.original_transaction_id)
         subscription_payment.save()
 
         return subscription_payment
@@ -188,35 +208,40 @@ class AppleInAppProvider(Provider):
 
         return Response(SubscriptionPaymentSerializer(latest_payment).data, status=HTTP_200_OK)
 
-    def _handle_renewal(self, _user: AbstractBaseUser, notification: AppStoreNotification) -> Response:
+    def _handle_renewal(self, notification: AppStoreNotification) -> None:
         transaction_info = notification.transaction_info
 
-        # This gets us the very first transaction that happened for this person.
-        subscription_payment = SubscriptionPayment.objects.get(
-            provider_codename=self.codename,
-            provider_transaction_id=transaction_info.original_transaction_id,
-        )
+        # Check if we handled this before.
+        with suppress(SubscriptionPayment.DoesNotExist):
+            SubscriptionPayment.objects.get(
+                provider_codename=self.codename,
+                provider_transaction_id=transaction_info.transaction_id,
+            )
+            # If we didn't raise, it means that we've already handled this transaction, just the App Store didn't
+            # receive the information that we did. Skip it. If it wasn't renewal, we could start searching.
+            return
+
+        latest_payment = self._get_latest_transaction(transaction_info.original_transaction_id)
 
         # Information about this should've been received earlier via change, but downgrades are to happen
         # only at the start of new cycle. So we handle them here.
-        current_product_id = subscription_payment.plan.metadata.get(self.codename)
+        current_product_id = latest_payment.plan.metadata.get(self.codename)
         if current_product_id != transaction_info.product_id:
-            subscription_payment.plan = self._get_plan_for_product_id(transaction_info.product_id)
+            latest_payment.plan = self._get_plan_for_product_id(transaction_info.product_id)
             # Create a new subscription.
-            subscription_payment.subscription = None
+            latest_payment.subscription = None
 
-        subscription_payment.pk = None
+        latest_payment.pk = None
         # Updating relevant fields.
-        subscription_payment.provider_transaction_id = transaction_info.transaction_id
-        subscription_payment.subscription_start = transaction_info.purchase_date
-        subscription_payment.subscription_end = transaction_info.expires_date
-        subscription_payment.created = None
-        subscription_payment.updated = None
-        subscription_payment.save()
+        latest_payment.provider_transaction_id = transaction_info.transaction_id
+        latest_payment.subscription_start = transaction_info.purchase_date
+        latest_payment.subscription_end = transaction_info.expires_date
+        latest_payment.created = None
+        latest_payment.updated = None
+        # Metadata stays the same.
+        latest_payment.save()
 
-        return Response(status=HTTP_200_OK)
-
-    def _handle_subscription_change(self, user: AbstractBaseUser, notification: AppStoreNotification) -> Response:
+    def _handle_subscription_change(self, notification: AppStoreNotification) -> None:
         assert notification.subtype in {
             AppStoreNotificationTypeV2Subtype.UPGRADE,
             AppStoreNotificationTypeV2Subtype.DOWNGRADE,
@@ -225,19 +250,17 @@ class AppleInAppProvider(Provider):
         transaction_info = notification.transaction_info
 
         if notification.subtype == AppStoreNotificationTypeV2Subtype.DOWNGRADE:
-            logger.info('User %s requested a downgrade to %s. This will happen during the next renewal.',
-                        user.get_username(), transaction_info.product_id)
-            return Response(status=HTTP_200_OK)
+            logger.info('Downgrade requested for original transaction id "%s" to product "%s". '
+                        'This will happen during the next renewal.',
+                        transaction_info.original_transaction_id, transaction_info.product_id)
+            return
 
         # We handle this in two steps:
         # 1. We shorten the current subscription and subscription payment to current start of the period.
         # 2. We add a new subscription with a new plan.
 
         # Find the latest apple payment by this user.
-        latest_payment = SubscriptionPayment.objects.filter(
-            provider_codename=self.codename,
-            user=user,
-        ).order_by('subscription_end').last()
+        latest_payment = self._get_latest_transaction(transaction_info.original_transaction_id)
         # Purchase date is the time when we should stop the previous subscription.
         previous_payment_end_time = transaction_info.purchase_date
 
@@ -248,10 +271,32 @@ class AppleInAppProvider(Provider):
         latest_payment.save()
 
         # Creating a new subscription with a new plan.
-        return self._handle_renewal(user, notification)
+        self._handle_renewal(notification)
+
+    def _handle_refund(self, notification: AppStoreNotification) -> None:
+        transaction_info = notification.transaction_info
+        assert transaction_info.revocation_date is not None, f'Received refund without revocation date: {notification}'
+
+        # I didn't find clear information whether the refund is a separate transaction or not. Checking both ways then.
+        try:
+            refunded_payment = SubscriptionPayment.objects.get(
+                provider_codename=self.codename,
+                provider_transaction_id=transaction_info.transaction_id,
+            )
+        except SubscriptionPayment.DoesNotExist:
+            logger.warning('Refund called on unknown transaction id "%s". Searching for latest payment for given '
+                           'original transaction id "%s".',
+                           transaction_info.transaction_id,
+                           transaction_info.original_transaction_id)
+            refunded_payment = self._get_latest_transaction(transaction_info.original_transaction_id)
+
+        refunded_payment.subscription.end = transaction_info.revocation_date
+        refunded_payment.subscription.save()
+        refunded_payment.subscription_end = transaction_info.revocation_date
+        refunded_payment.save()
 
     @transaction.atomic
-    def _handle_app_store(self, request: Request, payload: AppleAppStoreNotification) -> Response:
+    def _handle_app_store(self, _request: Request, payload: AppleAppStoreNotification) -> Response:
         signed_payload = payload.signed_payload
 
         try:
@@ -260,10 +305,10 @@ class AppleInAppProvider(Provider):
             logger.exception('Invalid payload received from the notification endpoint: "%s"', signed_payload)
             raise SuspiciousOperation() from exception
 
-        notification_handling: dict[AppStoreNotificationTypeV2,
-                                    Callable[[AbstractBaseUser, AppStoreNotification], Response]] = {
+        notification_handling: dict[AppStoreNotificationTypeV2, Callable[[AppStoreNotification], None]] = {
             AppStoreNotificationTypeV2.DID_RENEW: self._handle_renewal,
             AppStoreNotificationTypeV2.DID_CHANGE_RENEWAL_PREF: self._handle_subscription_change,
+            AppStoreNotificationTypeV2.REFUND: self._handle_refund,
         }
 
         # We're only handling a handful of events. The rest means that,
@@ -278,4 +323,7 @@ class AppleInAppProvider(Provider):
                         str(payload))
             return Response(status=HTTP_200_OK)
 
-        return handler(request.user, notification_object)
+        # Handlers can at most raise an exception.
+        handler(notification_object)
+
+        return Response(status=HTTP_200_OK)

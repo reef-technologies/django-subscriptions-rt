@@ -200,6 +200,7 @@ class AppStoreTransactionInfo(BaseModel):
 
     purchase_date: datetime.datetime = Field(alias='purchaseDate')
     expires_date: datetime.datetime = Field(alias='expiresDate')
+    revocation_date: Optional[datetime.datetime] = Field(alias='revocationDate', default=None)
 
     product_id: str = Field(alias='productId')
     transaction_id: str = Field(alias='transactionId')
