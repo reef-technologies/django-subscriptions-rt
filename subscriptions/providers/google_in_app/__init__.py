@@ -504,7 +504,7 @@ class GoogleInAppProvider(Provider):
 
     def acknowledge(self, **kwargs):
         # TODO created this proxy for testing mocking, remove this later
-        return self.subscriptions_api.acknowledge(**kwargs).execute()
+        return self.api.purchases().subscriptions().acknowledge(**kwargs).execute()
 
     @classmethod
     def check_event(cls, event: GoogleSubscriptionNotificationType, purchase: GoogleSubscriptionPurchaseV2):
