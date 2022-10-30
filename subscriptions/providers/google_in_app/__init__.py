@@ -387,8 +387,8 @@ class GoogleInAppProvider(Provider):
                 # when user just made a purchase and google notification arrives before
                 # the one from app, we don't have Subscription and SubscriptionPayment yet;
                 # in this case, simply ignore the notification and wait for app's notification
-                assert event == GoogleSubscriptionNotificationType.PURCHASED, \
-                    f'Unexpected {event=} for {purchase_token=} (could not find user)'
+                if event != GoogleSubscriptionNotificationType.PURCHASED:
+                    log.error('User not found for token %s', purchase_token)
                 return
         assert user
 
