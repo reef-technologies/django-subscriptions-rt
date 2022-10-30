@@ -31,11 +31,22 @@ class PlanAdmin(admin.ModelAdmin):
     inlines = QuotaInline,
 
 
+class SubscriptionPaymentInline(admin.TabularInline):
+    model = SubscriptionPayment
+    extra = 0
+    fields = 'short_id', 'created', 'status', 'amount', 'quantity', 'provider_codename', 'provider_transaction_id', 'subscription_start', 'subscription_end',
+    readonly_fields = 'short_id', 'created', 'status', 'amount', 'quantity', 'provider_codename', 'provider_transaction_id', 'subscription_start', 'subscription_end',
+    ordering = '-subscription_end',
+
+
 @admin.register(Subscription)
 class SubscriptionAdmin(admin.ModelAdmin):
     list_display = 'user', 'plan', 'start', 'end',
     list_filter = 'plan', 'start', 'end',
     search_fields = 'user__email', 'user__first_name', 'user__last_name',
+    inlines = [
+        SubscriptionPaymentInline,
+    ]
     ordering = '-start', 'uid',
 
 
