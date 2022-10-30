@@ -510,27 +510,29 @@ class GoogleInAppProvider(Provider):
     def check_event(cls, event: GoogleSubscriptionNotificationType, purchase: GoogleSubscriptionPurchaseV2):
         """ Check that event sent by RTDN matches subscription status. """
         purchase_status = purchase.subscriptionState
-        expected_status = {
-            GoogleSubscriptionNotificationType.RECOVERED: GoogleSubscriptionState.ACTIVE,
-            GoogleSubscriptionNotificationType.RENEWED: GoogleSubscriptionState.ACTIVE,
-            GoogleSubscriptionNotificationType.CANCELED: GoogleSubscriptionState.CANCELED,
-            GoogleSubscriptionNotificationType.PURCHASED: GoogleSubscriptionState.ACTIVE,
-            GoogleSubscriptionNotificationType.ON_HOLD: GoogleSubscriptionState.ON_HOLD,
-            GoogleSubscriptionNotificationType.IN_GRACE_PERIOD: GoogleSubscriptionState.IN_GRACE_PERIOD,
-            GoogleSubscriptionNotificationType.RESTARTED: GoogleSubscriptionState.ACTIVE,
-            GoogleSubscriptionNotificationType.PRICE_CHANGE_CONFIRMED: GoogleSubscriptionState.ACTIVE,
-            GoogleSubscriptionNotificationType.DEFERRED: GoogleSubscriptionState.ACTIVE,
-            GoogleSubscriptionNotificationType.PAUSED: GoogleSubscriptionState.PAUSED,
-            GoogleSubscriptionNotificationType.PAUSE_SCHEDULE_CHANGED: GoogleSubscriptionState.PAUSED,
-            GoogleSubscriptionNotificationType.REVOKED: GoogleSubscriptionState.EXPIRED,
-            GoogleSubscriptionNotificationType.EXPIRED: GoogleSubscriptionState.EXPIRED,
+        expected_statuses = {
+            GoogleSubscriptionNotificationType.RECOVERED: {GoogleSubscriptionState.ACTIVE},
+            GoogleSubscriptionNotificationType.RENEWED: {GoogleSubscriptionState.ACTIVE},
+            GoogleSubscriptionNotificationType.CANCELED: {
+                GoogleSubscriptionState.CANCELED, GoogleSubscriptionState.EXPIRED,
+            },
+            GoogleSubscriptionNotificationType.PURCHASED: {GoogleSubscriptionState.ACTIVE},
+            GoogleSubscriptionNotificationType.ON_HOLD: {GoogleSubscriptionState.ON_HOLD},
+            GoogleSubscriptionNotificationType.IN_GRACE_PERIOD: {GoogleSubscriptionState.IN_GRACE_PERIOD},
+            GoogleSubscriptionNotificationType.RESTARTED: {GoogleSubscriptionState.ACTIVE},
+            GoogleSubscriptionNotificationType.PRICE_CHANGE_CONFIRMED: {GoogleSubscriptionState.ACTIVE},
+            GoogleSubscriptionNotificationType.DEFERRED: {GoogleSubscriptionState.ACTIVE},
+            GoogleSubscriptionNotificationType.PAUSED: {GoogleSubscriptionState.PAUSED},
+            GoogleSubscriptionNotificationType.PAUSE_SCHEDULE_CHANGED: {GoogleSubscriptionState.PAUSED},
+            GoogleSubscriptionNotificationType.REVOKED: {GoogleSubscriptionState.EXPIRED},
+            GoogleSubscriptionNotificationType.EXPIRED: {GoogleSubscriptionState.EXPIRED},
         }[event]
-        if purchase_status != expected_status:
+        if purchase_status not in expected_statuses:
             log.warning(
-                'Expected purchase status %s after event %s but got %s',
-                expected_status, event, purchase_status,
+                'Expected purchase status to be of %s after event %s but got %s',
+                expected_statuses, event, purchase_status,
             )
-            raise SuspiciousOperation(f'Status mismatch: {purchase_status=}, {expected_status=}')
+            raise SuspiciousOperation(f'Status mismatch for {event=}: {purchase_status=}, {expected_statuses=}')
 
     def check_payments(self, payments: Iterable[SubscriptionPayment]):
         """
