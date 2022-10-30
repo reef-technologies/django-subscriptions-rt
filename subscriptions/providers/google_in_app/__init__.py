@@ -410,7 +410,7 @@ class GoogleInAppProvider(Provider):
                 GoogleSubscriptionNotificationType.DEFERRED,
             }:
                 # just prolong if needed
-                assert last_payment
+                assert last_payment, f'No last payment but {event=}'
                 subscription = last_payment.subscription
                 if purchase_end > subscription.end:
                     subscription.end = purchase_end
@@ -418,7 +418,7 @@ class GoogleInAppProvider(Provider):
 
             elif event == GoogleSubscriptionNotificationType.RENEWED:
                 # TODO: handle case when subscription is resumed from a pause
-                assert last_payment
+                assert last_payment, f'No last payment but {event=}'
                 if purchase_end > last_payment.subscription_end:
                     last_payment.uid = None
                     last_payment.subscription_start = last_payment.subscription_end
@@ -428,7 +428,14 @@ class GoogleInAppProvider(Provider):
                     last_payment.save()
 
             elif event == GoogleSubscriptionNotificationType.CANCELED:
-                assert last_payment.subscription_end == purchase_end
+                subscription = last_payment.subscription
+                if subscription.end != purchase_end:
+                    subscription.end = purchase_end
+                    subscription.save()
+
+                if last_payment.subscription_end > subscription.end:
+                    last_payment.subscription_end = subscription.end
+                    last_payment.save()
 
             elif event == GoogleSubscriptionNotificationType.PURCHASED:
                 plan = self.get_plan_by_google_id(product_id)
@@ -445,14 +452,13 @@ class GoogleInAppProvider(Provider):
                         metadata=Metadata(purchase=purchase).dict(),
                     )
                 )
-                assert last_payment.subscription_end == purchase_end
 
             elif event in {
                 GoogleSubscriptionNotificationType.ON_HOLD,
                 GoogleSubscriptionNotificationType.PAUSED,
                 GoogleSubscriptionNotificationType.REVOKED,
             }:
-                assert last_payment
+                assert last_payment, f'No last payment but {event=}'
                 last_payment.subscription.end = now()
                 last_payment.subscription.save()
 
@@ -465,7 +471,7 @@ class GoogleInAppProvider(Provider):
                 pass
 
             elif event == GoogleSubscriptionNotificationType.EXPIRED:
-                assert last_payment
+                assert last_payment, f'No last payment but {event=}'
                 subscription = last_payment.subscription
                 subscription.end = purchase_end
                 subscription.save()
