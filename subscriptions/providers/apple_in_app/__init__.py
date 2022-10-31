@@ -2,6 +2,7 @@ from contextlib import suppress
 from dataclasses import dataclass
 from logging import getLogger
 from typing import (
+    Any,
     Callable,
     ClassVar,
     Iterable,
@@ -133,6 +134,14 @@ class AppleInAppProvider(Provider):
             metadata__original_transaction_id=original_transaction_id,
         ).order_by('subscription_end').last()
 
+    def _log_debug_raw(self, fun: str, transaction_id: str, original_transaction_id: str) -> None:
+        logger.debug('%s – (%s, %s)', fun, transaction_id, original_transaction_id)
+
+    def _log_debug(self, fun: str, transaction_info: Any) -> None:
+        assert hasattr(transaction_info, 'transaction_id')
+        assert hasattr(transaction_info, 'original_transaction_id')
+        self._log_debug_raw(fun, transaction_info.transaction_id, transaction_info.original_transaction_id)
+
     def _handle_single_receipt_info(self,
                                     user: User,
                                     receipt_info: AppleLatestReceiptInfo) -> Optional[SubscriptionPayment]:
@@ -147,6 +156,7 @@ class AppleInAppProvider(Provider):
                 provider_transaction_id=receipt_info.transaction_id,
                 metadata__original_transaction_id=receipt_info.original_transaction_id,
             )
+            self._log_debug('single_receipt:duplicate', receipt_info)
             return payment
 
         # Find the right plan to create subscription.
@@ -179,6 +189,7 @@ class AppleInAppProvider(Provider):
         subscription_payment.meta = AppleInAppMetadata(original_transaction_id=receipt_info.original_transaction_id)
         subscription_payment.save()
 
+        self._log_debug('single_receipt:new_receipt', receipt_info)
         return subscription_payment
 
     @transaction.atomic
@@ -216,12 +227,19 @@ class AppleInAppProvider(Provider):
             SubscriptionPayment.objects.get(
                 provider_codename=self.codename,
                 provider_transaction_id=transaction_info.transaction_id,
+                metadata__original_transaction_id=transaction_info.original_transaction_id,
             )
             # If we didn't raise, it means that we've already handled this transaction, just the App Store didn't
             # receive the information that we did. Skip it. If it wasn't renewal, we could start searching.
+            self._log_debug('renewal:duplicate', transaction_info)
             return
 
         latest_payment = self._get_latest_transaction(transaction_info.original_transaction_id)
+        self._log_debug_raw('renewal:latest_payment',
+                            latest_payment.provider_transaction_id,
+                            latest_payment.meta.original_transaction_id)
+
+        latest_payment.pk = None
 
         # Information about this should've been received earlier via change, but downgrades are to happen
         # only at the start of new cycle. So we handle them here.
@@ -231,7 +249,6 @@ class AppleInAppProvider(Provider):
             # Create a new subscription.
             latest_payment.subscription = None
 
-        latest_payment.pk = None
         # Updating relevant fields.
         latest_payment.provider_transaction_id = transaction_info.transaction_id
         latest_payment.subscription_start = transaction_info.purchase_date
@@ -240,6 +257,8 @@ class AppleInAppProvider(Provider):
         latest_payment.updated = None
         # Metadata stays the same.
         latest_payment.save()
+
+        self._log_debug('renewal:new_subscription', transaction_info)
 
     def _handle_subscription_change(self, notification: AppStoreNotification) -> None:
         assert notification.subtype in {
@@ -260,6 +279,10 @@ class AppleInAppProvider(Provider):
         # 2. We add a new subscription with a new plan.
 
         latest_payment = self._get_latest_transaction(transaction_info.original_transaction_id)
+        self._log_debug_raw('change:latest_payment',
+                            latest_payment.provider_transaction_id,
+                            latest_payment.meta.original_transaction_id)
+
         # Purchase date is the time when we should stop the previous subscription.
         previous_payment_end_time = transaction_info.purchase_date
 
@@ -268,6 +291,7 @@ class AppleInAppProvider(Provider):
         latest_payment.subscription.save()
         latest_payment.subscription_end = previous_payment_end_time
         latest_payment.save()
+        self._log_debug('change:modify_old', transaction_info)
 
         # Creating a new subscription with a new plan.
         self._handle_renewal(notification)
@@ -293,6 +317,7 @@ class AppleInAppProvider(Provider):
         refunded_payment.subscription.save()
         refunded_payment.subscription_end = transaction_info.revocation_date
         refunded_payment.save()
+        self._log_debug('refund:modify', transaction_info)
 
     @transaction.atomic
     def _handle_app_store(self, _request: Request, payload: AppleAppStoreNotification) -> Response:
