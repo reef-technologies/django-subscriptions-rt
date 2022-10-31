@@ -62,6 +62,9 @@ logger = getLogger(__name__)
 class AppleInAppMetadata(BaseModel):
     original_transaction_id: str
 
+    # DEBUG FIELD
+    source_fun: str
+
 
 @dataclass
 class AppleInAppProvider(Provider):
@@ -138,20 +141,31 @@ class AppleInAppProvider(Provider):
         ).order_by('subscription_end').last()
 
     def _get_active_transaction(self, transaction_id: str, original_transaction_id: str) -> SubscriptionPayment:
-        return SubscriptionPayment.objects.get(
+        obtained_entries = SubscriptionPayment.objects.filter(
             provider_codename=self.codename,
             provider_transaction_id=transaction_id,
             metadata__original_transaction_id=original_transaction_id,
             status=SubscriptionPayment.Status.COMPLETED,
         )
+        if len(obtained_entries) == 0:
+            raise SubscriptionPayment.DoesNotExist()
 
-    def _log_debug_raw(self, fun: str, transaction_id: str, original_transaction_id: str) -> None:
-        logger.debug('%s – (%s, %s)', fun, transaction_id, original_transaction_id)
+        if len(obtained_entries) > 1:
+            logger.error('Multiple active transactions found for transaction id "%s". '
+                         'Check logs for more information.', transaction_id)
+
+        return obtained_entries.first()
 
     def _log_debug(self, fun: str, transaction_info: Any) -> None:
         assert hasattr(transaction_info, 'transaction_id')
         assert hasattr(transaction_info, 'original_transaction_id')
-        self._log_debug_raw(fun, transaction_info.transaction_id, transaction_info.original_transaction_id)
+        logger.debug(
+            '%s – (%s, %s) (%s)',
+            fun,
+            transaction_info.transaction_id,
+            transaction_info.original_transaction_id,
+            transaction_info,
+        )
 
     def _handle_single_receipt_info(self,
                                     user: User,
@@ -193,7 +207,8 @@ class AppleInAppProvider(Provider):
         )
         subscription_payment.subscription.auto_prolong = False
         # Note: initial transaction is the one that has the same original transaction id and transaction id.
-        subscription_payment.meta = AppleInAppMetadata(original_transaction_id=receipt_info.original_transaction_id)
+        subscription_payment.meta = AppleInAppMetadata(original_transaction_id=receipt_info.original_transaction_id,
+                                                       source_fun='new_receipt')
         subscription_payment.save()
 
         self._log_debug('single_receipt:new_receipt', receipt_info)
@@ -238,9 +253,6 @@ class AppleInAppProvider(Provider):
             return
 
         latest_payment = self._get_latest_transaction(transaction_info.original_transaction_id)
-        self._log_debug_raw('renewal:latest_payment',
-                            latest_payment.provider_transaction_id,
-                            latest_payment.meta.original_transaction_id)
 
         latest_payment.pk = None
 
@@ -259,7 +271,11 @@ class AppleInAppProvider(Provider):
         latest_payment.status = SubscriptionPayment.Status.COMPLETED
         latest_payment.created = None
         latest_payment.updated = None
-        # Metadata stays the same.
+
+        metadata = latest_payment.meta
+        metadata.source_fun = 'renewal'
+        latest_payment.meta = metadata
+
         latest_payment.save()
 
         self._log_debug('renewal:new_subscription', transaction_info)
@@ -283,15 +299,17 @@ class AppleInAppProvider(Provider):
         # 2. We add a new subscription with a new plan.
 
         latest_payment = self._get_latest_transaction(transaction_info.original_transaction_id)
-        self._log_debug_raw('change:latest_payment',
-                            latest_payment.provider_transaction_id,
-                            latest_payment.meta.original_transaction_id)
 
         # Ensuring that subscription ends earlier before making the payment end earlier.
         latest_payment.subscription.end = timezone.now()
         latest_payment.subscription.save()
         latest_payment.subscription_end = timezone.now()
         latest_payment.status = SubscriptionPayment.Status.CANCELLED
+
+        metadata = latest_payment.meta
+        metadata.source_fun = 'upgrade'
+        latest_payment.meta = metadata
+
         latest_payment.save()
         self._log_debug('change:modify_old', transaction_info)
 
@@ -319,6 +337,11 @@ class AppleInAppProvider(Provider):
         refunded_payment.subscription.save()
         refunded_payment.subscription_end = transaction_info.revocation_date
         refunded_payment.status = SubscriptionPayment.Status.CANCELLED
+
+        metadata = refunded_payment.meta
+        metadata.source_fun = 'refund'
+        refunded_payment.meta = metadata
+
         refunded_payment.save()
 
         self._log_debug('refund:modify', transaction_info)
