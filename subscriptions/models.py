@@ -340,7 +340,7 @@ class AbstractTransaction(models.Model):
         PENDING = 0
         PREAUTH = 1
         COMPLETED = 2
-        CANCELED = 3
+        CANCELLED = 3
         ERROR = 4
 
     uid = models.UUIDField(primary_key=True)

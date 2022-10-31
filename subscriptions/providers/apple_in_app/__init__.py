@@ -15,6 +15,7 @@ from django.contrib.auth.base_user import AbstractBaseUser
 from django.contrib.auth.models import User
 from django.core.exceptions import SuspiciousOperation
 from django.db import transaction
+from django.utils import timezone
 from pydantic import (
     BaseModel,
     ValidationError,
@@ -129,10 +130,20 @@ class AppleInAppProvider(Provider):
         return Plan.objects.get(**search_kwargs)
 
     def _get_latest_transaction(self, original_transaction_id: str) -> SubscriptionPayment:
+        # Latest transaction could be "CANCELLED", as it might be an upgrade.
+        # We assume that the user has a single subscription active for this app on the Apple platform.
         return SubscriptionPayment.objects.filter(
             provider_codename=self.codename,
             metadata__original_transaction_id=original_transaction_id,
         ).order_by('subscription_end').last()
+
+    def _get_active_transaction(self, transaction_id: str, original_transaction_id: str) -> SubscriptionPayment:
+        return SubscriptionPayment.objects.get(
+            provider_codename=self.codename,
+            provider_transaction_id=transaction_id,
+            metadata__original_transaction_id=original_transaction_id,
+            status=SubscriptionPayment.Status.COMPLETED,
+        )
 
     def _log_debug_raw(self, fun: str, transaction_id: str, original_transaction_id: str) -> None:
         logger.debug('%s – (%s, %s)', fun, transaction_id, original_transaction_id)
@@ -151,11 +162,7 @@ class AppleInAppProvider(Provider):
             return None
 
         with suppress(SubscriptionPayment.DoesNotExist):  # noqa (DoesNotExist seems not to be an exception for PyCharm)
-            payment = SubscriptionPayment.objects.get(
-                provider_codename=self.codename,
-                provider_transaction_id=receipt_info.transaction_id,
-                metadata__original_transaction_id=receipt_info.original_transaction_id,
-            )
+            payment = self._get_active_transaction(receipt_info.transaction_id, receipt_info.original_transaction_id)
             self._log_debug('single_receipt:duplicate', receipt_info)
             return payment
 
@@ -224,11 +231,7 @@ class AppleInAppProvider(Provider):
 
         # Check if we handled this before.
         with suppress(SubscriptionPayment.DoesNotExist):
-            SubscriptionPayment.objects.get(
-                provider_codename=self.codename,
-                provider_transaction_id=transaction_info.transaction_id,
-                metadata__original_transaction_id=transaction_info.original_transaction_id,
-            )
+            self._get_active_transaction(transaction_info.transaction_id, transaction_info.original_transaction_id)
             # If we didn't raise, it means that we've already handled this transaction, just the App Store didn't
             # receive the information that we did. Skip it. If it wasn't renewal, we could start searching.
             self._log_debug('renewal:duplicate', transaction_info)
@@ -253,6 +256,7 @@ class AppleInAppProvider(Provider):
         latest_payment.provider_transaction_id = transaction_info.transaction_id
         latest_payment.subscription_start = transaction_info.purchase_date
         latest_payment.subscription_end = transaction_info.expires_date
+        latest_payment.status = SubscriptionPayment.Status.COMPLETED
         latest_payment.created = None
         latest_payment.updated = None
         # Metadata stays the same.
@@ -283,13 +287,11 @@ class AppleInAppProvider(Provider):
                             latest_payment.provider_transaction_id,
                             latest_payment.meta.original_transaction_id)
 
-        # Purchase date is the time when we should stop the previous subscription.
-        previous_payment_end_time = transaction_info.purchase_date
-
         # Ensuring that subscription ends earlier before making the payment end earlier.
-        latest_payment.subscription.end = previous_payment_end_time
+        latest_payment.subscription.end = timezone.now()
         latest_payment.subscription.save()
-        latest_payment.subscription_end = previous_payment_end_time
+        latest_payment.subscription_end = timezone.now()
+        latest_payment.status = SubscriptionPayment.Status.CANCELLED
         latest_payment.save()
         self._log_debug('change:modify_old', transaction_info)
 
@@ -302,9 +304,9 @@ class AppleInAppProvider(Provider):
 
         # I didn't find clear information whether the refund is a separate transaction or not. Checking both ways then.
         try:
-            refunded_payment = SubscriptionPayment.objects.get(
-                provider_codename=self.codename,
-                provider_transaction_id=transaction_info.transaction_id,
+            refunded_payment = self._get_active_transaction(
+                transaction_info.transaction_id,
+                transaction_info.original_transaction_id,
             )
         except SubscriptionPayment.DoesNotExist:
             logger.warning('Refund called on unknown transaction id "%s". Searching for latest payment for given '
@@ -316,7 +318,9 @@ class AppleInAppProvider(Provider):
         refunded_payment.subscription.end = transaction_info.revocation_date
         refunded_payment.subscription.save()
         refunded_payment.subscription_end = transaction_info.revocation_date
+        refunded_payment.status = SubscriptionPayment.Status.CANCELLED
         refunded_payment.save()
+
         self._log_debug('refund:modify', transaction_info)
 
     @transaction.atomic

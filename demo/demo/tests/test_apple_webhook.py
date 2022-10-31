@@ -253,8 +253,9 @@ def test__app_store_notification__product_upgrade(user_client,
     assert payment.user == user
     assert payment.plan.metadata[apple_in_app.codename] == apple_product_id
     assert payment.subscription.plan.metadata[apple_in_app.codename] == apple_product_id
-    assert payment.status == SubscriptionPayment.Status.COMPLETED
-    assert payment.subscription_end == transaction_info.purchase_date
+    # Original transaction is marked as cancelled, so we know not to care about it any more.
+    assert payment.status == SubscriptionPayment.Status.CANCELLED
+    # End date is set to "now", so it's not important for checking purposes.
 
     payment = SubscriptionPayment.objects.get(provider_transaction_id=new_transaction_id)
     assert payment.user == user
