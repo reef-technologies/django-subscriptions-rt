@@ -154,6 +154,9 @@ class AppleInAppProvider(Provider):
             logger.error('Multiple active transactions found for transaction id "%s". '
                          'Check logs for more information.', transaction_id)
 
+        # From the current observation it seems like all of them have similar creation time
+        # and a new subscription that points to the exactly same plan. Seems like all of them are valid
+        # and only issue is with having more than one of them at the same time.
         return obtained_entries.first()
 
     def _log_debug(self, fun: str, transaction_info: Any) -> None:
@@ -214,7 +217,7 @@ class AppleInAppProvider(Provider):
         self._log_debug('single_receipt:new_receipt', receipt_info)
         return subscription_payment
 
-    @transaction.atomic
+    @transaction.atomic(durable=True)
     def _handle_receipt(self, request: Request, payload: AppleReceiptRequest) -> Response:
         receipt = payload.transaction_receipt
 
@@ -346,7 +349,7 @@ class AppleInAppProvider(Provider):
 
         self._log_debug('refund:modify', transaction_info)
 
-    @transaction.atomic
+    @transaction.atomic(durable=True)
     def _handle_app_store(self, _request: Request, payload: AppleAppStoreNotification) -> Response:
         signed_payload = payload.signed_payload
 
