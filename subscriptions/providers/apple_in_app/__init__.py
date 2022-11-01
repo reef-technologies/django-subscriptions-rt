@@ -24,6 +24,7 @@ from rest_framework.response import Response
 from rest_framework.status import (
     HTTP_200_OK,
     HTTP_400_BAD_REQUEST,
+    HTTP_401_UNAUTHORIZED,
 )
 
 from subscriptions.models import (
@@ -151,8 +152,8 @@ class AppleInAppProvider(Provider):
             raise SubscriptionPayment.DoesNotExist()
 
         if len(obtained_entries) > 1:
-            logger.error('Multiple active transactions found for transaction id "%s". '
-                         'Check logs for more information.', transaction_id)
+            logger.warning('Multiple active transactions found for transaction id "%s". '
+                           'Consider cleaning it up.', transaction_id)
 
         return obtained_entries.first()
 
@@ -211,6 +212,10 @@ class AppleInAppProvider(Provider):
 
     @transaction.atomic(durable=True)
     def _handle_receipt(self, request: Request, payload: AppleReceiptRequest) -> Response:
+        # Check whether the user is authenticated.
+        if not request.user.is_authenticated:
+            return Response(status=HTTP_401_UNAUTHORIZED)
+
         receipt = payload.transaction_receipt
 
         # Validate the receipt. Fetch the status and product.
