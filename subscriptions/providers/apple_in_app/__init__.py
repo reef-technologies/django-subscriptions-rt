@@ -1,4 +1,4 @@
-from contextlib import suppress
+import datetime
 from dataclasses import dataclass
 from logging import getLogger
 from typing import (
@@ -156,6 +156,37 @@ class AppleInAppProvider(Provider):
 
         return obtained_entries.first()
 
+    def _get_or_create_payment(self,
+                               transaction_id: str,
+                               original_transaction_id: str,
+                               user: User,
+                               plan: Plan,
+                               start: datetime.datetime,
+                               end: datetime.datetime,
+                               subscription: Optional[Subscription] = None) -> SubscriptionPayment:
+        payment, was_created = SubscriptionPayment.objects.get_or_create(
+            provider_codename=self.codename,
+            provider_transaction_id=transaction_id,
+            defaults={
+                'status': SubscriptionPayment.Status.COMPLETED,
+                # In-app purchase doesn't report the money.
+                # We mark it as None to indicate we don't know how much did it cost.
+                'amount': None,
+                'user': user,
+                'plan': plan,
+                'subscription': subscription,
+                'subscription_start': start,
+                'subscription_end': end,
+            }
+        )
+        if was_created:
+            payment.subscription.auto_prolong = False
+            # Note: initial transaction is the one that has the same original transaction id and transaction id.
+            payment.meta = AppleInAppMetadata(original_transaction_id=original_transaction_id)
+            payment.save()
+
+        return payment
+
     def _handle_single_receipt_info(self,
                                     user: User,
                                     receipt_info: AppleLatestReceiptInfo) -> Optional[SubscriptionPayment]:
@@ -167,25 +198,14 @@ class AppleInAppProvider(Provider):
         # Find the right plan to create subscription. This raises an error if the plan is not found.
         plan = self._get_plan_for_product_id(receipt_info.product_id)
 
-        subscription_payment, was_created = SubscriptionPayment.objects.get_or_create(
-            provider_codename=self.codename,
-            provider_transaction_id=receipt_info.transaction_id,
-            defaults={
-                'status': SubscriptionPayment.Status.COMPLETED,
-                # In-app purchase doesn't report the money.
-                # We mark it as None to indicate we don't know how much did it cost.
-                'amount': None,
-                'user': user,
-                'plan': plan,
-                'subscription_start': receipt_info.purchase_date,
-                'subscription_end': receipt_info.expires_date,
-            }
+        subscription_payment = self._get_or_create_payment(
+            receipt_info.transaction_id,
+            receipt_info.original_transaction_id,
+            user,
+            plan,
+            receipt_info.purchase_date,
+            receipt_info.expires_date,
         )
-        if was_created:
-            subscription_payment.subscription.auto_prolong = False
-            # Note: initial transaction is the one that has the same original transaction id and transaction id.
-            subscription_payment.meta = AppleInAppMetadata(original_transaction_id=receipt_info.original_transaction_id)
-            subscription_payment.save()
 
         return subscription_payment
 
@@ -219,34 +239,24 @@ class AppleInAppProvider(Provider):
     def _handle_renewal(self, notification: AppStoreNotification) -> None:
         transaction_info = notification.transaction_info
 
-        # Check if we handled this before.
-        with suppress(SubscriptionPayment.DoesNotExist):
-            self._get_active_transaction(transaction_info.transaction_id, transaction_info.original_transaction_id)
-            # If we didn't raise, it means that we've already handled this transaction, just the App Store didn't
-            # receive the information that we did. Skip it. If it wasn't renewal, we could start searching.
-            return
-
         latest_payment = self._get_latest_transaction(transaction_info.original_transaction_id)
+        assert latest_payment, f'Renewal received for {transaction_info=} where no payments exist.'
 
-        latest_payment.pk = None
+        current_plan = latest_payment.plan
+        subscription = latest_payment.subscription
+        if current_plan.metadata.get(self.codename) != transaction_info.product_id:
+            current_plan = self._get_plan_for_product_id(transaction_info.product_id)
+            subscription = None
 
-        # Information about this should've been received earlier via change, but downgrades are to happen
-        # only at the start of new cycle. So we handle them here.
-        current_product_id = latest_payment.plan.metadata.get(self.codename)
-        if current_product_id != transaction_info.product_id:
-            latest_payment.plan = self._get_plan_for_product_id(transaction_info.product_id)
-            # Create a new subscription.
-            latest_payment.subscription = None
-
-        # Updating relevant fields.
-        latest_payment.provider_transaction_id = transaction_info.transaction_id
-        latest_payment.subscription_start = transaction_info.purchase_date
-        latest_payment.subscription_end = transaction_info.expires_date
-        latest_payment.status = SubscriptionPayment.Status.COMPLETED
-        latest_payment.created = None
-        latest_payment.updated = None
-
-        latest_payment.save()
+        self._get_or_create_payment(
+            transaction_info.transaction_id,
+            transaction_info.original_transaction_id,
+            latest_payment.user,
+            current_plan,
+            transaction_info.purchase_date,
+            transaction_info.expires_date,
+            subscription=subscription,
+        )
 
     def _handle_subscription_change(self, notification: AppStoreNotification) -> None:
         assert notification.subtype in {
