@@ -165,26 +165,34 @@ class AppleInAppProvider(Provider):
                                start: datetime.datetime,
                                end: datetime.datetime,
                                subscription: Optional[Subscription] = None) -> SubscriptionPayment:
-        payment, was_created = SubscriptionPayment.objects.get_or_create(
-            provider_codename=self.codename,
-            provider_transaction_id=transaction_id,
-            defaults={
-                'status': SubscriptionPayment.Status.COMPLETED,
-                # In-app purchase doesn't report the money.
-                # We mark it as None to indicate we don't know how much did it cost.
-                'amount': None,
-                'user': user,
-                'plan': plan,
-                'subscription': subscription,
-                'subscription_start': start,
-                'subscription_end': end,
-            }
-        )
-        if was_created:
-            payment.subscription.auto_prolong = False
-            # Note: initial transaction is the one that has the same original transaction id and transaction id.
-            payment.meta = AppleInAppMetadata(original_transaction_id=original_transaction_id)
-            payment.save()
+        try:
+            payment, was_created = SubscriptionPayment.objects.get_or_create(
+                provider_codename=self.codename,
+                provider_transaction_id=transaction_id,
+                defaults={
+                    'status': SubscriptionPayment.Status.COMPLETED,
+                    # In-app purchase doesn't report the money.
+                    # We mark it as None to indicate we don't know how much did it cost.
+                    'amount': None,
+                    'user': user,
+                    'plan': plan,
+                    'subscription': subscription,
+                    'subscription_start': start,
+                    'subscription_end': end,
+                }
+            )
+            if was_created:
+                payment.subscription.auto_prolong = False
+                # Note: initial transaction is the one that has the same original transaction id and transaction id.
+                payment.meta = AppleInAppMetadata(original_transaction_id=original_transaction_id)
+                payment.save()
+        except SubscriptionPayment.MultipleObjectsReturned:
+            logger.warning('Multiple payments found for transaction id "%s". '
+                           'Consider cleaning it up. Returning first of them.', transaction_id)
+            payment = SubscriptionPayment.objects.filter(
+                provider_codename=self.codename,
+                provider_transaction_id=transaction_id,
+            ).first()
 
         return payment
 
