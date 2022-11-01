@@ -2,7 +2,6 @@ from contextlib import suppress
 from dataclasses import dataclass
 from logging import getLogger
 from typing import (
-    Any,
     Callable,
     ClassVar,
     Iterable,
@@ -61,9 +60,6 @@ logger = getLogger(__name__)
 
 class AppleInAppMetadata(BaseModel):
     original_transaction_id: str
-
-    # DEBUG FIELD
-    source_fun: str
 
 
 @dataclass
@@ -132,7 +128,7 @@ class AppleInAppProvider(Provider):
         }
         return Plan.objects.get(**search_kwargs)
 
-    def _get_latest_transaction(self, original_transaction_id: str) -> SubscriptionPayment:
+    def _get_latest_transaction(self, original_transaction_id: str) -> Optional[SubscriptionPayment]:
         # Latest transaction could be "CANCELLED", as it might be an upgrade.
         # We assume that the user has a single subscription active for this app on the Apple platform.
         return SubscriptionPayment.objects.filter(
@@ -141,6 +137,10 @@ class AppleInAppProvider(Provider):
         ).order_by('subscription_end').last()
 
     def _get_active_transaction(self, transaction_id: str, original_transaction_id: str) -> SubscriptionPayment:
+        """
+        Note: this should be a simple `get`, however the database could contain duplicates.
+        Once all duplicates are defeated, replace this with `get`.
+        """
         obtained_entries = SubscriptionPayment.objects.filter(
             provider_codename=self.codename,
             provider_transaction_id=transaction_id,
@@ -154,21 +154,7 @@ class AppleInAppProvider(Provider):
             logger.error('Multiple active transactions found for transaction id "%s". '
                          'Check logs for more information.', transaction_id)
 
-        # From the current observation it seems like all of them have similar creation time
-        # and a new subscription that points to the exactly same plan. Seems like all of them are valid
-        # and only issue is with having more than one of them at the same time.
         return obtained_entries.first()
-
-    def _log_debug(self, fun: str, transaction_info: Any) -> None:
-        assert hasattr(transaction_info, 'transaction_id')
-        assert hasattr(transaction_info, 'original_transaction_id')
-        logger.debug(
-            '%s – (%s, %s) (%s)',
-            fun,
-            transaction_info.transaction_id,
-            transaction_info.original_transaction_id,
-            transaction_info,
-        )
 
     def _handle_single_receipt_info(self,
                                     user: User,
@@ -178,43 +164,29 @@ class AppleInAppProvider(Provider):
             logger.warning('Found a cancellation date in receipt: %s, ignoring this receipt.', receipt_info)
             return None
 
-        with suppress(SubscriptionPayment.DoesNotExist):  # noqa (DoesNotExist seems not to be an exception for PyCharm)
-            payment = self._get_active_transaction(receipt_info.transaction_id, receipt_info.original_transaction_id)
-            self._log_debug('single_receipt:duplicate', receipt_info)
-            return payment
+        # Find the right plan to create subscription. This raises an error if the plan is not found.
+        plan = self._get_plan_for_product_id(receipt_info.product_id)
 
-        # Find the right plan to create subscription.
-        try:
-            plan = self._get_plan_for_product_id(receipt_info.product_id)
-        except Plan.DoesNotExist:
-            # This means that something wasn't connected as needed.
-            logger.exception('Plan for apple in-app purchase "%s" not found.', receipt_info.product_id)
-            return None
-
-        # Create subscription payment. Subscription is created automatically.
-        subscription_payment = SubscriptionPayment.objects.create(
+        subscription_payment, was_created = SubscriptionPayment.objects.get_or_create(
             provider_codename=self.codename,
             provider_transaction_id=receipt_info.transaction_id,
-            # NOTE(kkalinowski): from my understanding, we can only receive receipt after the person has paid
-            # but the transaction (from the perspective of the app) might have not yet finished. Money were spent.
-            status=SubscriptionPayment.Status.COMPLETED,
-            # In-app purchase doesn't report the money.
-            # We mark it as None to indicate we don't know how much did it cost.
-            amount=None,
-            user=user,
-            plan=plan,
-            subscription_start=receipt_info.purchase_date,
-            # If the cancellation date is set, it means that the user was refunded and for whatever reason
-            # we weren't notified about this purchase.
-            subscription_end=receipt_info.expires_date,
+            defaults={
+                'status': SubscriptionPayment.Status.COMPLETED,
+                # In-app purchase doesn't report the money.
+                # We mark it as None to indicate we don't know how much did it cost.
+                'amount': None,
+                'user': user,
+                'plan': plan,
+                'subscription_start': receipt_info.purchase_date,
+                'subscription_end': receipt_info.expires_date,
+            }
         )
-        subscription_payment.subscription.auto_prolong = False
-        # Note: initial transaction is the one that has the same original transaction id and transaction id.
-        subscription_payment.meta = AppleInAppMetadata(original_transaction_id=receipt_info.original_transaction_id,
-                                                       source_fun='new_receipt')
-        subscription_payment.save()
+        if was_created:
+            subscription_payment.subscription.auto_prolong = False
+            # Note: initial transaction is the one that has the same original transaction id and transaction id.
+            subscription_payment.meta = AppleInAppMetadata(original_transaction_id=receipt_info.original_transaction_id)
+            subscription_payment.save()
 
-        self._log_debug('single_receipt:new_receipt', receipt_info)
         return subscription_payment
 
     @transaction.atomic(durable=True)
@@ -252,7 +224,6 @@ class AppleInAppProvider(Provider):
             self._get_active_transaction(transaction_info.transaction_id, transaction_info.original_transaction_id)
             # If we didn't raise, it means that we've already handled this transaction, just the App Store didn't
             # receive the information that we did. Skip it. If it wasn't renewal, we could start searching.
-            self._log_debug('renewal:duplicate', transaction_info)
             return
 
         latest_payment = self._get_latest_transaction(transaction_info.original_transaction_id)
@@ -275,13 +246,7 @@ class AppleInAppProvider(Provider):
         latest_payment.created = None
         latest_payment.updated = None
 
-        metadata = latest_payment.meta
-        metadata.source_fun = 'renewal'
-        latest_payment.meta = metadata
-
         latest_payment.save()
-
-        self._log_debug('renewal:new_subscription', transaction_info)
 
     def _handle_subscription_change(self, notification: AppStoreNotification) -> None:
         assert notification.subtype in {
@@ -302,19 +267,14 @@ class AppleInAppProvider(Provider):
         # 2. We add a new subscription with a new plan.
 
         latest_payment = self._get_latest_transaction(transaction_info.original_transaction_id)
+        assert latest_payment, f'Change received for {transaction_info=} where no payments exist.'
 
         # Ensuring that subscription ends earlier before making the payment end earlier.
         latest_payment.subscription.end = timezone.now()
         latest_payment.subscription.save()
         latest_payment.subscription_end = timezone.now()
-        latest_payment.status = SubscriptionPayment.Status.CANCELLED
-
-        metadata = latest_payment.meta
-        metadata.source_fun = 'upgrade'
-        latest_payment.meta = metadata
 
         latest_payment.save()
-        self._log_debug('change:modify_old', transaction_info)
 
         # Creating a new subscription with a new plan.
         self._handle_renewal(notification)
@@ -336,18 +296,14 @@ class AppleInAppProvider(Provider):
                            transaction_info.original_transaction_id)
             refunded_payment = self._get_latest_transaction(transaction_info.original_transaction_id)
 
+        assert refunded_payment, f'Refund received for {transaction_info=} where no payments exist.'
+
         refunded_payment.subscription.end = transaction_info.revocation_date
         refunded_payment.subscription.save()
         refunded_payment.subscription_end = transaction_info.revocation_date
         refunded_payment.status = SubscriptionPayment.Status.CANCELLED
 
-        metadata = refunded_payment.meta
-        metadata.source_fun = 'refund'
-        refunded_payment.meta = metadata
-
         refunded_payment.save()
-
-        self._log_debug('refund:modify', transaction_info)
 
     @transaction.atomic(durable=True)
     def _handle_app_store(self, _request: Request, payload: AppleAppStoreNotification) -> Response:

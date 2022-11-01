@@ -261,7 +261,7 @@ def test__app_store_notification__product_upgrade(user_client,
     assert payment.plan.metadata[apple_in_app.codename] == apple_product_id
     assert payment.subscription.plan.metadata[apple_in_app.codename] == apple_product_id
     # Original transaction is marked as cancelled, so we know not to care about it any more.
-    assert payment.status == SubscriptionPayment.Status.CANCELLED
+    assert payment.status == SubscriptionPayment.Status.COMPLETED
     # End date is set to "now", so it's not important for checking purposes.
 
     payment = SubscriptionPayment.objects.get(provider_transaction_id=new_transaction_id)
@@ -432,3 +432,16 @@ def test__app_store_notifications__refund(user_client,
     assert payment.plan.metadata[apple_in_app.codename] == transaction_info.product_id
     assert payment.provider_codename == apple_in_app.codename
     assert payment.subscription_end == transaction_info.revocation_date
+
+
+def test__notification_without_receipt(user_client, apple_bundle_id, apple_product_id):
+    # In this case nothing should break, it means that we were not informed about an operation.
+    notification_data = make_notification_data(
+        apple_product_id,
+        apple_bundle_id,
+        notification_type=AppStoreNotificationTypeV2.DID_CHANGE_RENEWAL_PREF,
+        subtype=AppStoreNotificationTypeV2Subtype.UPGRADE,
+    )
+    with mock.patch(NOTIFICATION_PARSER, return_value=notification_data):
+        with pytest.raises(AssertionError):
+            user_client.post(APPLE_API_WEBHOOK, make_notification_query(), content_type='application/json')
