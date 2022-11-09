@@ -304,9 +304,10 @@ class AppleInAppProvider(Provider):
         assert latest_payment, f'Change received for {transaction_info=} where no payments exist.'
 
         # Ensuring that subscription ends earlier before making the payment end earlier.
-        latest_payment.subscription.end = timezone.now()
+        now = timezone.now()
+        latest_payment.subscription.end = now
         latest_payment.subscription.save()
-        latest_payment.subscription_end = timezone.now()
+        latest_payment.subscription_end = now
 
         latest_payment.save()
 
