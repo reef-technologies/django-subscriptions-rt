@@ -212,13 +212,13 @@ class AppleInAppProvider(Provider):
         transaction_info = notification.transaction_info
 
         # Check if we handled this before.
-        with suppress(SubscriptionPayment.DoesNotExist):
-            SubscriptionPayment.objects.get(
-                provider_codename=self.codename,
-                provider_transaction_id=transaction_info.transaction_id,
-            )
-            # If we didn't raise, it means that we've already handled this transaction, just the App Store didn't
-            # receive the information that we did. Skip it. If it wasn't renewal, we could start searching.
+        if SubscriptionPayment.objects.filter(
+            provider_codename=self.codename,
+            provider_transaction_id=transaction_info.transaction_id,
+        ).exists():
+            # we've already handled this transaction, just the App Store didn't
+            # receive the information that we did. Skip it. If it wasn't renewal,
+            # we could start searching.
             return
 
         latest_payment = self._get_latest_transaction(transaction_info.original_transaction_id)
