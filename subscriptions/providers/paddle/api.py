@@ -1,6 +1,6 @@
 import json
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from functools import partialmethod, wraps
 from logging import getLogger
@@ -56,7 +56,7 @@ class Paddle:
     # TODO: replace response `dict` type with pydantic
 
     _session: requests.Session = None
-    TIMEOUT: ClassVar[int] = 30
+    TIMEOUT: ClassVar[timedelta] = timedelta(seconds=30)
 
     _retry: retry_base = retry(
         retry=retry_if_result(
@@ -79,7 +79,7 @@ class Paddle:
 
     def request(self, method, endpoint, *args, **kwargs) -> requests.Response:
         assert endpoint.startswith('/')
-        kwargs.setdefault('timeout', self.TIMEOUT)
+        kwargs.setdefault('timeout', int(self.TIMEOUT.total_seconds()))
         return self._session.request(method, self.endpoint + endpoint, *args, **kwargs)
 
     get = partialmethod(request, 'get')

@@ -252,6 +252,16 @@ class AppleInAppProvider(Provider):
     def _handle_renewal(self, notification: AppStoreNotification) -> None:
         transaction_info = notification.transaction_info
 
+        # Check if we handled this before.
+        if SubscriptionPayment.objects.filter(
+            provider_codename=self.codename,
+            provider_transaction_id=transaction_info.transaction_id,
+        ).exists():
+            # we've already handled this transaction, just the App Store didn't
+            # receive the information that we did. Skip it. If it wasn't renewal,
+            # we could start searching.
+            return
+
         latest_payment = self._get_latest_transaction(transaction_info.original_transaction_id)
         assert latest_payment, f'Renewal received for {transaction_info=} where no payments exist.'
 
