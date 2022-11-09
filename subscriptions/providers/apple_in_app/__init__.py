@@ -183,6 +183,7 @@ class AppleInAppProvider(Provider):
             )
             if was_created:
                 payment.subscription.auto_prolong = False
+                payment.subscription.save()
                 # Note: initial transaction is the one that has the same original transaction id and transaction id.
                 payment.meta = AppleInAppMetadata(original_transaction_id=original_transaction_id)
                 payment.save()
