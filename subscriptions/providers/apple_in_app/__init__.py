@@ -138,24 +138,12 @@ class AppleInAppProvider(Provider):
         ).order_by('subscription_end').last()
 
     def _get_active_transaction(self, transaction_id: str, original_transaction_id: str) -> SubscriptionPayment:
-        """
-        Note: this should be a simple `get`, however the database could contain duplicates.
-        Once all duplicates are defeated, replace this with `get`.
-        """
-        obtained_entries = SubscriptionPayment.objects.filter(
+        return SubscriptionPayment.objects.get(
             provider_codename=self.codename,
             provider_transaction_id=transaction_id,
             metadata__original_transaction_id=original_transaction_id,
             status=SubscriptionPayment.Status.COMPLETED,
         )
-        if len(obtained_entries) == 0:
-            raise SubscriptionPayment.DoesNotExist()
-
-        if len(obtained_entries) > 1:
-            logger.warning('Multiple active transactions found for transaction id "%s". '
-                           'Consider cleaning it up.', transaction_id)
-
-        return obtained_entries.first()
 
     def _get_or_create_payment(self,
                                transaction_id: str,
