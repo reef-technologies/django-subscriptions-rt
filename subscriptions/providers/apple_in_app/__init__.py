@@ -207,7 +207,7 @@ class AppleInAppProvider(Provider):
 
         return subscription_payment
 
-    @transaction.atomic(durable=True)
+    @transaction.atomic
     def _handle_receipt(self, request: Request, payload: AppleReceiptRequest) -> Response:
         # Check whether the user is authenticated.
         if not request.user.is_authenticated:
@@ -328,7 +328,7 @@ class AppleInAppProvider(Provider):
 
         refunded_payment.save()
 
-    @transaction.atomic(durable=True)
+    @transaction.atomic
     def _handle_app_store(self, _request: Request, payload: AppleAppStoreNotification) -> Response:
         signed_payload = payload.signed_payload
 
