@@ -360,12 +360,19 @@ class GoogleInAppProvider(Provider):
             status=HTTP_200_OK,
         )
 
+    def get_last_payment(self, purchase_token: str) -> SubscriptionPayment:
+        # Google uses same purchaseToken for subsequent payments
+        return SubscriptionPayment.objects.filter(
+            provider_codename=self.codename,
+            provider_transaction_id=purchase_token,
+        ).latest()
+
     def update_or_create_subscription(
         self,
         purchase_token: str,
         event: GoogleSubscriptionNotificationType,
         user: Optional[AbstractBaseUser] = None,
-    ) -> SubscriptionPayment:
+    ) -> Optional[SubscriptionPayment]:
         """
         This method gets purchase token from notification and uses it to query for purchase
         info from Google. Subscription and SubscriptionPayments are updated if needed.
@@ -396,21 +403,12 @@ class GoogleInAppProvider(Provider):
 
         with transaction.atomic(durable=True):
 
-            # Google uses same purchaseToken for subsequent payments
-            try:
-                last_payment = SubscriptionPayment.objects.filter(
-                    provider_codename=self.codename,
-                    provider_transaction_id=purchase_token,
-                ).latest()
-            except SubscriptionPayment.DoesNotExist:
-                last_payment = None
-
             if event in {
                 GoogleSubscriptionNotificationType.RECOVERED,
                 GoogleSubscriptionNotificationType.DEFERRED,
             }:
                 # just prolong if needed
-                assert last_payment, f'No last payment but {event=}'
+                last_payment = self.get_last_payment(purchase_token)
                 subscription = last_payment.subscription
                 if purchase_end > subscription.end:
                     subscription.end = purchase_end
@@ -418,7 +416,7 @@ class GoogleInAppProvider(Provider):
 
             elif event == GoogleSubscriptionNotificationType.RENEWED:
                 # TODO: handle case when subscription is resumed from a pause
-                assert last_payment, f'No last payment but {event=}'
+                last_payment = self.get_last_payment(purchase_token)
                 if purchase_end > last_payment.subscription_end:
                     last_payment.uid = None
                     last_payment.subscription_start = last_payment.subscription_end
@@ -428,6 +426,7 @@ class GoogleInAppProvider(Provider):
                     last_payment.save()
 
             elif event == GoogleSubscriptionNotificationType.CANCELED:
+                last_payment = self.get_last_payment(purchase_token)
                 subscription = last_payment.subscription
                 if subscription.end != purchase_end:
                     subscription.end = purchase_end
@@ -458,7 +457,7 @@ class GoogleInAppProvider(Provider):
                 GoogleSubscriptionNotificationType.PAUSED,
                 GoogleSubscriptionNotificationType.REVOKED,
             }:
-                assert last_payment, f'No last payment but {event=}'
+                last_payment = self.get_last_payment(purchase_token)
                 last_payment.subscription.end = now()
                 last_payment.subscription.save()
 
@@ -471,7 +470,7 @@ class GoogleInAppProvider(Provider):
                 pass
 
             elif event == GoogleSubscriptionNotificationType.EXPIRED:
-                assert last_payment, f'No last payment but {event=}'
+                last_payment = self.get_last_payment(purchase_token)
                 subscription = last_payment.subscription
                 subscription.end = purchase_end
                 subscription.save()

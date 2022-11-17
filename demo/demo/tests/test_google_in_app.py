@@ -109,8 +109,8 @@ def test_get_user_by_token(google_in_app, payment):
     assert google_in_app.get_user_by_token(payment.provider_transaction_id) == payment.user
 
 
-def test_webhook_test_notification(google_in_app, test_notification, client):
-    response = client.post('/api/webhook/google_in_app/', test_notification, content_type="application/json")
+def test_webhook_test_notification(google_in_app, google_test_notification, client):
+    response = client.post('/api/webhook/google_in_app/', google_test_notification, content_type="application/json")
     assert response.status_code == 200, response.content
 
 
@@ -226,6 +226,8 @@ def test_check_event():
 
 
 def test_purchase_flow(google_in_app, purchase_token, user, plan_with_google, client, user_client, app_notification, google_subscription_purchase, google_rtdn_notification_factory, now, days):
+    """ Test initial purchase and renewal """
+
     with mock.patch('subscriptions.providers.google_in_app.GoogleInAppProvider.get_purchase', return_value=google_subscription_purchase):
         response = user_client.post('/api/webhook/google_in_app/', app_notification, content_type="application/json")
         assert response.status_code == 200, response.content
@@ -258,7 +260,34 @@ def test_purchase_flow(google_in_app, purchase_token, user, plan_with_google, cl
     payment2 = SubscriptionPayment.objects.latest()
     assert payment2.subscription.end == payment2.subscription_end
 
-    # TODO: not all cases covered
+
+def test_expiration_notification(google_in_app, purchase_token, user, plan_with_google, client, google_rtdn_notification_factory, google_in_app_payment, google_subscription_purchase, days):
+
+    assert google_in_app_payment.subscription.end == google_in_app_payment.subscription_end
+    initial_subscription_end = google_in_app_payment.subscription_end
+
+    # test that subscription end date is set to expiration time even if it's BEFORE payment end date
+    new_expiry_time = initial_subscription_end - days(1)
+    google_subscription_purchase.lineItems[0].expiryTime = new_expiry_time.isoformat()
+    google_subscription_purchase.subscriptionState = GoogleSubscriptionState.EXPIRED
+
+    with mock.patch('subscriptions.providers.google_in_app.GoogleInAppProvider.get_purchase', return_value=google_subscription_purchase):
+        response = client.post(
+            '/api/webhook/google_in_app/',
+            google_rtdn_notification_factory(GoogleSubscriptionNotificationType.EXPIRED),
+            content_type="application/json",
+        )
+        assert response.status_code == 200, response.content
+
+    subscription = Subscription.objects.get(pk=google_in_app_payment.subscription.pk)
+    payment = SubscriptionPayment.objects.get(pk=google_in_app_payment.pk)
+
+    assert payment.subscription_end == initial_subscription_end
+    assert subscription.end == new_expiry_time
+    assert subscription.end != payment.subscription_end
+
+
+# TODO: not all cases covered
 
 
 def test_check_payments(google_in_app):

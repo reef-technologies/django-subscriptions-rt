@@ -494,7 +494,7 @@ def google_rtdn_notification(google_rtdn_notification_factory) -> dict:
 
 
 @pytest.fixture
-def test_notification() -> dict:
+def google_test_notification() -> dict:
     return {
         "message": {
             "data": "eyJ2ZXJzaW9uIjoiMS4wIiwicGFja2FnZU5hbWUiOiJjb20ucHJvbWV0aGV1c3Bva2VyLmJhdHRsZSIsImV2ZW50VGltZU1pbGxpcyI6IjE2NjY3MDM3MDA0MTMiLCJ0ZXN0Tm90aWZpY2F0aW9uIjp7InZlcnNpb24iOiIxLjAifX0=",
@@ -505,3 +505,17 @@ def test_notification() -> dict:
         },
         "subscription": "projects/pc-api-8164987956662966187-422/subscriptions/subscription-notifications",
     }
+
+
+@pytest.fixture
+def google_in_app_payment(google_in_app, purchase_token, plan_with_google, user, now, days) -> Subscription:
+    return SubscriptionPayment.objects.create(
+        provider_codename=google_in_app.codename,
+        provider_transaction_id=purchase_token,
+        status=SubscriptionPayment.Status.COMPLETED,
+        user=user,
+        plan=plan_with_google,
+        subscription_start=now,
+        subscription_end=now + days(7),
+        created=now,
+    )
