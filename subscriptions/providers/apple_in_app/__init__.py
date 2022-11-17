@@ -130,7 +130,6 @@ class AppleInAppProvider(Provider):
         return Plan.objects.get(**search_kwargs)
 
     def _get_latest_transaction(self, original_transaction_id: str) -> Optional[SubscriptionPayment]:
-        # Latest transaction could be "CANCELLED", as it might be an upgrade.
         # We assume that the user has a single subscription active for this app on the Apple platform.
         return SubscriptionPayment.objects.filter(
             provider_codename=self.codename,
