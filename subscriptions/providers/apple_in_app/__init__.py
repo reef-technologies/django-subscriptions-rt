@@ -138,12 +138,24 @@ class AppleInAppProvider(Provider):
         ).order_by('subscription_end').last()
 
     def _get_active_transaction(self, transaction_id: str, original_transaction_id: str) -> SubscriptionPayment:
-        return SubscriptionPayment.objects.get(
-            provider_codename=self.codename,
-            provider_transaction_id=transaction_id,
-            metadata__original_transaction_id=original_transaction_id,
-            status=SubscriptionPayment.Status.COMPLETED,
-        )
+        try:
+            return SubscriptionPayment.objects.get(
+                provider_codename=self.codename,
+                provider_transaction_id=transaction_id,
+                metadata__original_transaction_id=original_transaction_id,
+                status=SubscriptionPayment.Status.COMPLETED,
+            )
+        except SubscriptionPayment.MultipleObjectsReturned:
+            # This is left as a countermeasure in case the deduplication fails or the code is still "not good enough"
+            # and generates duplicates. It allows us to read a warning from sentry instead of rushing another fix.
+            logger.warning('Multiple payments found when fetching active transaction id "%s". '
+                           'Consider cleaning it up. Returning first of them.', transaction_id)
+            return SubscriptionPayment.objects.filter(
+                provider_codename=self.codename,
+                provider_transaction_id=transaction_id,
+                metadata__original_transaction_id=original_transaction_id,
+                status=SubscriptionPayment.Status.COMPLETED,
+            ).first()
 
     def _get_or_create_payment(self,
                                transaction_id: str,
@@ -176,7 +188,9 @@ class AppleInAppProvider(Provider):
                 payment.meta = AppleInAppMetadata(original_transaction_id=original_transaction_id)
                 payment.save()
         except SubscriptionPayment.MultipleObjectsReturned:
-            logger.warning('Multiple payments found for transaction id "%s". '
+            # This is left as a countermeasure in case the deduplication fails or the code is still "not good enough"
+            # and generates duplicates. It allows us to read a warning from sentry instead of rushing another fix.
+            logger.warning('Multiple payments found when get_or_create for transaction id "%s". '
                            'Consider cleaning it up. Returning first of them.', transaction_id)
             payment = SubscriptionPayment.objects.filter(
                 provider_codename=self.codename,
@@ -238,7 +252,8 @@ class AppleInAppProvider(Provider):
 
         return Response(SubscriptionPaymentSerializer(latest_payment).data, status=HTTP_200_OK)
 
-    def _handle_renewal(self, notification: AppStoreNotification) -> None:
+    def _handle_new_subscription(self, notification: AppStoreNotification) -> None:
+        # This can be a renewal, this could be subscription change with immediate effect.
         transaction_info = notification.transaction_info
 
         # Check if we handled this before.
@@ -258,6 +273,10 @@ class AppleInAppProvider(Provider):
         subscription = latest_payment.subscription
         if current_plan.metadata.get(self.codename) != transaction_info.product_id:
             current_plan = self._get_plan_for_product_id(transaction_info.product_id)
+            # Stopping old subscription, so that the user won't benefit from both of them.
+            subscription.end = timezone.now()
+            subscription.save()
+            # New subscription will be created with a new payment object.
             subscription = None
 
         self._get_or_create_payment(
@@ -300,7 +319,7 @@ class AppleInAppProvider(Provider):
         latest_payment.save()
 
         # Creating a new subscription with a new plan.
-        self._handle_renewal(notification)
+        self._handle_new_subscription(notification)
 
     def _handle_refund(self, notification: AppStoreNotification) -> None:
         transaction_info = notification.transaction_info
@@ -339,7 +358,7 @@ class AppleInAppProvider(Provider):
             raise SuspiciousOperation() from exception
 
         notification_handling: dict[AppStoreNotificationTypeV2, Callable[[AppStoreNotification], None]] = {
-            AppStoreNotificationTypeV2.DID_RENEW: self._handle_renewal,
+            AppStoreNotificationTypeV2.DID_RENEW: self._handle_new_subscription,
             AppStoreNotificationTypeV2.DID_CHANGE_RENEWAL_PREF: self._handle_subscription_change,
             AppStoreNotificationTypeV2.REFUND: self._handle_refund,
         }
