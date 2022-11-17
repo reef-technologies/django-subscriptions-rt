@@ -3,11 +3,14 @@ from itertools import product
 from operator import attrgetter
 
 import pytest
+from dateutil.parser import parse
+from dateutil.relativedelta import relativedelta
 from django.core.cache import caches
+from djmoney.money import Money
 from freezegun import freeze_time
 from subscriptions.exceptions import InconsistentQuotaCache, QuotaLimitExceeded
-from subscriptions.functions import iter_subscriptions_involved, use_resource
-from subscriptions.models import INFINITY, Quota, QuotaCache, QuotaChunk, Usage
+from subscriptions.functions import get_remaining_amount, iter_subscriptions_involved, use_resource
+from subscriptions.models import INFINITY, Plan, Quota, QuotaCache, QuotaChunk, Subscription, Usage
 
 
 def test_subscriptions_involved(five_subscriptions, user, plan, now, days):
@@ -335,3 +338,92 @@ def test_cache_backend_correctness(cache_backend, db, user, two_subscriptions, r
             ),
         ],
     )
+
+
+def test_cache_recalculation_real_case(cache_backend, db, user, resource, remains):
+    plan_pro = Plan.objects.create(
+        codename='11-pro-quarterly',
+        name='Pro',
+        charge_amount=Money(132, 'USD'),
+        charge_period=relativedelta(months=3),
+        max_duration=relativedelta(days=365000),
+    )
+    Quota.objects.create(
+        plan=plan_pro, resource=resource,
+        limit=6,
+        recharge_period=relativedelta(months=3),
+        burns_in=relativedelta(months=3),
+    )
+
+    plan_endboss = Plan.objects.create(
+        codename='12-endboss-quarterly',
+        name='Endboss',
+        charge_amount=Money(267, 'USD'),
+        charge_period=relativedelta(months=3),
+        max_duration=relativedelta(days=365000),
+    )
+    Quota.objects.create(
+        plan=plan_endboss, resource=resource,
+        limit=45,
+        recharge_period=relativedelta(months=3),
+        burns_in=relativedelta(months=3),
+    )
+
+    Subscription.objects.create(
+        user=user, plan=plan_endboss,
+        start=parse('2022-11-17 07:47:14 UTC'),
+    )
+
+    Usage.objects.create(
+        user=user, resource=resource,
+        amount=35, datetime=parse('2022-11-17 07:50:44 UTC'),
+    )
+    assert get_remaining_amount(user=user, at=parse('2022-11-17 07:50:50 UTC')) == {resource: 10}
+
+    Subscription.objects.create(
+        user=user, plan=plan_pro,
+        start=parse('2022-11-17 07:51:29 UTC'),
+    )
+    assert get_remaining_amount(user=user, at=parse('2022-11-17 07:51:30 UTC')) == {resource: 16}
+
+    Usage.objects.create(
+        user=user, resource=resource,
+        amount=2, datetime=parse('2022-11-17 07:52:07 UTC'),
+    )
+    assert get_remaining_amount(user=user, at=parse('2022-11-17 07:52:08 UTC')) == {resource: 14}
+
+    Usage.objects.create(
+        user=user, resource=resource,
+        amount=3, datetime=parse('2022-11-17 07:52:30 UTC'),
+    )
+    assert get_remaining_amount(user=user, at=parse('2022-11-17 07:52:31 UTC')) == {resource: 11}
+
+    Usage.objects.create(
+        user=user, resource=resource,
+        amount=2, datetime=parse('2022-11-17 07:52:45 UTC'),
+    )
+    assert get_remaining_amount(user=user, at=parse('2022-11-17 07:52:46 UTC')) == {resource: 9}
+
+    Usage.objects.create(
+        user=user, resource=resource,
+        amount=1, datetime=parse('2022-11-17 07:52:57 UTC'),
+    )
+    assert get_remaining_amount(user=user, at=parse('2022-11-17 07:52:58 UTC')) == {resource: 8}
+
+    Usage.objects.create(
+        user=user, resource=resource,
+        amount=4, datetime=parse('2022-11-17 07:53:11 UTC'),
+    )
+    assert get_remaining_amount(user=user, at=parse('2022-11-17 07:53:12 UTC')) == {resource: 4}
+
+    Usage.objects.create(
+        user=user, resource=resource,
+        amount=2, datetime=parse('2022-11-17 07:53:24 UTC'),
+    )
+    assert get_remaining_amount(user=user, at=parse('2022-11-17 07:53:25 UTC')) == {resource: 2}
+
+    Usage.objects.create(
+        user=user, resource=resource,
+        amount=2, datetime=parse('2022-11-17 07:53:44 UTC'),
+    )
+    assert get_remaining_amount(user=user, at=parse('2022-11-17 07:53:45 UTC')) == {resource: 0}

@@ -119,7 +119,7 @@ def get_remaining_chunks(
                     break
 
         # remove stale chunks
-        active_chunks = [chunk for chunk in active_chunks if chunk.end >= date and chunk.remains]
+        active_chunks = [chunk for chunk in active_chunks if chunk.end >= date]
 
         # select & sort chunks to consume from
         chunks_to_consume = sorted(
