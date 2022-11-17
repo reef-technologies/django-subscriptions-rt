@@ -67,8 +67,10 @@ def remove_apple_in_app_subscription_duplicates(apps, scheme_editor):
             entry.delete()
             subscription.delete()
 
+
 def no_op(apps, scheme_editor):
     pass
+
 
 class Migration(migrations.Migration):
     dependencies = [
