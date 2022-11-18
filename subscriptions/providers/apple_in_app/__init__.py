@@ -31,6 +31,7 @@ from subscriptions.models import (
     Plan,
     Subscription,
     SubscriptionPayment,
+    SubscriptionPaymentRefund,
 )
 from .api import (
     AppleAppStoreAPI,
@@ -339,6 +340,15 @@ class AppleInAppProvider(Provider):
         refunded_payment.status = SubscriptionPayment.Status.CANCELLED
 
         refunded_payment.save()
+
+        SubscriptionPaymentRefund.objects.create(
+            original_payment=refunded_payment,
+            provider_codename=refunded_payment.provider_codename,
+            provider_transaction_id=refunded_payment.provider_transaction_id,
+            status=SubscriptionPayment.Status.COMPLETED,
+            amount=refunded_payment.amount,
+            metadata=refunded_payment.metadata,
+        )
 
     @transaction.atomic
     def _handle_app_store(self, _request: Request, payload: AppleAppStoreNotification) -> Response:

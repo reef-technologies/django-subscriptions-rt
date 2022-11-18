@@ -5,7 +5,10 @@ from unittest import mock
 import pytest
 from more_itertools import one
 
-from subscriptions.models import SubscriptionPayment
+from subscriptions.models import (
+    SubscriptionPayment,
+    SubscriptionPaymentRefund,
+)
 from subscriptions.providers.apple_in_app import (
     AppStoreNotification,
     AppleReceiptValidationError,
@@ -435,12 +438,18 @@ def test__app_store_notifications__refund(user_client,
     )
 
     assert SubscriptionPayment.objects.count() == 1
-
     payment = SubscriptionPayment.objects.get(provider_transaction_id=transaction_id)
     assert payment.user == user
     assert payment.plan.metadata[apple_in_app.codename] == transaction_info.product_id
     assert payment.provider_codename == apple_in_app.codename
     assert payment.subscription_end == transaction_info.revocation_date
+    assert payment.status == SubscriptionPayment.Status.CANCELLED
+
+    assert SubscriptionPaymentRefund.objects.count() == 1
+    refund = SubscriptionPaymentRefund.objects.get(provider_transaction_id=transaction_id)
+    assert refund.provider_codename == apple_in_app.codename
+    assert refund.original_payment == payment
+    assert refund.status == SubscriptionPayment.Status.COMPLETED
 
 
 def test__notification_without_receipt(user_client, apple_bundle_id, apple_product_id):
