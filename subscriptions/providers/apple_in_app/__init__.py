@@ -137,24 +137,20 @@ class AppleInAppProvider(Provider):
         ).order_by('subscription_end').last()
 
     def _get_active_transaction(self, transaction_id: str, original_transaction_id: str) -> SubscriptionPayment:
+        kwargs = dict(
+            provider_codename=self.codename,
+            provider_transaction_id=transaction_id,
+            metadata__original_transaction_id=original_transaction_id,
+            status=SubscriptionPayment.Status.COMPLETED,
+        )
         try:
-            return SubscriptionPayment.objects.get(
-                provider_codename=self.codename,
-                provider_transaction_id=transaction_id,
-                metadata__original_transaction_id=original_transaction_id,
-                status=SubscriptionPayment.Status.COMPLETED,
-            )
+            return SubscriptionPayment.objects.get(**kwargs)
         except SubscriptionPayment.MultipleObjectsReturned:
             # This is left as a countermeasure in case the deduplication fails or the code is still "not good enough"
             # and generates duplicates. It allows us to read a warning from sentry instead of rushing another fix.
             logger.warning('Multiple payments found when fetching active transaction id "%s". '
                            'Consider cleaning it up. Returning first of them.', transaction_id)
-            return SubscriptionPayment.objects.filter(
-                provider_codename=self.codename,
-                provider_transaction_id=transaction_id,
-                metadata__original_transaction_id=original_transaction_id,
-                status=SubscriptionPayment.Status.COMPLETED,
-            ).first()
+            return SubscriptionPayment.objects.filter(**kwargs).first()
 
     def _get_or_create_payment(self,
                                transaction_id: str,
@@ -164,10 +160,12 @@ class AppleInAppProvider(Provider):
                                start: datetime.datetime,
                                end: datetime.datetime,
                                subscription: Optional[Subscription] = None) -> SubscriptionPayment:
+        kwargs = dict(
+            provider_codename=self.codename,
+            provider_transaction_id=transaction_id,
+        )
         try:
             payment, was_created = SubscriptionPayment.objects.get_or_create(
-                provider_codename=self.codename,
-                provider_transaction_id=transaction_id,
                 defaults={
                     'status': SubscriptionPayment.Status.COMPLETED,
                     # In-app purchase doesn't report the money.
@@ -178,23 +176,19 @@ class AppleInAppProvider(Provider):
                     'subscription': subscription,
                     'subscription_start': start,
                     'subscription_end': end,
-                }
+                    'metadata': AppleInAppMetadata(original_transaction_id=original_transaction_id).dict(),
+                },
+                **kwargs
             )
             if was_created:
                 payment.subscription.auto_prolong = False
                 payment.subscription.save()
-                # Note: initial transaction is the one that has the same original transaction id and transaction id.
-                payment.meta = AppleInAppMetadata(original_transaction_id=original_transaction_id)
-                payment.save()
         except SubscriptionPayment.MultipleObjectsReturned:
             # This is left as a countermeasure in case the deduplication fails or the code is still "not good enough"
             # and generates duplicates. It allows us to read a warning from sentry instead of rushing another fix.
             logger.warning('Multiple payments found when get_or_create for transaction id "%s". '
                            'Consider cleaning it up. Returning first of them.', transaction_id)
-            payment = SubscriptionPayment.objects.filter(
-                provider_codename=self.codename,
-                provider_transaction_id=transaction_id,
-            ).first()
+            payment = SubscriptionPayment.objects.filter(**kwargs).first()
 
         return payment
 

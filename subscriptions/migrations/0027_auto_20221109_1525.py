@@ -19,8 +19,7 @@ def remove_apple_in_app_subscription_duplicates(apps, scheme_editor):
 
     all_entries = subscription_payment_model.objects \
         .filter(provider_codename='apple_in_app') \
-        .select_related('subscription') \
-        .select_related('plan')
+        .select_related('subscription', 'plan')
 
     subscription_attached_payments_counter = defaultdict(int)
     transaction_id_entries = defaultdict(list)

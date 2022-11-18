@@ -19,10 +19,10 @@ from django.db.migrations.executor import MigrationExecutor
 BASIC_PAYMENT_KWARGS = {
     'status': 2,  # It used to mean "COMPLETED".
     'amount': None,
-    'subscription_start': datetime.datetime(2022, 3, 1),
-    'subscription_end': datetime.datetime(2022, 3, 2),
-    'created': datetime.datetime(2022, 3, 1),
-    'updated': datetime.datetime(2022, 3, 1),
+    'subscription_start': datetime.datetime(2022, 3, 1, tzinfo=datetime.timezone.utc),
+    'subscription_end': datetime.datetime(2022, 3, 2, tzinfo=datetime.timezone.utc),
+    'created': datetime.datetime(2022, 3, 1, tzinfo=datetime.timezone.utc),
+    'updated': datetime.datetime(2022, 3, 1, tzinfo=datetime.timezone.utc),
 }
 
 
@@ -73,8 +73,8 @@ def make_user_plans_and_subscriptions(apps: Apps,
             user=user,
             plan=plan,
             quantity=1,
-            start=datetime.datetime(2022, 3, 1),
-            end=datetime.datetime(2022, 3, 2),
+            start=datetime.datetime(2022, 3, 1, tzinfo=datetime.timezone.utc),
+            end=datetime.datetime(2022, 3, 2, tzinfo=datetime.timezone.utc),
         )
         for plan in result_plans
         # Duplicated subscriptions.
