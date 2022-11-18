@@ -86,6 +86,12 @@ Workflow from the mobile application perspective:
    restart. Utmost care should be taken when handling the receipt. It should be stored on the device until the server
    accepts the operation. Failure to comply will result in client dissatisfaction and a potential refund
 
+#### WARNING
+
+Server is unable to reject any payment coming from Apple. Receipt that we receive means that the user has already paid.
+Thus, it is in the best interest of the frontend application to prohibit user that is already on a paid plan from
+purchasing another one
+
 Workflow from the backend perspective – handling client operation:
 
 1) Server side part of
