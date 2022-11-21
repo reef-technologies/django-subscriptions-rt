@@ -5,6 +5,10 @@ from collections import (
 )
 
 from django.db import migrations
+from logging import getLogger
+
+
+log = getLogger(__name__)
 
 
 def remove_apple_in_app_subscription_duplicates(apps, scheme_editor):
@@ -34,8 +38,9 @@ def remove_apple_in_app_subscription_duplicates(apps, scheme_editor):
             continue
 
         # Ensure that all the subscription payments with the same ID are assigned to the same plan.
-        assert len({entry.plan.name for entry in subscription_payment_list}) == 1, \
-            f'Multiple plans assigned to {transaction_id=}'
+        if len({entry.plan.name for entry in subscription_payment_list}) == 1:
+            log.error(f'Multiple plans assigned to {transaction_id=}')
+            continue
 
         # Map subscriptions to their counter, pick max value.
         payment_to_subscription_count_mapping = {
@@ -50,8 +55,9 @@ def remove_apple_in_app_subscription_duplicates(apps, scheme_editor):
 
         # This is triggered if we had e.g. two different renewals and each of them was started off a different
         # instance of subscription.
-        assert sum(counter_count.values()) <= 1, \
-            f'Transaction {transaction_id} has more than one subscription used in more than one payment.'
+        if sum(counter_count.values()) <= 1:
+            log.error(f'Transaction {transaction_id} has more than one subscription used in more than one payment.')
+            continue
 
         # Otherwise, we can pick any element to stay and the rest will be removed.
         # We pick the one with the highest count or any with count 1.
