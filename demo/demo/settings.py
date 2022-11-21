@@ -107,6 +107,7 @@ SUBSCRIPTIONS_PAYMENT_PROVIDERS = [
     'subscriptions.providers.dummy.DummyProvider',
     'subscriptions.providers.paddle.PaddleProvider',
     'subscriptions.providers.google_in_app.GoogleInAppProvider',
+    'subscriptions.providers.apple_in_app.AppleInAppProvider',
 ]
 
 PADDLE_VENDOR_ID = environ.get('PADDLE_VENDOR_ID')
