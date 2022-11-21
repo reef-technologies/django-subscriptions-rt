@@ -17,9 +17,9 @@ class FeatureAdmin(admin.ModelAdmin):
 
 @admin.register(Tier)
 class TierAdmin(admin.ModelAdmin):
-    list_display = 'codename', 'description', 'is_default',
+    list_display = 'codename', 'description', 'is_default', 'level',
     search_fields = 'codename',
-    ordering = 'codename',
+    ordering = '-level', 'codename',
 
 
 @admin.register(Plan)
