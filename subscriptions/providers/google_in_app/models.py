@@ -214,12 +214,23 @@ class GooglePrepaidPlan(BaseModel):
         extra = Extra.forbid
 
 
+class GoogleOfferDetails(BaseModel):
+    # https://developers.google.com/android-publisher/api-ref/rest/v3/purchases.subscriptionsv2#OfferDetails
+    offerTags: List[str] = []
+    basePlanId: str
+    offerId: Optional[str] = None
+
+    class Config:
+        extra = Extra.forbid
+
+
 class GoogleSubscriptionPurchaseLineItem(BaseModel):
     # https://developers.google.com/android-publisher/api-ref/rest/v3/purchases.subscriptionsv2#SubscriptionPurchaseLineItem
     productId: str
     expiryTime: str
     autoRenewingPlan: Optional[GoogleAutoRenewingPlan] = None
     prepaidPlan: Optional[GooglePrepaidPlan] = None
+    offerDetails: GoogleOfferDetails
 
     class Config:
         extra = Extra.forbid

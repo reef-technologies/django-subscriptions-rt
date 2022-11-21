@@ -17,7 +17,7 @@ from subscriptions.providers import get_provider, get_providers
 from subscriptions.providers.apple_in_app import AppleInAppProvider
 from subscriptions.providers.dummy import DummyProvider
 from subscriptions.providers.google_in_app import GoogleInAppProvider
-from subscriptions.providers.google_in_app.models import GoogleAcknowledgementState, GoogleAutoRenewingPlan, GoogleSubscription, GoogleSubscriptionNotificationType, GoogleSubscriptionPurchaseLineItem, GoogleSubscriptionPurchaseV2, GoogleSubscriptionState
+from subscriptions.providers.google_in_app.models import GoogleAcknowledgementState, GoogleAutoRenewingPlan, GoogleOfferDetails, GoogleSubscription, GoogleSubscriptionNotificationType, GoogleSubscriptionPurchaseLineItem, GoogleSubscriptionPurchaseV2, GoogleSubscriptionState
 from subscriptions.providers.paddle import PaddleProvider
 from subscriptions.tasks import charge_recurring_subscriptions
 
@@ -438,6 +438,9 @@ def google_subscription_purchase(now, days, google_plan_id) -> GoogleSubscriptio
             productId=google_plan_id,
             expiryTime=(now + days(5)).isoformat().replace('+00:00', 'Z'),
             autoRenewingPlan=GoogleAutoRenewingPlan(autoRenewEnabled=True),
+            offerDetails=GoogleOfferDetails(
+                basePlanId=google_plan_id,
+            ),
         )],
         startTime=now.isoformat().replace('+00:00', 'Z'),
         subscriptionState=GoogleSubscriptionState.ACTIVE,
@@ -519,3 +522,32 @@ def google_in_app_payment(google_in_app, purchase_token, plan_with_google, user,
         subscription_end=now + days(7),
         created=now,
     )
+
+
+@pytest.fixture
+def google_in_app__subscription_purchase_dict(google_in_app) -> dict:
+    return {
+        'kind': 'androidpublisher#subscriptionPurchaseV2',
+        'startTime': '2022-11-21T01:49:49.375Z',
+        'regionCode': 'CA',
+        'subscriptionState': 'SUBSCRIPTION_STATE_EXPIRED',
+        'latestOrderId': 'GPA.3315-1326-8982-37036..0',
+        'canceledStateContext': {
+            'systemInitiatedCancellation': {
+            }
+        },
+        'testPurchase': {
+        },
+        'acknowledgementState': 'ACKNOWLEDGEMENT_STATE_PENDING',
+        'lineItems': [
+            {
+                'productId': 'prometheus_pro',
+                'expiryTime': '2022-11-21T01:54:51.937Z',
+                'autoRenewingPlan': {
+                },
+                'offerDetails': {
+                    'basePlanId': 'prometheus-pro'
+                }
+            }
+        ]
+    }

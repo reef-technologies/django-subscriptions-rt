@@ -7,7 +7,7 @@ from django.utils.timezone import now
 from freezegun import freeze_time
 from more_itertools import one
 from subscriptions.models import Plan, Subscription, SubscriptionPayment
-from subscriptions.providers.google_in_app.models import GoogleAcknowledgementState, GoogleSubscription, GoogleSubscriptionNotificationType, GoogleSubscriptionState
+from subscriptions.providers.google_in_app.models import GoogleAcknowledgementState, GoogleSubscription, GoogleSubscriptionNotificationType, GoogleSubscriptionState, GoogleSubscriptionPurchaseV2
 from subscriptions.utils import fromisoformat
 
 
@@ -292,3 +292,7 @@ def test_expiration_notification(google_in_app, purchase_token, user, plan_with_
 
 def test_check_payments(google_in_app):
     ...  # TODO
+
+
+def test_subscription_notification_models(google_in_app__subscription_purchase_dict):
+    GoogleSubscriptionPurchaseV2.parse_obj(google_in_app__subscription_purchase_dict)
