@@ -57,6 +57,7 @@ class Tier(models.Model):
     codename = models.CharField(max_length=255, unique=True)
     description = models.TextField(blank=True)
     is_default = models.BooleanField(db_index=True, default=False)
+    level = models.SmallIntegerField(default=0)
 
     features = models.ManyToManyField(Feature)
 
