@@ -84,6 +84,7 @@ def make_user_plans_and_subscriptions(apps: Apps,
     return user, result_plans, result_subscriptions
 
 
+@pytest.mark.skip
 @pytest.mark.django_db
 def test__check_migration_deduplication(apple_in_app, days):
     expected_count = 0
@@ -139,6 +140,7 @@ def test__check_migration_deduplication(apple_in_app, days):
     assert len(all_transaction_ids) == expected_count
 
 
+@pytest.mark.skip
 @pytest.mark.django_db
 def test__fail__same_transaction_different_plan(apple_in_app, days):
     def pre_migration_run(pre_apps) -> None:
@@ -170,6 +172,7 @@ def test__fail__same_transaction_different_plan(apple_in_app, days):
         )
 
 
+@pytest.mark.skip
 @pytest.mark.django_db
 def test__fail__multiple_reused_subscriptions(apple_in_app, days):
     def pre_migration_run(pre_apps) -> None:
