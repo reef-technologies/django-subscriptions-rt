@@ -42,6 +42,7 @@ class SubscriptionPaymentInline(admin.TabularInline):
 @admin.register(Subscription)
 class SubscriptionAdmin(admin.ModelAdmin):
     list_display = 'user', 'plan', 'start', 'end',
+    autocomplete_fields = 'user',
     list_filter = 'plan', 'start', 'end',
     search_fields = 'user__email', 'user__first_name', 'user__last_name',
     inlines = [
@@ -67,6 +68,7 @@ class QuotaAdmin(admin.ModelAdmin):
 @admin.register(Usage)
 class UsageAdmin(admin.ModelAdmin):
     list_display = 'user', 'resource', 'amount', 'datetime',
+    autocomplete_fields = 'user',
     list_filter = 'datetime', 'resource',
     search_fields = 'user__email', 'user__first_name', 'user__last_name',
     ordering = '-pk',
@@ -75,6 +77,7 @@ class UsageAdmin(admin.ModelAdmin):
 @admin.register(SubscriptionPayment)
 class SubscriptionPaymentAdmin(admin.ModelAdmin):
     list_display = 'pk', 'status', 'created', 'amount', 'user', 'subscription_start', 'subscription_end',
+    autocomplete_fields = 'user', 'subscription',
     list_filter = 'subscription__plan', 'status', 'created', 'updated', 'provider_codename',
     search_fields = 'user__email', 'user__first_name', 'user__last_name', 'amount',
     queryset = SubscriptionPayment.objects.select_related('subscription__plan')
@@ -84,6 +87,7 @@ class SubscriptionPaymentAdmin(admin.ModelAdmin):
 @admin.register(SubscriptionPaymentRefund)
 class SubscriptionPaymentRefundAdmin(admin.ModelAdmin):
     list_display = 'pk', 'status', 'original_payment', 'created', 'updated', 'amount'
+    autocomplete_fields = 'original_payment',
     list_filter = 'status', 'created', 'updated',
     search_fields = 'original_payment__user__email',
     queryset = SubscriptionPaymentRefund.objects.select_related('original_payment__user')
@@ -93,6 +97,7 @@ class SubscriptionPaymentRefundAdmin(admin.ModelAdmin):
 @admin.register(Tax)
 class TaxAdmin(admin.ModelAdmin):
     list_display = 'subscription_payment', 'amount',
+    autocomplete_fields = 'subscription_payment',
     list_filter = 'subscription_payment__status',
     search_fields = 'subscription_payment__user__email',
     queryset = Tax.objects.select_related('subscription_payment')
