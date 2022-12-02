@@ -31,11 +31,11 @@ class PlanAdmin(admin.ModelAdmin):
     inlines = QuotaInline,
 
 
-class SubscriptionPaymentInline(admin.TabularInline):
+class SubscriptionPaymentInline(admin.StackedInline):
     model = SubscriptionPayment
     extra = 0
-    fields = 'short_id', 'created', 'status', 'amount', 'quantity', 'provider_codename', 'provider_transaction_id', 'subscription_start', 'subscription_end',
-    readonly_fields = 'short_id', 'created', 'status', 'amount', 'quantity', 'provider_codename', 'provider_transaction_id', 'subscription_start', 'subscription_end',
+    fields = 'uid', 'created', 'status', 'amount', 'quantity', 'provider_codename', 'provider_transaction_id', 'subscription_start', 'subscription_end',
+    readonly_fields = 'created',
     ordering = '-subscription_end',
 
 
