@@ -74,12 +74,23 @@ class UsageAdmin(admin.ModelAdmin):
     ordering = '-pk',
 
 
+class SubscriptionPaymentRefundInline(admin.StackedInline):
+    model = SubscriptionPaymentRefund
+    extra = 0
+    fields = 'uid', 'original_payment', 'created', 'status', 'amount', 'provider_codename', 'provider_transaction_id',
+    readonly_fields = 'created',
+    ordering = '-original_payment__subscription_end',
+
+
 @admin.register(SubscriptionPayment)
 class SubscriptionPaymentAdmin(admin.ModelAdmin):
     list_display = 'pk', 'status', 'created', 'amount', 'user', 'subscription_start', 'subscription_end',
     autocomplete_fields = 'user', 'subscription',
     list_filter = 'subscription__plan', 'status', 'created', 'updated', 'provider_codename',
-    search_fields = 'user__email', 'user__first_name', 'user__last_name', 'amount',
+    search_fields = 'uid', 'user__email', 'user__first_name', 'user__last_name', 'amount',
+    inlines = [
+        SubscriptionPaymentRefundInline,
+    ]
     queryset = SubscriptionPayment.objects.select_related('subscription__plan')
     ordering = '-created',
 

@@ -279,11 +279,7 @@ class GoogleInAppProvider(Provider):
 
     def get_user_by_token(self, token: str) -> Optional[AbstractBaseUser]:
         with suppress(SubscriptionPayment.DoesNotExist):
-            payment = SubscriptionPayment.objects.filter(
-                provider_codename=self.codename,
-                provider_transaction_id=token,
-            ).latest()
-            return payment.user
+            return self.get_last_payment(token).user
 
     def webhook(self, request: Request, payload: dict) -> Response:
         try:
