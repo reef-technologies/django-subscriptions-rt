@@ -48,6 +48,7 @@ class Resource(models.Model):
 class Feature(models.Model):
     codename = models.CharField(max_length=255, unique=True)
     description = models.TextField(blank=True)
+    is_negative = models.BooleanField(default=False)
 
     def __str__(self) -> str:
         return self.codename

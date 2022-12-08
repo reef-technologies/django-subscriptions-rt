@@ -9,8 +9,8 @@ from django.core.cache import caches
 from djmoney.money import Money
 from freezegun import freeze_time
 from subscriptions.exceptions import InconsistentQuotaCache, QuotaLimitExceeded
-from subscriptions.functions import get_remaining_amount, iter_subscriptions_involved, use_resource
-from subscriptions.models import INFINITY, Plan, Quota, QuotaCache, QuotaChunk, Subscription, Usage
+from subscriptions.functions import get_remaining_amount, iter_subscriptions_involved, use_resource, merge_feature_sets
+from subscriptions.models import INFINITY, Plan, Quota, QuotaCache, QuotaChunk, Subscription, Usage, Feature
 
 
 def test_subscriptions_involved(five_subscriptions, user, plan, now, days):
@@ -427,3 +427,21 @@ def test_cache_recalculation_real_case(cache_backend, db, user, resource, remain
         amount=2, datetime=parse('2022-11-17 07:53:44 UTC'),
     )
     assert get_remaining_amount(user=user, at=parse('2022-11-17 07:53:45 UTC')) == {resource: 0}
+
+
+def test__merge_feature_sets(db):
+    show_ads = Feature.objects.create(codename='SHOW_ADS', is_negative=True)
+    add_premium_badge = Feature.objects.create(codename='ADD_PREMIUM_BADGE')
+    extra_reward = Feature.objects.create(codename='EXTRA_REWARD')
+
+    assert merge_feature_sets(
+        {show_ads, add_premium_badge},
+        {show_ads},
+        {},
+    ) == {add_premium_badge}
+
+    assert merge_feature_sets(
+        {show_ads, extra_reward},
+        {show_ads, add_premium_badge},
+        {show_ads},
+    ) == {show_ads, extra_reward, add_premium_badge}

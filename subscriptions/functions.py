@@ -2,7 +2,8 @@ from contextlib import contextmanager
 from datetime import datetime
 from logging import getLogger
 from operator import attrgetter
-from typing import Callable, Dict, Iterable, Iterator, List, Optional
+from typing import Callable, Dict, Iterable, Iterator, List, Optional, Set
+from itertools import chain
 
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser
@@ -15,7 +16,7 @@ from more_itertools import spy
 from subscriptions.defaults import DEFAULT_SUBSCRIPTIONS_CACHE_NAME
 
 from .exceptions import InconsistentQuotaCache, QuotaLimitExceeded
-from .models import Quota, QuotaCache, QuotaChunk, Resource, Subscription, Usage
+from .models import Quota, QuotaCache, QuotaChunk, Resource, Subscription, Usage, Feature
 from .utils import merge_iter
 
 log = getLogger(__name__)
@@ -204,3 +205,22 @@ def use_resource(user: AbstractUser, resource: Resource, amount: int = 1, raises
             amount=amount,
         )
         yield remains
+
+
+def merge_feature_sets(*feature_sets: Iterable[Feature]) -> Set[Feature]:
+    """
+    Merge features from different subscriptions in human-meaningful way.
+    Positive feature stays if it appears in at least one subscription,
+    negative feature stays if it appears in all subscriptions.
+    """
+    features = set(chain(*feature_sets))
+
+    # remove negative feature if there is at least one set without it;
+    # for example, if there are sets {SHOW_ADS, ...}, {SHOW_ADS, ...}, {...},
+    # then result won't contain SHOW_ADS feature
+    negative_features = {feature for feature in features if feature.is_negative}
+    for negative_feature in negative_features:
+        if any(negative_feature not in feature_set for feature_set in feature_sets):
+            features.remove(negative_feature)
+
+    return features
