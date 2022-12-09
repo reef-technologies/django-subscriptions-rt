@@ -65,6 +65,12 @@ class Tier(models.Model):
     def __str__(self) -> str:
         return self.codename
 
+    def save(self, *args, **kwargs):
+        from .functions import get_default_features
+
+        super().save(*args, **kwargs)
+        get_default_features.cache_clear()
+
 
 class Plan(models.Model):
     codename = models.CharField(max_length=255)
@@ -77,8 +83,7 @@ class Plan(models.Model):
         on_delete=models.PROTECT,
         blank=True,
         null=True,
-        help_text='Groups features connected to this plan together and allows '
-                  'sharing between plans of different duration.',
+        help_text='group of features connected to this plan',
         related_name='plans',
     )
     metadata = models.JSONField(blank=True, default=dict, encoder=DjangoJSONEncoder)

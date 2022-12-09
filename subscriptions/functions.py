@@ -4,6 +4,7 @@ from logging import getLogger
 from operator import attrgetter
 from typing import Callable, Dict, Iterable, Iterator, List, Optional, Set
 from itertools import chain
+from functools import cache
 
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser
@@ -13,10 +14,9 @@ from django.db.models import Prefetch
 from django.utils.timezone import now
 from more_itertools import spy
 
-from subscriptions.defaults import DEFAULT_SUBSCRIPTIONS_CACHE_NAME
-
+from .defaults import DEFAULT_SUBSCRIPTIONS_CACHE_NAME
 from .exceptions import InconsistentQuotaCache, QuotaLimitExceeded
-from .models import Quota, QuotaCache, QuotaChunk, Resource, Subscription, Usage, Feature
+from .models import Quota, QuotaCache, QuotaChunk, Resource, Subscription, Usage, Feature, Tier
 from .utils import merge_iter
 
 log = getLogger(__name__)
@@ -224,3 +224,9 @@ def merge_feature_sets(*feature_sets: Iterable[Feature]) -> Set[Feature]:
             features.remove(negative_feature)
 
     return features
+
+
+@cache
+def get_default_features() -> Set[Feature]:
+    default_tiers = Tier.objects.filter(is_default=True).prefetch_related('features')
+    return merge_feature_sets(*(tier.features.all() for tier in default_tiers))

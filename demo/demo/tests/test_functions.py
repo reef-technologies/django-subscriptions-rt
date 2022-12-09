@@ -9,8 +9,8 @@ from django.core.cache import caches
 from djmoney.money import Money
 from freezegun import freeze_time
 from subscriptions.exceptions import InconsistentQuotaCache, QuotaLimitExceeded
-from subscriptions.functions import get_remaining_amount, iter_subscriptions_involved, use_resource, merge_feature_sets
-from subscriptions.models import INFINITY, Plan, Quota, QuotaCache, QuotaChunk, Subscription, Usage, Feature
+from subscriptions.functions import get_remaining_amount, iter_subscriptions_involved, use_resource, merge_feature_sets, get_default_features
+from subscriptions.models import INFINITY, Plan, Quota, QuotaCache, QuotaChunk, Subscription, Usage, Feature, Tier
 
 
 def test_subscriptions_involved(five_subscriptions, user, plan, now, days):
@@ -445,3 +445,48 @@ def test__merge_feature_sets(db):
         {show_ads, add_premium_badge},
         {show_ads},
     ) == {show_ads, extra_reward, add_premium_badge}
+
+
+def test__get_default_features(db, django_assert_num_queries):
+    tiers = Tier.objects.bulk_create([
+        Tier(codename='zero', is_default=True),
+        Tier(codename='one'),
+        Tier(codename='two', is_default=True),
+    ])
+
+    default_feature_many_tiers = Feature.objects.create(codename='DEFAULT_FEATURE_MANY_TIERS')
+    tiers[0].features.add(default_feature_many_tiers)
+    tiers[2].features.add(default_feature_many_tiers)
+
+    default_feature_one_tier = Feature.objects.create(codename='DEFAULT_FEATURE_ONE_TIER')
+    tiers[0].features.add(default_feature_one_tier)
+
+    non_default_feature = Feature.objects.create(codename='NON_DEFAULT_FEATURE')
+    tiers[1].features.add(non_default_feature)
+
+    with django_assert_num_queries(2):
+        assert get_default_features() == {default_feature_many_tiers, default_feature_one_tier}
+
+    with django_assert_num_queries(0):
+        assert get_default_features() == {default_feature_many_tiers, default_feature_one_tier}
+
+
+    new_default_feature = Feature.objects.create(codename='NEW_DEFAULT_FEATURE')
+    tiers[0].features.set([new_default_feature])
+    tiers[0].save()
+
+    with django_assert_num_queries(2):
+        assert get_default_features() == {default_feature_many_tiers, new_default_feature}
+
+    with django_assert_num_queries(0):
+        assert get_default_features() == {default_feature_many_tiers, new_default_feature}
+
+
+    tiers[0].is_default = False
+    tiers[0].save()
+
+    with django_assert_num_queries(2):
+        assert get_default_features() == {default_feature_many_tiers}
+
+    with django_assert_num_queries(0):
+        assert get_default_features() == {default_feature_many_tiers}
