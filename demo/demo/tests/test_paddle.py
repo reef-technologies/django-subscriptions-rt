@@ -1,4 +1,5 @@
-from datetime import datetime, timedelta
+import json
+from datetime import timedelta
 
 import pytest
 from dateutil.relativedelta import relativedelta
@@ -6,13 +7,14 @@ from django.test.client import MULTIPART_CONTENT
 from django.utils.timezone import now
 from djmoney.money import Money
 from freezegun import freeze_time
+from tenacity import Retrying, TryAgain, stop_after_attempt, wait_fixed
+
 from subscriptions.exceptions import BadReferencePayment
 from subscriptions.models import Plan, Subscription, SubscriptionPayment
 from subscriptions.providers import get_provider
 from subscriptions.providers.paddle import PaddleProvider
 from subscriptions.tasks import check_unfinished_payments
 from subscriptions.utils import fromisoformat
-from tenacity import Retrying, TryAgain, stop_after_attempt, wait_fixed
 
 
 def test_payment_flow(paddle, user_client, plan, card_number):
@@ -180,6 +182,15 @@ def test_webhook_payload_as_form_data(paddle, client, paddle_unconfirmed_payment
 
     payment = SubscriptionPayment.objects.get(pk=paddle_unconfirmed_payment.pk)
     assert not isinstance(payment.metadata['subscription_id'], list)
+
+
+def test_webhook_non_existing_payment(paddle, client, paddle_unconfirmed_payment, paddle_webhook_payload, settings):
+    paddle_webhook_payload['passthrough'] = json.dumps({
+        "subscription_payment_id": "84e9a5a1-cbca-4af5-a7b7-719f8f2fb772",
+    })
+
+    response = client.post('/api/webhook/paddle/', paddle_webhook_payload)
+    assert response.status_code == 200, response.content
 
 
 def test_subscription_charge_online_avoid_duplicates(paddle, user_client, plan):

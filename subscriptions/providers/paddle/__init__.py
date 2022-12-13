@@ -1,4 +1,3 @@
-import json
 from dataclasses import dataclass
 from datetime import timedelta
 from decimal import Decimal
@@ -17,10 +16,11 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.status import HTTP_200_OK
 
-from ...exceptions import PaymentError, BadReferencePayment
+from ...exceptions import BadReferencePayment, PaymentError
 from ...models import Plan, Subscription, SubscriptionPayment
 from .. import Provider
 from .api import Paddle
+from .models import Passthrough, Alert
 
 log = getLogger(__name__)
 
@@ -98,9 +98,9 @@ class PaddleProvider(Provider):
                 product_id=self._plan['id'],
                 prices=[amount * quantity] if amount else [],
                 email=user.email,
-                metadata={
-                    'SubscriptionPayment.id': payment.id,
-                },
+                metadata=Passthrough(
+                    subscription_payment_id=payment.id,
+                ).dict(),
             )['url']
 
             payment.metadata = {
@@ -177,19 +177,26 @@ class PaddleProvider(Provider):
     }
 
     def webhook(self, request: Optional[Request], payload: dict) -> Response:
-        if (action := payload['alert_name']) not in self.WEBHOOK_ACTION_TO_PAYMENT_STATUS:
-            log.warning(f'No handler for {action=}')
-            return Response()
+        alert = Alert.parse_obj(payload)
+
+        try:
+            status = self.WEBHOOK_ACTION_TO_PAYMENT_STATUS[alert.alert_name]
+        except KeyError:
+            log.warning(f'No handler for {alert.alert_name=}')
+            return Response(status=HTTP_200_OK)
 
         with transaction.atomic():
-            payment = SubscriptionPayment.objects.get(
-                provider_codename=self.codename,
-                uid=self.extract_payment_id(payload),
-            )
-            payment.provider_transaction_id = payload['subscription_payment_id']
-            payment.metadata.update(payload)
-            payment.status = self.WEBHOOK_ACTION_TO_PAYMENT_STATUS[action]
-            payment.save()
+            try:
+                payment = SubscriptionPayment.objects.get(
+                    provider_codename=self.codename,
+                    uid=alert.passthrough.subscription_payment_id,
+                )
+                payment.provider_transaction_id = alert.subscription_payment_id
+                payment.metadata.update(payload)
+                payment.status = status
+                payment.save()
+            except SubscriptionPayment.DoesNotExist:
+                log.debug('Payment not found for payload %s', payload)
 
         return Response(status=HTTP_200_OK)
 
@@ -211,27 +218,14 @@ class PaddleProvider(Provider):
         )
 
         # don't process alerts with same `id`
-        for alert in unique_everseen(alerts, key=itemgetter('id')):
-            alert.update(**alert.pop('fields'))  # flatten alert structure
+        for alert_dict in unique_everseen(alerts, key=itemgetter('id')):
+            alert_dict.update(**alert_dict.pop('fields'))  # flatten alert structure
 
             try:
-                if self.extract_payment_id(alert) not in payment_ids:
+                alert = Alert.parse_obj(alert_dict)
+                if alert.passthrough.subscription_payment_id not in payment_ids:
                     continue
 
-                self.webhook(None, alert)
+                self.webhook(None, alert_dict)
             except Exception:
-                log.exception(f'Could not process alert {alert}')
-
-    @classmethod
-    def extract_payment_id(cls, alert: dict) -> int:
-        try:
-            passthrough = json.loads(alert['passthrough'])
-        except (json.JSONDecodeError, KeyError) as exc:
-            raise ValueError('Could not decode `passthrough`') from exc
-
-        try:
-            id_ = passthrough['SubscriptionPayment.id']
-        except KeyError as exc:
-            raise ValueError('Passthrough does not contain "SubscriptionPayment.id" field') from exc
-
-        return id_
+                log.exception(f'Could not process alert {alert_dict}')

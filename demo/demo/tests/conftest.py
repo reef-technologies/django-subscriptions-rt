@@ -350,7 +350,7 @@ def paddle_webhook_payload(db, paddle, paddle_unconfirmed_payment) -> dict:
         'next_bill_date': '2022-06-24',
         'next_payment_amount': '200.00',
         'order_id': 6,
-        'passthrough': f'{{"SubscriptionPayment.id": "{paddle_unconfirmed_payment.id}"}}',
+        'passthrough': f'{{"subscription_payment_id": "{paddle_unconfirmed_payment.id}"}}',
         'payment_method': 'paypal',
         'payment_tax': '0.94',
         'plan_name': 'Example String',
