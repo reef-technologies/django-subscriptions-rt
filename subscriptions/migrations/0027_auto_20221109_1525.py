@@ -38,8 +38,8 @@ def remove_apple_in_app_subscription_duplicates(apps, scheme_editor):
             continue
 
         # Ensure that all the subscription payments with the same ID are assigned to the same plan.
-        if len({entry.plan.name for entry in subscription_payment_list}) == 1:
-            log.error(f'Multiple plans assigned to {transaction_id=}')
+        if len({entry.plan.name for entry in subscription_payment_list}) > 1:
+            log.error(f'Multiple plans assigned to {transaction_id=} %s')
             continue
 
         # Map subscriptions to their counter, pick max value.
@@ -55,7 +55,7 @@ def remove_apple_in_app_subscription_duplicates(apps, scheme_editor):
 
         # This is triggered if we had e.g. two different renewals and each of them was started off a different
         # instance of subscription.
-        if sum(counter_count.values()) <= 1:
+        if sum(counter_count.values()) > 1:
             log.error(f'Transaction {transaction_id} has more than one subscription used in more than one payment.')
             continue
 

@@ -84,7 +84,6 @@ def make_user_plans_and_subscriptions(apps: Apps,
     return user, result_plans, result_subscriptions
 
 
-@pytest.mark.skip
 @pytest.mark.django_db
 def test__check_migration_deduplication(apple_in_app, days):
     expected_count = 0
@@ -140,7 +139,6 @@ def test__check_migration_deduplication(apple_in_app, days):
     assert len(all_transaction_ids) == expected_count
 
 
-@pytest.mark.skip
 @pytest.mark.django_db
 def test__fail__same_transaction_different_plan(apple_in_app, days):
     def pre_migration_run(pre_apps) -> None:
@@ -163,16 +161,20 @@ def test__fail__same_transaction_different_plan(apple_in_app, days):
                 **kwargs
             )
 
-    with pytest.raises(AssertionError):
-        run_migration(
-            'subscriptions',
-            '0026_alter_subscriptionpayment_status_and_more',
-            '0027_auto_20221109_1525',
-            pre_migration_run,
-        )
+    apps = run_migration(
+        'subscriptions',
+        '0026_alter_subscriptionpayment_status_and_more',
+        '0027_auto_20221109_1525',
+        pre_migration_run,
+    )
+
+    # Should be left untouched.
+    model = apps.get_model('subscriptions', 'SubscriptionPayment')
+    all_transaction_ids = [entry.provider_transaction_id for entry in model.objects.all()]
+    assert len(all_transaction_ids) == 2
+    assert len(set(all_transaction_ids)) == 1
 
 
-@pytest.mark.skip
 @pytest.mark.django_db
 def test__fail__multiple_reused_subscriptions(apple_in_app, days):
     def pre_migration_run(pre_apps) -> None:
@@ -212,10 +214,15 @@ def test__fail__multiple_reused_subscriptions(apple_in_app, days):
             **kwargs
         )
 
-    with pytest.raises(AssertionError):
-        run_migration(
-            'subscriptions',
-            '0026_alter_subscriptionpayment_status_and_more',
-            '0027_auto_20221109_1525',
-            pre_migration_run,
-        )
+    apps = run_migration(
+        'subscriptions',
+        '0026_alter_subscriptionpayment_status_and_more',
+        '0027_auto_20221109_1525',
+        pre_migration_run,
+    )
+
+    # Should be left untouched.
+    model = apps.get_model('subscriptions', 'SubscriptionPayment')
+    all_transaction_ids = [entry.provider_transaction_id for entry in model.objects.all()]
+    assert len(all_transaction_ids) == 4
+    assert len(set(all_transaction_ids)) == 1

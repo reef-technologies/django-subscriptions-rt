@@ -196,6 +196,7 @@ class AppleInAppProvider(Provider):
     def _handle_single_receipt_info(self,
                                     user: User,
                                     receipt_info: AppleLatestReceiptInfo) -> Optional[SubscriptionPayment]:
+        logger.debug('Receipt handling started.')
         if receipt_info.cancellation_date is not None:
             # Cancellation/refunds are handled via notifications, we skip them during receipt handling to simplify.
             logger.warning('Found a cancellation date in receipt: %s, ignoring this receipt.', receipt_info)
@@ -203,6 +204,10 @@ class AppleInAppProvider(Provider):
 
         # Find the right plan to create subscription. This raises an error if the plan is not found.
         plan = self._get_plan_for_product_id(receipt_info.product_id)
+        logger.debug('Handling receipt with transaction id: %s; original transaction id: %s and product id: %s.',
+                     receipt_info.transaction_id,
+                     receipt_info.original_transaction_id,
+                     receipt_info.product_id)
 
         subscription_payment = self._get_or_create_payment(
             receipt_info.transaction_id,
@@ -213,6 +218,7 @@ class AppleInAppProvider(Provider):
             receipt_info.expires_date,
         )
 
+        logger.debug('Receipt handling finished.')
         return subscription_payment
 
     @transaction.atomic
@@ -247,6 +253,7 @@ class AppleInAppProvider(Provider):
         return Response(SubscriptionPaymentSerializer(latest_payment).data, status=HTTP_200_OK)
 
     def _handle_new_subscription(self, notification: AppStoreNotification) -> None:
+        logger.debug('New subscription add operation started.')
         # This can be a renewal, this could be subscription change with immediate effect.
         transaction_info = notification.transaction_info
 
@@ -258,10 +265,11 @@ class AppleInAppProvider(Provider):
             # we've already handled this transaction, just the App Store didn't
             # receive the information that we did. Skip it. If it wasn't renewal,
             # we could start searching.
+            logger.info('Transaction with id %s was already handled', transaction_info.transaction_id)
             return
 
         latest_payment = self._get_latest_transaction(transaction_info.original_transaction_id)
-        assert latest_payment, f'Renewal received for {transaction_info=} where no payments exist.'
+        assert latest_payment, f'New subscription received for {transaction_info=} where no payments exist.'
 
         current_plan = latest_payment.plan
         subscription = latest_payment.subscription
@@ -270,6 +278,12 @@ class AppleInAppProvider(Provider):
             # Stopping old subscription, so that the user won't benefit from both of them.
             subscription.end = timezone.now()
             subscription.save()
+            logger.debug('Current plan %s is different than the new plan %s. '
+                         'Ending old subscription %s with datetime %s.',
+                         current_plan.metadata.get(self.codename),
+                         transaction_info.product_id,
+                         subscription,
+                         subscription.end)
             # New subscription will be created with a new payment object.
             subscription = None
 
@@ -282,8 +296,10 @@ class AppleInAppProvider(Provider):
             transaction_info.expires_date,
             subscription=subscription,
         )
+        logger.debug('New subscription add operation finished.')
 
     def _handle_subscription_change(self, notification: AppStoreNotification) -> None:
+        logger.debug('Subscription change operation started.')
         assert notification.subtype in {
             AppStoreNotificationTypeV2Subtype.UPGRADE,
             AppStoreNotificationTypeV2Subtype.DOWNGRADE,
@@ -311,11 +327,17 @@ class AppleInAppProvider(Provider):
         latest_payment.subscription_end = now
 
         latest_payment.save()
+        logger.debug('Subscription %s and latest payment %s end dates set to %s',
+                     latest_payment.subscription,
+                     latest_payment,
+                     now)
 
         # Creating a new subscription with a new plan.
         self._handle_new_subscription(notification)
+        logger.debug('Subscription change operation finished.')
 
     def _handle_refund(self, notification: AppStoreNotification) -> None:
+        logger.debug('Refund operation started.')
         transaction_info = notification.transaction_info
         assert transaction_info.revocation_date is not None, f'Received refund without revocation date: {notification}'
 
@@ -332,6 +354,10 @@ class AppleInAppProvider(Provider):
                            transaction_info.original_transaction_id)
             refunded_payment = self._get_latest_transaction(transaction_info.original_transaction_id)
 
+        logger.debug('Payment to be refunded: %s (original transaction id: %s, transaction id: %s)',
+                     refunded_payment,
+                     transaction_info.original_transaction_id,
+                     transaction_info.transaction_id)
         assert refunded_payment, f'Refund received for {transaction_info=} where no payments exist.'
 
         refunded_payment.subscription.end = transaction_info.revocation_date
@@ -340,8 +366,12 @@ class AppleInAppProvider(Provider):
         refunded_payment.status = SubscriptionPayment.Status.CANCELLED
 
         refunded_payment.save()
+        logger.debug('Subscription %s and subscription payment %s got end date set to %s.',
+                     refunded_payment.subscription,
+                     refunded_payment,
+                     transaction_info.revocation_date)
 
-        SubscriptionPaymentRefund.objects.create(
+        refund_object = SubscriptionPaymentRefund.objects.create(
             original_payment=refunded_payment,
             provider_codename=refunded_payment.provider_codename,
             provider_transaction_id=refunded_payment.provider_transaction_id,
@@ -349,6 +379,8 @@ class AppleInAppProvider(Provider):
             amount=refunded_payment.amount,
             metadata=refunded_payment.metadata,
         )
+        logger.debug('Refund object created: %s', refund_object)
+        logger.debug('Refund operation finished.')
 
     @transaction.atomic
     def _handle_app_store(self, _request: Request, payload: AppleAppStoreNotification) -> Response:
@@ -378,7 +410,16 @@ class AppleInAppProvider(Provider):
                         str(payload))
             return Response(status=HTTP_200_OK)
 
+        logger.debug('Received apple notification %s (%s) with transaction id %s and UUID %s. Raw payload: %s',
+                     notification_object.notification,
+                     notification_object.subtype,
+                     notification_object.transaction_info.transaction_id,
+                     notification_object.notification_uuid,
+                     str(payload))
         # Handlers can at most raise an exception.
         handler(notification_object)
+        logger.debug('Finished handling notification with transaction id %s and UUID %s.',
+                     notification_object.transaction_info.transaction_id,
+                     notification_object.notification_uuid)
 
         return Response(status=HTTP_200_OK)
