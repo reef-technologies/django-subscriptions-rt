@@ -39,7 +39,7 @@ def remove_apple_in_app_subscription_duplicates(apps, scheme_editor):
 
         # Ensure that all the subscription payments with the same ID are assigned to the same plan.
         if len({entry.plan.name for entry in subscription_payment_list}) > 1:
-            log.error(f'Multiple plans assigned to {transaction_id=} %s')
+            log.error(f'Multiple plans assigned to {transaction_id=}')
             continue
 
         # Map subscriptions to their counter, pick max value.

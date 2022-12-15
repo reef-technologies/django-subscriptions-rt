@@ -1,4 +1,5 @@
 import datetime
+import logging
 from dataclasses import dataclass
 from logging import getLogger
 from typing import (
@@ -57,7 +58,9 @@ from .exceptions import (
 from .. import Provider
 from ...api.serializers import SubscriptionPaymentSerializer
 
-logger = getLogger(__name__)
+NotificationHandler = Callable[[AppStoreNotification, logging.LoggerAdapter], None]
+
+global_logger = getLogger(__name__)
 
 
 class AppleInAppMetadata(BaseModel):
@@ -107,8 +110,8 @@ class AppleInAppProvider(Provider):
                 validation_error_messages.append(str(validation_error))
         else:
             # Came to an end without breaking.
-            logger.error('Failed matching the payload to any registered request:\n%s.',
-                         '\n\n'.join(validation_error_messages))
+            global_logger.error('Failed matching the payload to any registered request:\n%s.',
+                                '\n\n'.join(validation_error_messages))
             return Response(status=HTTP_400_BAD_REQUEST)
 
         return run_handler(request, instance)
@@ -137,7 +140,11 @@ class AppleInAppProvider(Provider):
             metadata__original_transaction_id=original_transaction_id,
         ).order_by('subscription_end').last()
 
-    def _get_active_transaction(self, transaction_id: str, original_transaction_id: str) -> SubscriptionPayment:
+    def _get_active_transaction(self,
+                                transaction_id: str,
+                                original_transaction_id: str,
+                                logger: Optional[logging.LoggerAdapter] = None) -> SubscriptionPayment:
+        logger = logger or global_logger
         kwargs = dict(
             provider_codename=self.codename,
             provider_transaction_id=transaction_id,
@@ -160,7 +167,9 @@ class AppleInAppProvider(Provider):
                                plan: Plan,
                                start: datetime.datetime,
                                end: datetime.datetime,
-                               subscription: Optional[Subscription] = None) -> SubscriptionPayment:
+                               subscription: Optional[Subscription] = None,
+                               logger: Optional[logging.LoggerAdapter] = None) -> SubscriptionPayment:
+        logger = logger or global_logger
         kwargs = dict(
             provider_codename=self.codename,
             provider_transaction_id=transaction_id,
@@ -195,7 +204,8 @@ class AppleInAppProvider(Provider):
 
     def _handle_single_receipt_info(self,
                                     user: User,
-                                    receipt_info: AppleLatestReceiptInfo) -> Optional[SubscriptionPayment]:
+                                    receipt_info: AppleLatestReceiptInfo,
+                                    logger: logging.LoggerAdapter) -> Optional[SubscriptionPayment]:
         logger.debug('Receipt handling started.')
         if receipt_info.cancellation_date is not None:
             # Cancellation/refunds are handled via notifications, we skip them during receipt handling to simplify.
@@ -216,6 +226,7 @@ class AppleInAppProvider(Provider):
             plan,
             receipt_info.purchase_date,
             receipt_info.expires_date,
+            logger=logger,
         )
 
         logger.debug('Receipt handling finished.')
@@ -238,8 +249,9 @@ class AppleInAppProvider(Provider):
 
         latest_payment = None
         for receipt_info in receipt_data.latest_receipt_info:
+            logger = self._make_receipt_logger(receipt_data, receipt_info)
             # We receive all the elements and check whether we've actually activated them.
-            payment = self._handle_single_receipt_info(request.user, receipt_info)
+            payment = self._handle_single_receipt_info(request.user, receipt_info, logger)
             if payment is None:
                 continue
 
@@ -247,12 +259,12 @@ class AppleInAppProvider(Provider):
                 latest_payment = payment
 
         if latest_payment is None:
-            logger.warning('No subscription information provided in the payload receipt.')
+            global_logger.warning('No subscription information provided in the payload receipt.')
             return Response(status=HTTP_400_BAD_REQUEST)
 
         return Response(SubscriptionPaymentSerializer(latest_payment).data, status=HTTP_200_OK)
 
-    def _handle_new_subscription(self, notification: AppStoreNotification) -> None:
+    def _handle_new_subscription(self, notification: AppStoreNotification, logger: logging.LoggerAdapter) -> None:
         logger.debug('New subscription add operation started.')
         # This can be a renewal, this could be subscription change with immediate effect.
         transaction_info = notification.transaction_info
@@ -295,10 +307,11 @@ class AppleInAppProvider(Provider):
             transaction_info.purchase_date,
             transaction_info.expires_date,
             subscription=subscription,
+            logger=logger,
         )
         logger.debug('New subscription add operation finished.')
 
-    def _handle_subscription_change(self, notification: AppStoreNotification) -> None:
+    def _handle_subscription_change(self, notification: AppStoreNotification, logger: logging.LoggerAdapter) -> None:
         logger.debug('Subscription change operation started.')
         assert notification.subtype in {
             AppStoreNotificationTypeV2Subtype.UPGRADE,
@@ -333,10 +346,10 @@ class AppleInAppProvider(Provider):
                      now)
 
         # Creating a new subscription with a new plan.
-        self._handle_new_subscription(notification)
+        self._handle_new_subscription(notification, logger)
         logger.debug('Subscription change operation finished.')
 
-    def _handle_refund(self, notification: AppStoreNotification) -> None:
+    def _handle_refund(self, notification: AppStoreNotification, logger: logging.LoggerAdapter) -> None:
         logger.debug('Refund operation started.')
         transaction_info = notification.transaction_info
         assert transaction_info.revocation_date is not None, f'Received refund without revocation date: {notification}'
@@ -346,6 +359,7 @@ class AppleInAppProvider(Provider):
             refunded_payment = self._get_active_transaction(
                 transaction_info.transaction_id,
                 transaction_info.original_transaction_id,
+                logger=logger,
             )
         except SubscriptionPayment.DoesNotExist:
             logger.warning('Refund called on unknown transaction id "%s". Searching for latest payment for given '
@@ -389,10 +403,11 @@ class AppleInAppProvider(Provider):
         try:
             notification_object = AppStoreNotification.from_signed_payload(signed_payload)
         except PayloadValidationError as exception:
-            logger.exception('Invalid payload received from the notification endpoint: "%s"', signed_payload)
+            global_logger.exception('Invalid payload received from the notification endpoint: "%s"', signed_payload)
             raise SuspiciousOperation() from exception
+        logger = self._make_notification_logger(notification_object)
 
-        notification_handling: dict[AppStoreNotificationTypeV2, Callable[[AppStoreNotification], None]] = {
+        notification_handling: dict[AppStoreNotificationTypeV2, NotificationHandler] = {
             AppStoreNotificationTypeV2.DID_RENEW: self._handle_new_subscription,
             AppStoreNotificationTypeV2.DID_CHANGE_RENEWAL_PREF: self._handle_subscription_change,
             AppStoreNotificationTypeV2.REFUND: self._handle_refund,
@@ -410,16 +425,66 @@ class AppleInAppProvider(Provider):
                         str(payload))
             return Response(status=HTTP_200_OK)
 
-        logger.debug('Received apple notification %s (%s) with transaction id %s and UUID %s. Raw payload: %s',
+        logger.debug('Received apple notification %s (%s). Raw payload: %s',
                      notification_object.notification,
                      notification_object.subtype,
-                     notification_object.transaction_info.transaction_id,
-                     notification_object.notification_uuid,
                      str(payload))
         # Handlers can at most raise an exception.
-        handler(notification_object)
-        logger.debug('Finished handling notification with transaction id %s and UUID %s.',
-                     notification_object.transaction_info.transaction_id,
-                     notification_object.notification_uuid)
+        handler(notification_object, logger)
+        logger.debug('Finished handling notification')
 
         return Response(status=HTTP_200_OK)
+
+    def _make_child_logger(self, format_addition: str) -> logging.Logger:
+        log_format = '[%(asctime)s]' + format_addition + ': %(message)s'
+        formatter = logging.Formatter(log_format)
+
+        # This won't be a nice name, but we're not using it anywhere.
+        logger = global_logger.getChild(format_addition)
+        handlers = logger.handlers
+        # By default, the StreamHandler is "implied" and not actually in handlers.
+        if len(handlers) == 0:
+            handler = logging.StreamHandler()
+            handler.setFormatter(formatter)
+            logger.addHandler(handler)
+        else:
+            for handler in handlers:
+                handler.setFormatter(formatter)
+
+        return logger
+
+    def _make_receipt_logger(self,
+                             receipt_data: AppleVerifyReceiptResponse,
+                             receipt_info: AppleLatestReceiptInfo) -> logging.LoggerAdapter:
+        logger = self._make_child_logger('<Version: %(app_version)s'
+                                         ' Transaction ID: %(transaction_id)s'
+                                         ' %(purchase_date)s -> %(expires_date)s>')
+
+        logger_adapter = logging.LoggerAdapter(
+            logger,
+            dict(
+                app_version=receipt_data.receipt.application_version,
+                transaction_id=receipt_info.transaction_id,
+                purchase_date=receipt_info.purchase_date,
+                expires_date=receipt_info.expires_date,
+            ),
+        )
+
+        return logger_adapter
+
+    def _make_notification_logger(self, notification: AppStoreNotification) -> logging.LoggerAdapter:
+        logger = self._make_child_logger('<Notification UUID: %(notification_uuid)s'
+                                         ' Transaction ID: %(transaction_id)s'
+                                         ' %(purchase_date)s -> %(expires_date)s>')
+
+        logger_adapter = logging.LoggerAdapter(
+            logger,
+            dict(
+                notification_uuid=notification.notification_uuid,
+                transaction_id=notification.transaction_info.transaction_id,
+                purchase_date=notification.transaction_info.purchase_date,
+                expires_date=notification.transaction_info.expires_date,
+            ),
+        )
+
+        return logger_adapter

@@ -134,7 +134,7 @@ def test__check_migration_deduplication(apple_in_app, days):
 
     # We should have no more duplicates in the DB.
     model = apps.get_model('subscriptions', 'SubscriptionPayment')
-    all_transaction_ids = [entry.provider_transaction_id for entry in model.objects.all()]
+    all_transaction_ids = model.objects.values_list('provider_transaction_id', flat=True)
     assert len(set(all_transaction_ids)) == len(all_transaction_ids)
     assert len(all_transaction_ids) == expected_count
 
@@ -170,7 +170,7 @@ def test__fail__same_transaction_different_plan(apple_in_app, days):
 
     # Should be left untouched.
     model = apps.get_model('subscriptions', 'SubscriptionPayment')
-    all_transaction_ids = [entry.provider_transaction_id for entry in model.objects.all()]
+    all_transaction_ids = model.objects.values_list('provider_transaction_id', flat=True)
     assert len(all_transaction_ids) == 2
     assert len(set(all_transaction_ids)) == 1
 
@@ -223,6 +223,6 @@ def test__fail__multiple_reused_subscriptions(apple_in_app, days):
 
     # Should be left untouched.
     model = apps.get_model('subscriptions', 'SubscriptionPayment')
-    all_transaction_ids = [entry.provider_transaction_id for entry in model.objects.all()]
+    all_transaction_ids = model.objects.values_list('provider_transaction_id', flat=True)
     assert len(all_transaction_ids) == 4
     assert len(set(all_transaction_ids)) == 1
