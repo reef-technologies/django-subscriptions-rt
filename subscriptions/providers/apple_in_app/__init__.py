@@ -436,7 +436,7 @@ class AppleInAppProvider(Provider):
         return Response(status=HTTP_200_OK)
 
     def _make_child_logger(self, format_addition: str) -> logging.Logger:
-        log_format = '[%(asctime)s]' + format_addition + ': %(message)s'
+        log_format = '[%(asctime)s](%(levelName)s)' + format_addition + ': %(message)s'
         formatter = logging.Formatter(log_format)
 
         # This won't be a nice name, but we're not using it anywhere.
