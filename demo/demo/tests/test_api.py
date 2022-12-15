@@ -1,7 +1,10 @@
+import logging
+import re
 from datetime import datetime
 
 import pytest
 from freezegun import freeze_time
+
 from subscriptions.exceptions import PaymentError
 from subscriptions.fields import relativedelta_to_dict
 from subscriptions.models import SubscriptionPayment, Usage
@@ -106,6 +109,12 @@ def test_subscribe(client, user_client, plan, now):
         assert subscription['start'] == datetime_to_api(now)
         assert subscription['end'] == datetime_to_api(now + plan.charge_period)
         assert subscription['quantity'] == 2
+
+
+def test__webhook_logging(client, caplog):
+    with caplog.at_level(logging.ERROR):
+        client.post('/api/webhook/dummy/', {'webhook-key': 'webhook-value'})
+    assert re.search(r"ARCHIVE .+? Webhook at http://testserver/api/webhook/dummy/ received payload {'webhook-key': 'webhook-value'}", caplog.text)
 
 
 def test_resources(user_client, subscription, resource, quota, now):

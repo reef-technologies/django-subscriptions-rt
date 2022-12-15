@@ -1,4 +1,3 @@
-from logging import getLogger
 from typing import Type
 
 from django.conf import settings
@@ -8,16 +7,18 @@ from rest_framework.generics import GenericAPIView, ListAPIView, RetrieveAPIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.schemas.openapi import AutoSchema
+
 from subscriptions.functions import get_remaining_amount
 
 from ..defaults import DEFAULT_SUBSCRIPTIONS_SUCCESS_URL
 from ..exceptions import PaymentError, SubscriptionError
+from ..logging import logging
 from ..models import Plan, Subscription, SubscriptionPayment
 from ..providers import Provider, get_provider, get_providers
 from ..validators import get_validators
 from .serializers import PaymentProviderListSerializer, PlanSerializer, ResourcesSerializer, SubscriptionPaymentSerializer, SubscriptionSelectSerializer, SubscriptionSerializer, WebhookSerializer
 
-log = getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 class PlanListView(ListAPIView):
@@ -113,6 +114,7 @@ class PaymentWebhookView(GenericAPIView):
         payload = request.data
         if isinstance(payload, QueryDict):
             payload = payload.dict()
+        log.archive('Webhook at %s received payload %s', request.build_absolute_uri(), payload)
         return self.provider.webhook(request=request, payload=payload)
 
 

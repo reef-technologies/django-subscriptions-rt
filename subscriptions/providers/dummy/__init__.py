@@ -6,6 +6,7 @@ from django.forms import Form
 from django.utils.crypto import get_random_string
 from rest_framework.request import Request
 from rest_framework.response import Response
+from rest_framework.status import HTTP_200_OK, HTTP_404_NOT_FOUND, HTTP_400_BAD_REQUEST
 
 from ...models import Plan, Subscription, SubscriptionPayment
 from .. import Provider
@@ -56,13 +57,20 @@ class DummyProvider(Provider):
         )
 
     def webhook(self, request: Request, payload: dict) -> Response:
-        payment = SubscriptionPayment.objects.get(provider_transaction_id=payload['transaction_id'])
+        if not (transaction_id := payload.get('transaction_id')):
+            return Response(status=HTTP_400_BAD_REQUEST)
+
+        try:
+            payment = SubscriptionPayment.objects.get(provider_transaction_id=transaction_id)
+        except SubscriptionPayment.DoesNotExist:
+            return Response(status=HTTP_404_NOT_FOUND)
+
         if payment.status != payment.Status.PENDING:
             return
 
         payment.status = SubscriptionPayment.Status.COMPLETED
         payment.save()
-        return Response()
+        return Response(status=HTTP_200_OK)
 
     def check_payments(self, payments: Iterable[SubscriptionPayment]):
         pass
