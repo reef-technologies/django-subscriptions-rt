@@ -112,9 +112,9 @@ def test_subscribe(client, user_client, plan, now):
 
 
 def test__webhook_logging(client, caplog):
-    with caplog.at_level(logging.ERROR):
+    with caplog.at_level(logging.INFO):
         client.post('/api/webhook/dummy/', {'webhook-key': 'webhook-value'})
-    assert re.search(r"ARCHIVE .+? Webhook at http://testserver/api/webhook/dummy/ received payload {'webhook-key': 'webhook-value'}", caplog.text)
+    assert re.search(r"INFO .+? Webhook at http://testserver/api/webhook/dummy/ received payload {'webhook-key': 'webhook-value'}", caplog.text)
 
 
 def test_resources(user_client, subscription, resource, quota, now):
