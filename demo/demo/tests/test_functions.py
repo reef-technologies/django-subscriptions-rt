@@ -1,6 +1,8 @@
 from datetime import timedelta
 from itertools import product
 from operator import attrgetter
+from time import sleep
+from typing import List
 
 import pytest
 from dateutil.parser import parse
@@ -8,9 +10,10 @@ from dateutil.relativedelta import relativedelta
 from django.core.cache import caches
 from djmoney.money import Money
 from freezegun import freeze_time
+
 from subscriptions.exceptions import InconsistentQuotaCache, QuotaLimitExceeded
-from subscriptions.functions import get_remaining_amount, iter_subscriptions_involved, use_resource, merge_feature_sets, get_default_features
-from subscriptions.models import INFINITY, Plan, Quota, QuotaCache, QuotaChunk, Subscription, Usage, Feature, Tier
+from subscriptions.functions import cache, get_cache_name, get_default_features, get_remaining_amount, iter_subscriptions_involved, merge_feature_sets, use_resource
+from subscriptions.models import INFINITY, Feature, Plan, Quota, QuotaCache, QuotaChunk, Subscription, Tier, Usage
 
 
 def test_subscriptions_involved(five_subscriptions, user, plan, now, days):
@@ -447,7 +450,7 @@ def test__merge_feature_sets(db):
     ) == {show_ads, extra_reward, add_premium_badge}
 
 
-def test__get_default_features(db, django_assert_num_queries):
+def test__get_default_features(db, django_assert_num_queries, cache_backend):
     tiers = Tier.objects.bulk_create([
         Tier(codename='zero', is_default=True),
         Tier(codename='one'),
@@ -467,10 +470,6 @@ def test__get_default_features(db, django_assert_num_queries):
     with django_assert_num_queries(2):
         assert get_default_features() == {default_feature_many_tiers, default_feature_one_tier}
 
-    with django_assert_num_queries(0):
-        assert get_default_features() == {default_feature_many_tiers, default_feature_one_tier}
-
-
     new_default_feature = Feature.objects.create(codename='NEW_DEFAULT_FEATURE')
     tiers[0].features.set([new_default_feature])
     tiers[0].save()
@@ -478,15 +477,37 @@ def test__get_default_features(db, django_assert_num_queries):
     with django_assert_num_queries(2):
         assert get_default_features() == {default_feature_many_tiers, new_default_feature}
 
-    with django_assert_num_queries(0):
-        assert get_default_features() == {default_feature_many_tiers, new_default_feature}
-
-
     tiers[0].is_default = False
     tiers[0].save()
 
     with django_assert_num_queries(2):
         assert get_default_features() == {default_feature_many_tiers}
 
+
+def test__cache(db, django_assert_num_queries, cache_backend):
+    Tier.objects.bulk_create([
+        Tier(codename='zero', is_default=True),
+        Tier(codename='one'),
+        Tier(codename='two', is_default=True),
+    ])
+
+    @cache(key='test-cache', cache_name=get_cache_name(), timeout=timedelta(seconds=5))
+    def get_tiers() -> List[Tier]:
+        return list(Tier.objects.all())
+
+    with django_assert_num_queries(1):
+        _ = get_tiers()
+
     with django_assert_num_queries(0):
-        assert get_default_features() == {default_feature_many_tiers}
+        _ = get_tiers()
+
+    get_tiers.cache_clear()
+    with django_assert_num_queries(1):
+        _ = get_tiers()
+
+    with django_assert_num_queries(0):
+        _ = get_tiers()
+
+    sleep(5)
+    with django_assert_num_queries(1):
+        _ = get_tiers()

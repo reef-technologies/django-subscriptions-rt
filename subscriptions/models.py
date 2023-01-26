@@ -65,12 +65,6 @@ class Tier(models.Model):
     def __str__(self) -> str:
         return self.codename
 
-    def save(self, *args, **kwargs):
-        from .functions import get_default_features
-
-        super().save(*args, **kwargs)
-        get_default_features.cache_clear()
-
 
 class Plan(models.Model):
     codename = models.CharField(max_length=255)

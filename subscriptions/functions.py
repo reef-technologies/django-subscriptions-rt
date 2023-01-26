@@ -1,14 +1,15 @@
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
+from functools import cached_property
+from itertools import chain
 from logging import getLogger
 from operator import attrgetter
 from typing import Callable, Dict, Iterable, Iterator, List, Optional, Set
-from itertools import chain
-from functools import cache
 
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from django.core.cache import InvalidCacheBackendError, caches
+from django.core.cache.backends.base import BaseCache
 from django.db import transaction
 from django.db.models import Prefetch
 from django.utils.timezone import now
@@ -16,7 +17,7 @@ from more_itertools import spy
 
 from .defaults import DEFAULT_SUBSCRIPTIONS_CACHE_NAME
 from .exceptions import InconsistentQuotaCache, QuotaLimitExceeded
-from .models import Quota, QuotaCache, QuotaChunk, Resource, Subscription, Usage, Feature, Tier
+from .models import Feature, Quota, QuotaCache, QuotaChunk, Resource, Subscription, Tier, Usage
 from .utils import merge_iter
 
 log = getLogger(__name__)
@@ -158,16 +159,24 @@ def get_remaining_chunks(
     return active_chunks
 
 
+def get_cache_name() -> str:
+    return getattr(settings, 'SUBSCRIPTIONS_CACHE_NAME', DEFAULT_SUBSCRIPTIONS_CACHE_NAME)
+
+
+def get_cache_or_none(cache_name: str) -> Optional[BaseCache]:
+    try:
+        return caches[cache_name]
+    except InvalidCacheBackendError:
+        log.exception('Could not access cache "%s"', cache_name)
+
+
 def get_remaining_amount(
     user: AbstractUser,
     at: Optional[datetime] = None,
 ) -> Dict[Resource, int]:
     at = at or now()
 
-    try:
-        cache = caches[getattr(settings, 'SUBSCRIPTIONS_CACHE_NAME', DEFAULT_SUBSCRIPTIONS_CACHE_NAME)]
-    except InvalidCacheBackendError:
-        cache = None
+    cache = get_cache_or_none(get_cache_name())
     quota_cache = cache and cache.get(user.pk, None)
 
     try:
@@ -226,7 +235,48 @@ def merge_feature_sets(*feature_sets: Iterable[Feature]) -> Set[Feature]:
     return features
 
 
-@cache
+class cache:
+
+    def __init__(self, key: str, cache_name: str = 'default', timeout: Optional[timedelta] = None, version: Optional[int] = None):
+        self.cache_name = cache_name
+        self.key = key
+        self.timeout = timeout
+        self.version = version
+
+    def __call__(self, fn: Callable) -> Callable:
+
+        class Wrapper:
+            def __init__(self_, fn: Callable):
+                self_.fn = fn
+                self_.timeout = self.timeout
+                self_.version = self.version
+
+            @cached_property
+            def cache(self_) -> BaseCache:
+                return caches[self.cache_name]
+
+            @classmethod
+            def get_key(cls, *args, **kwargs) -> str:
+                if args or kwargs:
+                    raise NotImplementedError()
+                return self.key
+
+            def __call__(self_, *args, **kwargs):
+                key = self_.get_key(*args, **kwargs)
+                return self_.cache.get_or_set(
+                    key,
+                    lambda: self_.fn(*args, **kwargs),
+                    timeout=self_.timeout and int(self_.timeout.total_seconds()),
+                    version=self_.version,
+                )
+
+            def cache_clear(self_, *args, **kwargs) -> bool:
+                key = self_.get_key(*args, **kwargs)
+                return self_.cache.delete(key)
+
+        return Wrapper(fn)
+
+
 def get_default_features() -> Set[Feature]:
     default_tiers = Tier.objects.filter(is_default=True).prefetch_related('features')
     return merge_feature_sets(*(tier.features.all() for tier in default_tiers))

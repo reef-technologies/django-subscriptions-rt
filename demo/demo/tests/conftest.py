@@ -9,8 +9,10 @@ from typing import Callable, List
 import pytest
 from dateutil.relativedelta import relativedelta
 from django.contrib.auth import get_user_model
+from django.core.cache import caches
 from django.test import Client
 from djmoney.money import Money
+
 from subscriptions.functions import get_remaining_amount, get_remaining_chunks
 from subscriptions.models import INFINITY, Plan, Quota, QuotaCache, Resource, Subscription, SubscriptionPayment, Usage
 from subscriptions.providers import get_provider, get_providers
@@ -412,6 +414,7 @@ def cache_backend(settings):
         'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
         'LOCATION': 'subscriptions',
     }
+    caches['subscriptions'].clear()
 
 
 @pytest.fixture
