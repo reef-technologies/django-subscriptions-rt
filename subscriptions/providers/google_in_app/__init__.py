@@ -463,7 +463,8 @@ class GoogleInAppProvider(Provider):
                 GoogleSubscriptionNotificationType.PRICE_CHANGE_CONFIRMED,
                 GoogleSubscriptionNotificationType.PAUSE_SCHEDULE_CHANGED,
             }:
-                pass
+                last_payment = self.get_last_payment(purchase_token)
+                log.warning('Event %s not yet supported (purchase token: %s)', event, purchase_token)
 
             elif event == GoogleSubscriptionNotificationType.EXPIRED:
                 last_payment = self.get_last_payment(purchase_token)
