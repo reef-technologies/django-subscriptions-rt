@@ -56,7 +56,7 @@ from .exceptions import (
 )
 from .. import Provider
 from ...api.serializers import SubscriptionPaymentSerializer
-from ...utils import PSQLock
+from ...utils import HardDBLock
 
 logger = getLogger(__name__)
 
@@ -167,7 +167,7 @@ class AppleInAppProvider(Provider):
             provider_transaction_id=transaction_id,
         )
         # Apple marks transaction_id as string, but all the values are in form of an int right now.
-        with PSQLock(transaction_id, SubscriptionPayment.objects.raw):
+        with HardDBLock(transaction_id, SubscriptionPayment.objects.raw):
             try:
                 payment, was_created = SubscriptionPayment.objects.get_or_create(
                     defaults={

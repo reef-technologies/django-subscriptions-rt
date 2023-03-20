@@ -3,6 +3,8 @@ import logging
 from typing import Callable, Dict, Iterable, Iterator, Optional, TypeVar, Union
 from datetime import datetime
 
+from django.db import connection
+
 logger = logging.getLogger(__name__)
 
 T = TypeVar('T')
@@ -44,9 +46,13 @@ def fromisoformat(value: str) -> datetime:
     return datetime.fromisoformat(value.replace('Z', '+00:00'))
 
 
-class PSQLock:
-    # PSQL supports up to 64bit numbers.
-    MAX_LOCK_VALUE = 2 ** 64
+class HardDBLock:
+    """
+    This class is supposed to represent a special lock made on the DB side that stops multiple operations
+    on the same entries from happening. Current implementation supports only postgresql via advisory_lock mechanism.
+    """
+    # Postgres supports up to 64bit numbers.
+    PSQL_MAX_LOCK_VALUE = 2 ** 64
 
     def __init__(
         self,
@@ -54,6 +60,10 @@ class PSQLock:
         raw_query_function: RawQueryFunction,
         raw_query_kwargs: Optional[dict] = None,
     ):
+        db_type = connection.vendor
+        assert db_type == 'postgresql', \
+            f'{self.__class__.__name__} works only with postgres right now, {db_type} is unsupported.'
+
         # Note: transaction id could be a string representing a number. So, if it's possible to use it as a number
         # we do, and if there's a string it's ok too. This is e.g. a case for apple transaction ID.
         try:
@@ -61,7 +71,7 @@ class PSQLock:
         except ValueError:
             lock_int_value = int(hashlib.sha1(lock_value.encode('utf-8')).hexdigest(), 16)
 
-        self.trimmed_lock_value = lock_int_value % self.MAX_LOCK_VALUE
+        self.trimmed_lock_value = lock_int_value % self.PSQL_MAX_LOCK_VALUE
         self.query_function = raw_query_function
         self.query_kwargs = raw_query_kwargs or {}
 
