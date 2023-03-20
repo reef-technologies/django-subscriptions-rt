@@ -56,6 +56,7 @@ from .exceptions import (
 )
 from .. import Provider
 from ...api.serializers import SubscriptionPaymentSerializer
+from ...utils import PSQLock
 
 logger = getLogger(__name__)
 
@@ -165,31 +166,33 @@ class AppleInAppProvider(Provider):
             provider_codename=self.codename,
             provider_transaction_id=transaction_id,
         )
-        try:
-            payment, was_created = SubscriptionPayment.objects.get_or_create(
-                defaults={
-                    'status': SubscriptionPayment.Status.COMPLETED,
-                    # In-app purchase doesn't report the money.
-                    # We mark it as None to indicate we don't know how much did it cost.
-                    'amount': None,
-                    'user': user,
-                    'plan': plan,
-                    'subscription': subscription,
-                    'subscription_start': start,
-                    'subscription_end': end,
-                    'metadata': AppleInAppMetadata(original_transaction_id=original_transaction_id).dict(),
-                },
-                **kwargs
-            )
-            if was_created:
-                payment.subscription.auto_prolong = False
-                payment.subscription.save()
-        except SubscriptionPayment.MultipleObjectsReturned:
-            # This is left as a countermeasure in case the deduplication fails or the code is still "not good enough"
-            # and generates duplicates. It allows us to read a warning from sentry instead of rushing another fix.
-            logger.warning('Multiple payments found when get_or_create for transaction id "%s". '
-                           'Consider cleaning it up. Returning first of them.', transaction_id)
-            payment = SubscriptionPayment.objects.filter(**kwargs).first()
+        # Apple marks transaction_id as string, but all the values are in form of an int right now.
+        with PSQLock(transaction_id, SubscriptionPayment.objects.raw):
+            try:
+                payment, was_created = SubscriptionPayment.objects.get_or_create(
+                    defaults={
+                        'status': SubscriptionPayment.Status.COMPLETED,
+                        # In-app purchase doesn't report the money.
+                        # We mark it as None to indicate we don't know how much did it cost.
+                        'amount': None,
+                        'user': user,
+                        'plan': plan,
+                        'subscription': subscription,
+                        'subscription_start': start,
+                        'subscription_end': end,
+                        'metadata': AppleInAppMetadata(original_transaction_id=original_transaction_id).dict(),
+                    },
+                    **kwargs
+                )
+                if was_created:
+                    payment.subscription.auto_prolong = False
+                    payment.subscription.save()
+            except SubscriptionPayment.MultipleObjectsReturned:
+                # This is left as a countermeasure in case the deduplication fails or the code is still "not good enough"
+                # and generates duplicates. It allows us to read a warning from sentry instead of rushing another fix.
+                logger.warning('Multiple payments found when get_or_create for transaction id "%s". '
+                               'Consider cleaning it up. Returning first of them.', transaction_id)
+                payment = SubscriptionPayment.objects.filter(**kwargs).first()
 
         return payment
 
