@@ -84,9 +84,8 @@ def make_user_plans_and_subscriptions(apps: Apps,
     return user, result_plans, result_subscriptions
 
 
-@pytest.mark.skip
 @pytest.mark.django_db
-def test__check_migration_deduplication(apple_in_app, days):
+def test_migration__check_deduplication(apple_in_app, days):
     expected_count = 0
 
     def pre_migration_run(pre_apps: Apps) -> None:
@@ -128,8 +127,8 @@ def test__check_migration_deduplication(apple_in_app, days):
 
     apps = run_migration(
         'subscriptions',
-        '0026_alter_subscriptionpayment_status_and_more',
-        '0027_auto_20221109_1525',
+        '0031_alter_plan_tier',
+        '0032_alter_subscriptionpayment_options_and_more',
         pre_migration_run,
     )
 
@@ -140,41 +139,8 @@ def test__check_migration_deduplication(apple_in_app, days):
     assert len(all_transaction_ids) == expected_count
 
 
-@pytest.mark.skip
 @pytest.mark.django_db
-def test__fail__same_transaction_different_plan(apple_in_app, days):
-    def pre_migration_run(pre_apps) -> None:
-        pre_model = pre_apps.get_model('subscriptions', 'SubscriptionPayment')
-
-        user, plans, subscriptions = make_user_plans_and_subscriptions(pre_apps, num_plans=2)
-
-        kwargs = {
-            'provider_codename': apple_in_app.codename,
-            'user': user,
-            **BASIC_PAYMENT_KWARGS
-        }
-
-        for plan, subscription in zip(plans, subscriptions):
-            pre_model.objects.create(
-                uid=str(uuid.uuid4()),
-                provider_transaction_id='transaction_id_1',
-                plan=plan,
-                subscription=subscription,
-                **kwargs
-            )
-
-    with pytest.raises(AssertionError):
-        run_migration(
-            'subscriptions',
-            '0026_alter_subscriptionpayment_status_and_more',
-            '0027_auto_20221109_1525',
-            pre_migration_run,
-        )
-
-
-@pytest.mark.skip
-@pytest.mark.django_db
-def test__fail__multiple_reused_subscriptions(apple_in_app, days):
+def test_migration__multiple_reused_subscription(apple_in_app, days):
     def pre_migration_run(pre_apps) -> None:
         pre_model = pre_apps.get_model('subscriptions', 'SubscriptionPayment')
 
@@ -212,10 +178,15 @@ def test__fail__multiple_reused_subscriptions(apple_in_app, days):
             **kwargs
         )
 
-    with pytest.raises(AssertionError):
-        run_migration(
-            'subscriptions',
-            '0026_alter_subscriptionpayment_status_and_more',
-            '0027_auto_20221109_1525',
-            pre_migration_run,
-        )
+    apps = run_migration(
+        'subscriptions',
+        '0031_alter_plan_tier',
+        '0032_alter_subscriptionpayment_options_and_more',
+        pre_migration_run,
+    )
+
+    # We should have no more duplicates in the DB.
+    model = apps.get_model('subscriptions', 'SubscriptionPayment')
+    all_transaction_ids = [entry.provider_transaction_id for entry in model.objects.all()]
+    assert len(set(all_transaction_ids)) == len(all_transaction_ids)
+    assert len(all_transaction_ids) == 1

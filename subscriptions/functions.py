@@ -18,7 +18,7 @@ from more_itertools import spy
 from .defaults import DEFAULT_SUBSCRIPTIONS_CACHE_NAME
 from .exceptions import InconsistentQuotaCache, QuotaLimitExceeded
 from .models import Feature, Quota, QuotaCache, QuotaChunk, Resource, Subscription, Tier, Usage
-from .utils import merge_iter
+from .utils import HardDBLock, merge_iter
 
 log = getLogger(__name__)
 
@@ -202,18 +202,22 @@ def get_remaining_amount(
 @contextmanager
 def use_resource(user: AbstractUser, resource: Resource, amount: int = 1, raises: bool = True) -> int:
     with transaction.atomic():
-        available = get_remaining_amount(user).get(resource, 0)
-        remains = available - amount
+        # Ensuring that all operations on the same user and resource are blocked.
+        # Lock value will be a string-integer, for user id 12 and resource id 30 it will be 120030.
+        with HardDBLock('use_resource', f'{user.id}00{resource.id}', Usage.objects.raw):
+            available = get_remaining_amount(user).get(resource, 0)
+            remains = available - amount
 
-        if remains < 0 and raises:
-            raise QuotaLimitExceeded(f'Not enough {resource}: tried to use {amount}, but only {available} is available')
+            if remains < 0 and raises:
+                raise QuotaLimitExceeded(
+                    f'Not enough {resource}: tried to use {amount}, but only {available} is available')
 
-        Usage.objects.create(
-            user=user,
-            resource=resource,
-            amount=amount,
-        )
-        yield remains
+            Usage.objects.create(
+                user=user,
+                resource=resource,
+                amount=amount,
+            )
+            yield remains
 
 
 def merge_feature_sets(*feature_sets: Iterable[Feature]) -> Set[Feature]:
