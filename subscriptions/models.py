@@ -346,7 +346,9 @@ class AbstractTransaction(models.Model):
 
     uid = models.UUIDField(primary_key=True, blank=True)
     provider_codename = models.CharField(max_length=255)
-    provider_transaction_id = models.CharField(max_length=255)
+    # sometimes there is no information about internal provider's transaction ID;
+    # for such cases we set `provider_transaction_id` to None and fill it in later
+    provider_transaction_id = models.CharField(max_length=255, blank=True, null=True)
     status = models.PositiveSmallIntegerField(choices=Status.choices, default=Status.PENDING)
     amount = MoneyField(blank=True, null=True)  # set None for services where the payment information is completely out of reach
     # source = models.ForeignKey(MoneyStorage, on_delete=models.PROTECT, related_name='transactions_out')
@@ -405,9 +407,9 @@ class SubscriptionPayment(AbstractTransaction):
         super().__init__(*args, **kwargs)
         self._initial_status = self.uid and self.status
 
-    class Meta:
-    # TODO: changing latest() to `subscription_end` may not work well when subscription_end is None
-    #     get_latest_by = 'subscription_end'
+    class Meta(AbstractTransaction.Meta):
+        # TODO: changing latest() to `subscription_end` may not work well when subscription_end is None
+        #     get_latest_by = 'subscription_end'
         constraints = [
             UniqueConstraint(
                 fields=['provider_codename', 'provider_transaction_id'],
@@ -484,7 +486,7 @@ class SubscriptionPaymentRefund(AbstractTransaction):
     original_payment = models.ForeignKey(SubscriptionPayment, on_delete=models.PROTECT, related_name='refunds')
 
     # TODO: add support by providers
-    class Meta:
+    class Meta(AbstractTransaction.Meta):
         constraints = [
             UniqueConstraint(
                 fields=['provider_codename', 'provider_transaction_id'],
