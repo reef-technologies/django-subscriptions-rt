@@ -345,9 +345,13 @@ class AbstractTransaction(models.Model):
         ERROR = 4
 
     uid = models.UUIDField(primary_key=True, blank=True)
+
+    # This field should go away once we add provider-specific child models (see below)
     provider_codename = models.CharField(max_length=255)
-    # sometimes there is no information about internal provider's transaction ID;
-    # for such cases we set `provider_transaction_id` to None and fill it in later
+    # Sometimes there is no information about internal provider's transaction ID.
+    # For such cases we set `provider_transaction_id` to None and fill it in later.
+    # Also, this field is legacy and should be replaced by provider-specific child
+    # model, see https://github.com/reef-technologies/django-subscriptions-rt/issues/13
     provider_transaction_id = models.CharField(max_length=255, blank=True, null=True)
     status = models.PositiveSmallIntegerField(choices=Status.choices, default=Status.PENDING)
     amount = MoneyField(blank=True, null=True)  # set None for services where the payment information is completely out of reach
@@ -410,12 +414,7 @@ class SubscriptionPayment(AbstractTransaction):
     class Meta(AbstractTransaction.Meta):
         # TODO: changing latest() to `subscription_end` may not work well when subscription_end is None
         #     get_latest_by = 'subscription_end'
-        constraints = [
-            UniqueConstraint(
-                fields=['provider_codename', 'provider_transaction_id'],
-                name='unique_subscription_payment',
-            ),
-        ]
+        pass
 
     def __str__(self) -> str:
         return f'{self.short_id} {self.get_status_display()} {self.user} {self.amount} from={self.subscription_start} until={self.subscription_end}'
@@ -486,13 +485,6 @@ class SubscriptionPaymentRefund(AbstractTransaction):
     original_payment = models.ForeignKey(SubscriptionPayment, on_delete=models.PROTECT, related_name='refunds')
 
     # TODO: add support by providers
-    class Meta(AbstractTransaction.Meta):
-        constraints = [
-            UniqueConstraint(
-                fields=['provider_codename', 'provider_transaction_id'],
-                name='unique_subscription_payment_refund',
-            ),
-        ]
 
 
 class Tax(models.Model):

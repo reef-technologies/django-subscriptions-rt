@@ -23,7 +23,7 @@ from rest_framework.status import HTTP_200_OK, HTTP_400_BAD_REQUEST
 
 from ...api.serializers import SubscriptionPaymentSerializer
 from ...models import Plan, SubscriptionPayment
-from ...utils import fromisoformat
+from ...utils import fromisoformat, HardDBLock
 from .. import Provider
 from .exceptions import InvalidOperation
 from .models import AppNotification, GoogleAcknowledgementState, GoogleAutoRenewingBasePlanType, GoogleBasePlan, GoogleBasePlanState, GoogleDeveloperNotification, GoogleMoney, GooglePubSubData, GoogleRegionalBasePlanConfig, GoogleResubscribeState, GoogleSubscription, GoogleSubscriptionNotificationType, GoogleSubscriptionProrationMode, GoogleSubscriptionPurchaseV2, GoogleSubscriptionState, Metadata, MultiNotification
@@ -397,7 +397,12 @@ class GoogleInAppProvider(Provider):
 
         self.check_event(event, purchase)
 
-        with transaction.atomic(durable=True):
+        with transaction.atomic(durable=True), \
+             HardDBLock(
+                lock_marker=self.__class__.__name__,
+                lock_value=user.id,
+                raw_query_function=SubscriptionPayment.objects.raw,
+             ):
 
             if event in {
                 GoogleSubscriptionNotificationType.RECOVERED,
