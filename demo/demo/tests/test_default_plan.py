@@ -1,10 +1,11 @@
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
+from django.core.management import call_command
 from django.utils.timezone import now
 
 from subscriptions.functions import get_default_plan, iter_subscriptions_involved
-from subscriptions.models import Subscription
+from subscriptions.models import Plan, Subscription
 
 
 def test__default_plan__does_not_exist(settings, plan):
@@ -91,3 +92,43 @@ def test__default_plan__shift_if_subscription_prolonged(default_plan, plan, user
     subs_after = list(iter_subscriptions_involved(user, subscription.end + timedelta(seconds=1)))
     assert len(subs_after) == 1
     assert subs_after[0].plan == default_plan
+
+
+def test__default_plan__management_command__old_subscription(user, subscription, settings):
+    assert user.subscriptions.count() == 1
+
+    default_plan = Plan.objects.create(name='default', charge_amount=0)
+    settings.SUBSCRIPTIONS_DEFAULT_PLAN_ID = default_plan.id
+
+    now_ = now()
+    call_command('add_default_plan_to_users')
+    subscriptions = user.subscriptions.order_by('end')
+    assert subscriptions.count() == 2
+    assert subscriptions[0] == subscription
+    assert subscriptions[1].plan == default_plan
+    assert now_ - timedelta(seconds=1) < subscriptions[1].start < now_ + timedelta(seconds=1)
+    assert subscriptions[1].end > now_ + timedelta(days=365*5)
+
+
+def test__default_plan__management_command__active_subscription(user, subscription, settings):
+    assert user.subscriptions.count() == 1
+    subscription.end = now() + timedelta(days=7)
+    subscription.save()
+
+    default_plan = Plan.objects.create(name='default', charge_amount=0)
+    settings.SUBSCRIPTIONS_DEFAULT_PLAN_ID = default_plan.id
+
+    call_command('add_default_plan_to_users')
+    subscriptions = user.subscriptions.order_by('end')
+    assert subscriptions.count() == 2
+    assert subscriptions[0] == subscription
+    assert subscriptions[1].plan == default_plan
+    assert subscriptions[1].start == subscription.end
+    assert subscriptions[1].end > subscription.end + timedelta(days=365*5)
+
+
+def test__default_plan__management_command__noop(default_plan, user):
+    assert user.subscriptions.count() == 1
+    assert user.subscriptions.first().plan == default_plan
+    call_command('add_default_plan_to_users')
+    assert user.subscriptions.count() == 1
