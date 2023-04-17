@@ -1,4 +1,4 @@
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from datetime import datetime, timedelta
 from functools import cached_property
 from itertools import chain
@@ -17,7 +17,7 @@ from more_itertools import spy
 
 from .defaults import DEFAULT_SUBSCRIPTIONS_CACHE_NAME
 from .exceptions import InconsistentQuotaCache, QuotaLimitExceeded
-from .models import Feature, Quota, QuotaCache, QuotaChunk, Resource, Subscription, Tier, Usage
+from .models import Feature, Plan, Quota, QuotaCache, QuotaChunk, Resource, Subscription, Tier, Usage
 from .utils import merge_iter
 
 log = getLogger(__name__)
@@ -280,3 +280,24 @@ class cache:
 def get_default_features() -> Set[Feature]:
     default_tiers = Tier.objects.filter(is_default=True).prefetch_related('features')
     return merge_feature_sets(*(tier.features.all() for tier in default_tiers))
+
+
+def get_default_plan_id() -> Optional[int]:
+    with suppress(AttributeError):
+        default_plan_id = settings.SUBSCRIPTIONS_DEFAULT_PLAN_ID
+        if callable(default_plan_id):
+            default_plan_id = default_plan_id()
+        return default_plan_id
+
+
+def get_default_plan() -> Optional[Plan]:
+    from .models import Plan
+
+    if not (default_plan_id := get_default_plan_id()):
+        return
+
+    try:
+        return Plan.objects.get(id=default_plan_id)
+    except Plan.DoesNotExist:
+        log.exception('Default plan does not exist: %s', default_plan_id)
+        return

@@ -554,3 +554,13 @@ def google_in_app__subscription_purchase_dict(google_in_app) -> dict:
             }
         ]
     }
+
+
+@pytest.fixture
+def default_plan(db, settings) -> Plan:
+    plan = Plan.objects.create(
+        name='Default Plan',
+        charge_amount=Decimal('0.00'),
+    )
+    settings.SUBSCRIPTIONS_DEFAULT_PLAN_ID = plan.id
+    return plan
