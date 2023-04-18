@@ -301,7 +301,9 @@ class Subscription(models.Model):
 
         from .functions import get_default_plan
 
-        if not (default_plan := get_default_plan()):
+        try:
+            default_plan = get_default_plan()
+        except Plan.DoesNotExist:
             return
 
         if self.plan == default_plan:

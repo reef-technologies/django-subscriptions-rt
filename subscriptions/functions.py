@@ -7,6 +7,7 @@ from operator import attrgetter
 from typing import Callable, Dict, Iterable, Iterator, List, Optional, Set
 
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AbstractUser
 from django.core.cache import InvalidCacheBackendError, caches
 from django.core.cache.backends.base import BaseCache
@@ -17,7 +18,7 @@ from more_itertools import spy
 
 from .defaults import DEFAULT_SUBSCRIPTIONS_CACHE_NAME
 from .exceptions import InconsistentQuotaCache, QuotaLimitExceeded
-from .models import Feature, Plan, Quota, QuotaCache, QuotaChunk, Resource, Subscription, Tier, Usage
+from .models import INFINITY, Feature, Plan, Quota, QuotaCache, QuotaChunk, Resource, Subscription, Tier, Usage
 from .utils import merge_iter
 
 log = getLogger(__name__)
@@ -283,21 +284,37 @@ def get_default_features() -> Set[Feature]:
 
 
 def get_default_plan_id() -> Optional[int]:
-    with suppress(AttributeError):
-        default_plan_id = settings.SUBSCRIPTIONS_DEFAULT_PLAN_ID
-        if callable(default_plan_id):
-            default_plan_id = default_plan_id()
-        return default_plan_id
+    with suppress(AttributeError, ImportError):
+        from constance import config
+        return config.SUBSCRIPTIONS_DEFAULT_PLAN_ID
 
 
-def get_default_plan() -> Optional[Plan]:
+def get_default_plan() -> Plan:
     from .models import Plan
 
     if not (default_plan_id := get_default_plan_id()):
         return
 
+    return Plan.objects.get(id=default_plan_id)
+
+
+def add_default_plan_to_users():
+    User = get_user_model()
+
     try:
-        return Plan.objects.get(id=default_plan_id)
+        default_plan = get_default_plan()
     except Plan.DoesNotExist:
-        log.exception('Default plan does not exist: %s', default_plan_id)
         return
+
+    now_ = now()
+    for user in User.objects.all():
+        last_subscription = user.subscriptions.order_by('end').last()
+        if last_subscription and last_subscription.plan == default_plan and last_subscription.end > now_:
+            continue
+
+        Subscription.objects.create(
+            user=user,
+            plan=default_plan,
+            start=max(last_subscription.end, now_) if last_subscription else now_,
+            end=now_+INFINITY,
+        )
