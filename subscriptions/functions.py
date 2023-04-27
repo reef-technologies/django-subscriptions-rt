@@ -1,5 +1,5 @@
 from contextlib import contextmanager
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from functools import cached_property
 from itertools import chain
 from logging import getLogger
@@ -280,3 +280,35 @@ class cache:
 def get_default_features() -> Set[Feature]:
     default_tiers = Tier.objects.filter(is_default=True).prefetch_related('features')
     return merge_feature_sets(*(tier.features.all() for tier in default_tiers))
+
+
+def get_resource_refresh_moments(
+    user: AbstractUser,
+    at: Optional[datetime] = None,
+    assume_subscription_refresh: bool = True,
+) -> dict[Resource, datetime]:
+    """
+    For given user and moment in time, provides information when all the resources will be refreshed.
+    If the given resource won't be refreshed (e.g. because subscription ends), it will be absent from the dictionary.
+
+    If `assume_subscription_refresh` is set to `True` we allow
+    the recharge moments to be beyond the current subscription end.
+    """
+    at = at or now()
+    result = {}
+    datetime_max = datetime.max.replace(tzinfo=timezone.utc)
+
+    for subscription in iter_subscriptions_involved(user, at):
+        for quota in subscription.plan.quotas.all():
+            # Find first moment after `at` that will be a recharge.
+            recharge_moment = subscription.start
+            while recharge_moment < at:
+                recharge_moment += quota.recharge_period
+            # If we get a recharge after the subscription will end, it is of no use.
+            if recharge_moment >= subscription.end and not assume_subscription_refresh:
+                continue
+            # If multiple quotas from multiple subscription affect this resource,
+            # point at the one that happens earliest.
+            result[quota.resource] = min(result.get(quota.resource, datetime_max), recharge_moment)
+
+    return result
