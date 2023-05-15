@@ -40,6 +40,27 @@ quota   (quota lifetime)       quota burned
 
 # Plans, tiers & features
 
+## Default plan
+
+Use `pip install django-subscriptions-rt[default_plan]` to install constance as dependency.
+
+Setup default plan like this:
+
+```python
+INSTALLED_APPS = [
+   ...
+   'constance',
+   'constance.backends.database',
+]
+
+CONSTANCE_BACKEND = 'constance.backends.database.DatabaseBackend'
+CONSTANCE_CONFIG = {
+   'SUBSCRIPTIONS_DEFAULT_PLAN_ID': (0, 'Default plan ID', int),
+}
+```
+
+Changing default plan value will adjust default subscriptions automatically.
+
 # Cache
 
 Cache is required for fast resource calculations.

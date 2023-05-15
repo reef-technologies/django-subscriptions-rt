@@ -195,7 +195,8 @@ class Subscription(models.Model):
     def save(self, *args, **kwargs):
         self.start = self.start or now()
         self.end = self.end or min(self.start + self.plan.charge_period, self.max_end)
-        return super().save(*args, **kwargs)
+        super().save(*args, **kwargs)
+        self.adjust_default_subscription()
 
     def stop(self):
         self.end = now()
@@ -293,6 +294,41 @@ class Subscription(models.Model):
             quantity=self.quantity,
             reference_payment=last_payment,
         )
+
+    def adjust_default_subscription(self):
+        # this subscription pushes out every default subscription out of its (start,end) period;
+        # IMPORTANT: this does not "fill in" gaps with default sub if current subscription is shrinked
+
+        from .functions import get_default_plan
+
+        try:
+            default_plan = get_default_plan()
+        except Plan.DoesNotExist:
+            return
+
+        if self.plan == default_plan:
+            return
+
+        default_subscriptions = Subscription.objects.filter(
+            user=self.user,
+            plan=default_plan,
+            start__lt=self.end,
+            end__gt=self.start,
+        )
+
+        for default_subscription in default_subscriptions:
+            if default_subscription.start < self.start:  # split default subscription into two parts
+                default_subscription.end = self.start
+                default_subscription.save()
+
+                default_subscription.pk = None
+                default_subscription.start = self.end
+                default_subscription.end = self.end + INFINITY
+                default_subscription.save()
+
+            else:  # just shift default subscription to end of current subscription
+                default_subscription.start = self.end
+                default_subscription.save()
 
 
 class Quota(models.Model):
@@ -485,3 +521,6 @@ class Tax(models.Model):
 
     def __str__(self) -> str:
         return f'{self.id} {self.amount}'
+
+
+from .signals import create_default_subscription_for_new_user  # noqa

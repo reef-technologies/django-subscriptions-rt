@@ -7,6 +7,7 @@ from functools import wraps
 from typing import Callable, List
 
 import pytest
+from constance import config
 from dateutil.relativedelta import relativedelta
 from django.contrib.auth import get_user_model
 from django.core.cache import caches
@@ -554,3 +555,13 @@ def google_in_app__subscription_purchase_dict(google_in_app) -> dict:
             }
         ]
     }
+
+
+@pytest.fixture
+def default_plan(db, settings) -> Plan:
+    plan = Plan.objects.create(
+        name='Default Plan',
+        charge_amount=Decimal('0.00'),
+    )
+    config.SUBSCRIPTIONS_DEFAULT_PLAN_ID = plan.id
+    return plan
