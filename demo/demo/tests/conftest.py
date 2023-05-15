@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from datetime import timezone as tz
 from decimal import Decimal
 from functools import wraps
-from typing import Callable, List
+from typing import Callable, List, Optional
 
 import pytest
 from constance import config
@@ -14,7 +14,7 @@ from django.core.cache import caches
 from django.test import Client
 from djmoney.money import Money
 
-from subscriptions.functions import get_remaining_amount, get_remaining_chunks
+from subscriptions.functions import get_remaining_amount, get_remaining_chunks, get_resource_refresh_moments
 from subscriptions.models import INFINITY, Plan, Quota, QuotaCache, Resource, Subscription, SubscriptionPayment, Usage
 from subscriptions.providers import get_provider, get_providers
 from subscriptions.providers.apple_in_app import AppleInAppProvider
@@ -137,6 +137,14 @@ def remains(user, resource) -> Callable:
     def wrapped(**kwargs):
         return get_remaining_amount(user=user, **kwargs).get(resource, 0)
 
+    return wrapped
+
+
+@pytest.fixture
+def refreshes(user, resource) -> Callable:
+    @wraps(get_resource_refresh_moments)
+    def wrapped(**kwargs) -> Optional[datetime]:
+        return get_resource_refresh_moments(user=user, **kwargs).get(resource, None)
     return wrapped
 
 
