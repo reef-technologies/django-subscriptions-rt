@@ -58,7 +58,7 @@ class PaddleProvider(Provider):
             f'There should be exactly one subscription plan, but there are {num_plans}: {plans}'
         return plans[0]
 
-    def get_amount(self, user: AbstractBaseUser, plan: Plan, quantity: int) -> Money:
+    def get_amount(self, user: AbstractBaseUser, plan: Plan) -> Money:
         if self.STAFF_DISCOUNT and user.is_staff:
             return Money(
                 amount=Decimal('1.0') + Decimal('0.01') * plan.id,
@@ -75,7 +75,7 @@ class PaddleProvider(Provider):
         quantity: int = 1,
     ) -> Tuple[SubscriptionPayment, str]:
 
-        amount = self.get_amount(user=user, plan=plan, quantity=quantity)
+        amount = self.get_amount(user=user, plan=plan)
 
         payment, is_new = SubscriptionPayment.objects.get_or_create(
             created__gte=now() - self.ONLINE_CHARGE_DUPLICATE_LOOKUP_TIME,
@@ -121,6 +121,22 @@ class PaddleProvider(Provider):
         reference_payment: Optional[SubscriptionPayment] = None,
     ) -> SubscriptionPayment:
 
+        assert quantity > 0
+
+        amount = self.get_amount(user=user, plan=plan)
+        if amount is None or amount.amount == 0:
+            return SubscriptionPayment.objects.create(
+                provider_codename=self.codename,
+                provider_transaction_id=None,  # paddle doesn't return anything
+                amount=amount,
+                quantity=quantity,
+                status=SubscriptionPayment.Status.COMPLETED,
+                user=user,
+                plan=plan,
+                subscription=subscription,
+                metadata={},
+            )
+
         if not reference_payment:
             reference_payment = SubscriptionPayment.get_last_successful(user)
 
@@ -128,7 +144,6 @@ class PaddleProvider(Provider):
             raise PaymentError('No reference payment to take credentials from')
 
         assert reference_payment.status == SubscriptionPayment.Status.COMPLETED
-
         try:
             subscription_id = reference_payment.metadata['subscription_id']
         except KeyError as exc:
@@ -139,20 +154,21 @@ class PaddleProvider(Provider):
         if reference_payment.subscription.plan.charge_amount.currency != plan.charge_amount.currency:
             raise BadReferencePayment('Reference payment has different currency than current plan')
 
-        amount = self.get_amount(user=user, plan=plan, quantity=quantity)
         metadata = self._api.one_off_charge(
             subscription_id=subscription_id,
             amount=amount.amount * quantity,
             name=plan.name,
-        ) if plan.charge_amount else {}
+        )
 
         status_mapping = {
             'success': SubscriptionPayment.Status.COMPLETED,
             'pending': SubscriptionPayment.Status.PENDING,
         }
         paddle_status = metadata.get('status')
-        status = status_mapping.get(paddle_status)
-        if status is None:
+
+        try:
+            status = status_mapping[paddle_status]
+        except KeyError:
             log.error(f'Paddle one-off charge status "{paddle_status}" is unknown, should be from {set(status_mapping.keys())}')
             status = SubscriptionPayment.Status.ERROR
 

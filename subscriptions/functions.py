@@ -312,11 +312,12 @@ def add_default_plan_to_users():
         if last_subscription and last_subscription.plan == default_plan and last_subscription.end > now_:
             continue
 
+        start = max(last_subscription.end, now_) if last_subscription else now_
         Subscription.objects.create(
             user=user,
             plan=default_plan,
-            start=max(last_subscription.end, now_) if last_subscription else now_,
-            end=now_+INFINITY,
+            start=start,
+            end=start+INFINITY,
         )
 
 

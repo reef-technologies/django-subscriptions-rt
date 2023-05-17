@@ -31,11 +31,11 @@ class DummyProvider(Provider):
         payment = SubscriptionPayment.objects.create(  # TODO: limit number of creations per day
             provider_codename=self.codename,
             provider_transaction_id=transaction_id,
-            amount=self.get_amount(user=user, plan=plan, quantity=quantity),
+            amount=self.get_amount(user=user, plan=plan),
+            quantity=quantity,
             user=user,
             plan=plan,
             subscription=subscription,
-            quantity=quantity,
         )
         return payment, self._payment_url.format(transaction_id)
 
@@ -49,11 +49,11 @@ class DummyProvider(Provider):
         return SubscriptionPayment.objects.create(  # TODO: limit number of creations per day
             provider_codename=self.codename,
             provider_transaction_id=get_random_string(8),
-            amount=self.get_amount(user=user, plan=plan, quantity=quantity),
+            amount=self.get_amount(user=user, plan=plan),
+            quantity=quantity,
             user=user,
             plan=plan,
             subscription=subscription,
-            quantity=quantity,
         )
 
     def webhook(self, request: Request, payload: dict) -> Response:
