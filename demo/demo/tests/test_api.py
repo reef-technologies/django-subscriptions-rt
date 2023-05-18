@@ -7,6 +7,7 @@ from freezegun import freeze_time
 
 from subscriptions.exceptions import PaymentError
 from subscriptions.fields import relativedelta_to_dict
+from subscriptions.functions import use_resource
 from subscriptions.models import SubscriptionPayment, Usage
 from subscriptions.providers import get_providers
 
@@ -240,3 +241,30 @@ def test_payments(user_client, payment):
         "paid_to": datetime_to_api(payment.subscription_end),
         "created": datetime_to_api(payment.created),
     }
+
+
+def test__api__resource_headers_mixin__anonymous(client, resource):
+    response = client.get('/api/headers_mixin/')
+    assert response.status_code == 200
+    assert not any(header.startswith('X-Resource-') for header in response.headers)
+
+
+def test__api__resource_headers_mixin__empty(user_client, resource):
+    response = user_client.get('/api/headers_mixin/')
+    assert response.status_code == 200
+    assert f'X-Resource-{resource.codename}' not in response.headers
+
+
+def test__api__resource_headers_mixin__exists(user, user_client, resource, subscription, quota, now, days):
+    available = quota.limit * subscription.quantity
+
+    with freeze_time(now):
+        response = user_client.get('/api/headers_mixin/')
+        assert response.status_code == 200
+        assert response.headers[f'X-Resource-{resource.codename}'] == str(available)
+
+    with freeze_time(now + days(1)):
+        with use_resource(user, resource, 10):
+            response = user_client.get('/api/headers_mixin/')
+            assert response.status_code == 200
+            assert response.headers[f'X-Resource-{resource.codename}'] == str(available - 10)
