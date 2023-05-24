@@ -308,7 +308,7 @@ def add_default_plan_to_users():
 
     now_ = now()
     for user in User.objects.all():
-        last_subscription = user.subscriptions.order_by('end').last()
+        last_subscription = user.subscriptions.recurring().order_by('end').last()
         if last_subscription and last_subscription.plan == default_plan and last_subscription.end > now_:
             continue
 

@@ -5,7 +5,7 @@ from constance import config
 from django.contrib.auth import get_user_model
 from django.utils.timezone import now
 
-from subscriptions.functions import get_default_plan, iter_subscriptions_involved
+from subscriptions.functions import get_default_plan
 from subscriptions.models import Plan, Subscription
 
 
@@ -74,42 +74,60 @@ def test__default_plan__no_overlap_with_subscriptions(default_plan, plan, user):
     assert default_sub_after.end > now_ + timedelta(days=356*5)
 
 
-def test__default_plan__shift_if_subscription_prolonged(default_plan, plan, user):
+def test__default_plan__shift_if_subscription_prolonged(default_plan, plan, user, subscription):
     """
     -----[subscription][default subscription               ]->
-                    ^-now
+                            ^-now
     After growing subscription:
     -----[subscription             ][default subscription  ]->
-                    ^-now
+                            ^-now
     """
-    assert user.subscriptions.count() == 1
 
-    now_ = now()
+    assert user.subscriptions.count() == 2
+    assert user.subscriptions.active().count() == 1
+    default_subscription = user.subscriptions.filter(plan=default_plan).first()
+    default_subscription.start = subscription.end
+    default_subscription.save()
+
+    subscription.end = now() + timedelta(days=7)
+    subscription.save()
+
+    assert user.subscriptions.active().count() == 1
+    assert user.subscriptions.active().first().plan == subscription.plan
+
+    default_subscription = user.subscriptions.filter(plan=default_plan).first()
+    assert default_subscription.start == subscription.end
+
+
+def test__default_plan__split_if_subscription_appears(default_plan, plan, user):
+    """
+    -----[default subscription               ]->
+         ^-now
+    After adding subscription:
+    -----[default][new subscription][default ]->
+                  ^-now
+    """
+
+    assert user.subscriptions.active().count() == 1
+    default_subscription_old = user.subscriptions.filter(plan=default_plan).first()
+
     subscription = Subscription.objects.create(
         user=user,
         plan=plan,
-        start=now_,
-        end=now_ + timedelta(days=7),
     )
+    assert user.subscriptions.active().count() == 1
+    assert user.subscriptions.active().first() == subscription
 
-    subscription.end += timedelta(days=7)
-    subscription.save()
+    assert user.subscriptions.count() == 3
+    sub_before, sub_now, sub_after = user.subscriptions.order_by('start')
 
-    subs_before = list(iter_subscriptions_involved(user, now_ - timedelta(milliseconds=1)))
-    assert len(subs_before) == 1
-    assert subs_before[0].plan == default_plan
+    assert sub_before.plan == default_plan
+    assert sub_before.start == default_subscription_old.start
+    assert sub_before.end == sub_now.start
 
-    subs_now = list(iter_subscriptions_involved(user, now_ + timedelta(seconds=1)))
-    assert len(subs_now) == 1
-    assert subs_now[0] == subscription
-
-    subs_end = list(iter_subscriptions_involved(user, subscription.end - timedelta(seconds=1)))
-    assert len(subs_end) == 1
-    assert subs_end[0] == subscription
-
-    subs_after = list(iter_subscriptions_involved(user, subscription.end + timedelta(seconds=1)))
-    assert len(subs_after) == 1
-    assert subs_after[0].plan == default_plan
+    assert sub_after.plan == default_plan
+    assert sub_after.start == sub_now.end
+    assert sub_after.end >= now() + timedelta(days=365*5)
 
 
 def test__default_plan__enable__old_subscription(user, subscription, settings):
@@ -261,3 +279,57 @@ def test__default_plan__switch__future(user, default_plan, subscription):
     assert new_subscription.plan == new_default_plan
     assert now() - timedelta(seconds=1) < new_subscription.start < now()
     assert new_subscription.end == default_subscription.end
+
+
+def test__default_plan__non_recurring__ignore_save(user, default_plan, recharge_plan):
+    """
+    ---[default plan              ]->
+       ^--now
+    After adding non-recurring subscription:
+    ---[default plan              ]->
+    ----[recharge plan      ]------->
+        ^--now
+    """
+
+    assert user.subscriptions.active().count() == 1
+    default_subscription_old = user.subscriptions.active().first()
+
+    Subscription.objects.create(
+        user=user,
+        plan=recharge_plan,
+    )
+    assert user.subscriptions.active().count() == 2
+    default_subscription_new = user.subscriptions.active().filter(plan=default_plan).first()
+
+    assert default_subscription_old.start == default_subscription_new.start
+    assert default_subscription_old.end == default_subscription_new.end
+
+
+def test__default_plan__non_recurring__ignore_when_adding_default(user, recharge_plan):
+    """
+    ----[recharge plan      ]------->
+        ^--now
+    After enabling default subscription:
+    ----[recharge plan      ]------->
+    -----[default plan            ]->
+         ^--now
+    """
+    assert user.subscriptions.active().count() == 0
+
+    subscription_old = Subscription.objects.create(
+        user=user,
+        plan=recharge_plan,
+    )
+    assert user.subscriptions.active().count() == 1
+
+    new_default_plan = Plan.objects.create(codename='new default', charge_amount=0)
+    config.SUBSCRIPTIONS_DEFAULT_PLAN_ID = new_default_plan.id
+
+    assert user.subscriptions.active().count() == 2
+
+    subscription_new = user.subscriptions.filter(plan=recharge_plan).first()
+    assert subscription_old.start == subscription_new.start
+    assert subscription_old.end == subscription_new.end
+
+    default_subscription = user.subscriptions.active().filter(plan=recharge_plan).first()
+    assert now() - timedelta(seconds=1) < default_subscription.start < now()

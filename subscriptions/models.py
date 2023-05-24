@@ -149,17 +149,21 @@ class QuotaCache:
 
 
 class SubscriptionQuerySet(models.QuerySet):
+
+    def overlap(self, since: datetime, until: datetime) -> QuerySet:
+        return self.filter(end__gte=since, start__lte=until)
+
     def active(self, at: Optional[datetime] = None) -> QuerySet:
         at = at or now()
-        return self.filter(start__lte=at, end__gt=at)
+        return self.overlap(at, at)
 
     def expiring(self, within: datetime, since: Optional[datetime] = None) -> QuerySet:
         since = since or now()
         return self.filter(end__gte=since, end__lte=since + within)
 
-    def recurring(self, value: bool = True) -> QuerySet:
+    def recurring(self, predicate: bool = True) -> QuerySet:
         subscriptions = self.select_related('plan')
-        return subscriptions.exclude(plan__charge_period=INFINITY) if value else subscriptions.filter(plan__charge_period=INFINITY)
+        return subscriptions.exclude(plan__charge_period=INFINITY) if predicate else subscriptions.filter(plan__charge_period=INFINITY)
 
 
 class Subscription(models.Model):
@@ -306,14 +310,13 @@ class Subscription(models.Model):
         except Plan.DoesNotExist:
             return
 
-        if self.plan == default_plan:
+        if self.plan == default_plan or not self.plan.is_recurring():
             return
 
-        default_subscriptions = Subscription.objects.filter(
-            user=self.user,
-            plan=default_plan,
-            start__lt=self.end,
-            end__gt=self.start,
+        default_subscriptions = (
+            Subscription.objects
+            .overlap(self.start, self.end)
+            .filter(user=self.user, plan=default_plan)
         )
 
         for default_subscription in default_subscriptions:
