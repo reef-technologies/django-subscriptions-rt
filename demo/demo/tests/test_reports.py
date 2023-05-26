@@ -1,7 +1,16 @@
 from collections import Counter
 from freezegun import freeze_time
-from subscriptions.reports import SubscriptionsReport, TransactionsReport
+from subscriptions.reports import SubscriptionsReport, TransactionsReport, WEEKLY
 from datetime import timedelta
+
+
+def test__reports__subscriptions__iter_periods(now, days):
+    assert list(SubscriptionsReport.iter_periods(WEEKLY, since=now, until=now+days(22))) == [
+        SubscriptionsReport(since=now, until=now+days(7)),
+        SubscriptionsReport(since=now+days(7), until=now+days(14)),
+        SubscriptionsReport(since=now+days(14), until=now+days(21)),
+        SubscriptionsReport(since=now+days(21), until=now+days(22)),
+    ]
 
 
 def test__reports__subscriptions__overlapping(reports_subscriptions, now, days):

@@ -3,19 +3,40 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from decimal import Decimal
 from statistics import median
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Iterator, List, Optional, Tuple
 
 from djmoney.money import Money
 from django.db.models import Q, QuerySet
 from django.db.models.aggregates import Count
 from django.utils.timezone import now
 
+from dateutil.rrule import rrule
+from more_itertools import pairwise
+from dateutil.rrule import YEARLY, MONTHLY, WEEKLY, DAILY, HOURLY, MINUTELY, SECONDLY  # noqa
+
 from .models import AbstractTransaction, Plan, Subscription, SubscriptionPayment, \
     SubscriptionPaymentRefund
 
 
+class IterPeriodsMixin:
+
+    @classmethod
+    def iter_periods(cls, frequency: int, since: datetime, until: datetime, **kwargs) -> Iterator:
+        """
+        Generate report instances for `since`-`until` period with desired frequency.
+
+        For frequency, use `subscriptions.reports.[YEARLY|MONTHLY|WEEKLY|DAILY|HOURLY|MINUTELY|SECONDLY]`.
+        """
+        points_in_time = rrule(frequency, dtstart=since, until=until)
+        for start, end in pairwise(points_in_time):
+            yield cls(since=start, until=end, **kwargs)
+
+        if end != until:  # remains if since-until period doesn't match frequency perfectly
+            yield cls(since=end, until=until, **kwargs)
+
+
 @dataclass
-class SubscriptionsReport:
+class SubscriptionsReport(IterPeriodsMixin):
 
     since: datetime
     until: datetime = field(default_factory=now)
@@ -97,7 +118,7 @@ class SubscriptionsReport:
 
 
 @dataclass
-class TransactionsReport:
+class TransactionsReport(IterPeriodsMixin):
 
     provider_codename: str
     since: datetime
