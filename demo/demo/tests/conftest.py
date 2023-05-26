@@ -1,3 +1,4 @@
+from copy import copy
 import json
 from base64 import b64encode
 from datetime import datetime, timedelta
@@ -573,3 +574,33 @@ def default_plan(db, settings) -> Plan:
     )
     config.SUBSCRIPTIONS_DEFAULT_PLAN_ID = plan.id
     return plan
+
+
+@pytest.fixture
+def reports_subscriptions(db, user, plan, bigger_plan, recharge_plan, now, days) -> List[Subscription]:
+    """
+    plan (no prolongation)
+    -------[============================]x------------------------------->
+
+    bigger plan (we expect prolongation)
+    ----------------[========================](========================)->
+
+    x2 plan (other user)
+    -------[============================](============================)-->
+
+    x10 recharge plan (other user)
+    ------------[==============]x---------------------------------------->
+
+    time:--0----3---7----------17-------30---37-------------------------->
+    """
+    other_user = copy(user)
+    other_user.id = None
+    other_user.username = 'test2'
+    other_user.save()
+
+    return [
+        Subscription.objects.create(user=user, plan=plan, start=now, auto_prolong=False),
+        Subscription.objects.create(user=user, plan=bigger_plan, start=now+days(7)),
+        Subscription.objects.create(user=other_user, plan=plan, start=now, quantity=2),
+        Subscription.objects.create(user=other_user, plan=recharge_plan, start=now+days(3), auto_prolong=False, quantity=10),
+    ]

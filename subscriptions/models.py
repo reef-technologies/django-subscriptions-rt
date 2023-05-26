@@ -15,7 +15,8 @@ from django.conf import settings
 from django.contrib.auth.models import AbstractBaseUser
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import models
-from django.db.models import Index, QuerySet, UniqueConstraint
+from django.db.models import F, Q, DateTimeField, ExpressionWrapper, Index, QuerySet, UniqueConstraint
+from django.db.models.functions import Least
 from django.urls import reverse
 from django.utils.timezone import now
 from pydantic import BaseModel
@@ -149,9 +150,13 @@ class QuotaCache:
 
 
 class SubscriptionQuerySet(models.QuerySet):
+
+    def overlap(self, since: datetime, until: datetime) -> QuerySet:
+        return self.filter(end__gte=since, start__lte=until)
+
     def active(self, at: Optional[datetime] = None) -> QuerySet:
         at = at or now()
-        return self.filter(start__lte=at, end__gt=at)
+        return self.overlap(at, at)
 
     def expiring(self, within: datetime, since: Optional[datetime] = None) -> QuerySet:
         since = since or now()
@@ -160,6 +165,19 @@ class SubscriptionQuerySet(models.QuerySet):
     def recurring(self, value: bool = True) -> QuerySet:
         subscriptions = self.select_related('plan')
         return subscriptions.exclude(plan__charge_period=INFINITY) if value else subscriptions.filter(plan__charge_period=INFINITY)
+
+    def with_ages(self, at: Optional[datetime] = None) -> QuerySet:
+        return self.annotate(
+            age=ExpressionWrapper(Least(at or now(), F('end')) - F('start'), output_field=DateTimeField()),
+        )
+
+    def ended_or_ending(self) -> QuerySet:
+        now_ = now()
+        return self.filter(Q(end__lte=now_) | Q(end__gt=now_, auto_prolong=False))
+
+    def new(self, since: datetime, until: datetime) -> QuerySet:
+        """ Newly created subscriptions within selected period. """
+        return self.filter(start__gte=since, start__lte=until)
 
 
 class Subscription(models.Model):
@@ -259,7 +277,11 @@ class Subscription(models.Model):
                 remains=amount,
             )
 
-    def iter_charge_dates(self, since: Optional[datetime] = None) -> Iterator[datetime]:
+    def iter_charge_dates(
+        self,
+        since: Optional[datetime] = None,
+        until: Optional[datetime] = None,
+    ) -> Iterator[datetime]:
         """ Including first charge (i.e. charge to create subscription) """
         charge_period = self.plan.charge_period
         since = since or self.start
@@ -269,6 +291,9 @@ class Subscription(models.Model):
 
             if charge_date < since:
                 continue
+
+            if charge_date > until:
+                return
 
             yield charge_date
             if charge_period == INFINITY:
@@ -371,6 +396,12 @@ class Usage(models.Model):
         return super().save(*args, **kwargs)
 
 
+class AbstractTransactionQuerySet(models.QuerySet):
+
+    def overlap(self, since: datetime, until: datetime) -> QuerySet:
+        return self.filter(subscription_end__gte=since, subscription_start__lte=until)
+
+
 class AbstractTransaction(models.Model):
 
     class Status(models.IntegerChoices):
@@ -390,6 +421,8 @@ class AbstractTransaction(models.Model):
     metadata = models.JSONField(blank=True, default=dict, encoder=DjangoJSONEncoder)
     created = models.DateTimeField(blank=True, editable=False)
     updated = models.DateTimeField(blank=True, editable=False)
+
+    objects = AbstractTransactionQuerySet.as_manager()
 
     class Meta:
         abstract = True
