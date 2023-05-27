@@ -396,12 +396,6 @@ class Usage(models.Model):
         return super().save(*args, **kwargs)
 
 
-class AbstractTransactionQuerySet(models.QuerySet):
-
-    def overlap(self, since: datetime, until: datetime) -> QuerySet:
-        return self.filter(subscription_end__gte=since, subscription_start__lte=until)
-
-
 class AbstractTransaction(models.Model):
 
     class Status(models.IntegerChoices):
@@ -421,8 +415,6 @@ class AbstractTransaction(models.Model):
     metadata = models.JSONField(blank=True, default=dict, encoder=DjangoJSONEncoder)
     created = models.DateTimeField(blank=True, editable=False)
     updated = models.DateTimeField(blank=True, editable=False)
-
-    objects = AbstractTransactionQuerySet.as_manager()
 
     class Meta:
         abstract = True

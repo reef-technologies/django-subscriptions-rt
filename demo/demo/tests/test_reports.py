@@ -1,6 +1,8 @@
 from collections import Counter
+from more_itertools import partition
 from freezegun import freeze_time
-from subscriptions.reports import SubscriptionsReport, TransactionsReport, WEEKLY
+from subscriptions.models import SubscriptionPayment
+from subscriptions.reports import SubscriptionsReport, TransactionsReport, WEEKLY, MONTHLY
 from datetime import timedelta
 
 
@@ -10,6 +12,10 @@ def test__reports__subscriptions__iter_periods(now, days):
         SubscriptionsReport(since=now+days(7), until=now+days(14)),
         SubscriptionsReport(since=now+days(14), until=now+days(21)),
         SubscriptionsReport(since=now+days(21), until=now+days(22)),
+    ]
+
+    assert list(SubscriptionsReport.iter_periods(MONTHLY, since=now, until=now+days(22))) == [
+        SubscriptionsReport(since=now, until=now+days(22)),
     ]
 
 
@@ -139,3 +145,74 @@ def test__reports__subscriptions__active__plans__quantities(reports_subscription
 
 def test__reports__subscriptions__active__plans__total(reports_subscriptions, now, days, plan, bigger_plan, recharge_plan):
     assert SubscriptionsReport(now+days(7), now+days(17)).get_active_plans_total() == Counter({plan: 3, bigger_plan: 1})
+
+
+def test__reports__transactions__payments__query(reports_payments, paddle, now, days):
+    pmts = reports_payments
+
+    assert list(TransactionsReport(provider_codename=paddle.codename, since=now-days(1), until=now-timedelta(seconds=1)).payments) == []
+    assert list(TransactionsReport(provider_codename=paddle.codename, since=now, until=now+days(9)).payments) == [pmts[0]]
+    assert list(TransactionsReport(provider_codename=paddle.codename, since=now+days(1), until=now+days(10)).payments) == [pmts[1], pmts[4]]
+
+    assert list(TransactionsReport(provider_codename='nonexistent', since=now, until=now+days(40)).payments) == []
+
+
+def test__reports__transactions__payments__count_by_status(reports_payments, paddle, now, days):
+    assert dict(TransactionsReport(provider_codename=paddle.codename, since=now, until=now+days(30)).get_payments_count_by_status()) == {
+        SubscriptionPayment.Status.COMPLETED: 5,
+        SubscriptionPayment.Status.PENDING: 1,
+        SubscriptionPayment.Status.CANCELLED: 1,
+    }
+
+
+def test__reports__transactions__payments__completed__query(reports_payments, paddle, now, days):
+    pmts = reports_payments
+    assert list(TransactionsReport(provider_codename=paddle.codename, since=now, until=now+days(20)).completed_payments) == [pmts[0], pmts[1], pmts[2], pmts[6]]
+
+
+def test__reports__transactions__payments__completed__amounts(reports_payments, paddle, now, days, usd):
+    amounts = TransactionsReport(provider_codename=paddle.codename, since=now, until=now+days(30)).get_completed_payments_amounts()
+    values, nones = partition(lambda x: x is None, amounts)
+    assert len(list(nones)) == 1
+    assert sorted(values) == sorted([usd(200), usd(180), usd(160), usd(140)])
+
+
+def test__reports__transactions__payments__completed__average(reports_payments, paddle, now, days, usd):
+    assert TransactionsReport(provider_codename=paddle.codename, since=now, until=now+days(30)).get_completed_payments_average() == usd(170)
+    assert TransactionsReport(provider_codename=paddle.codename, since=now-days(2), until=now-days(1)).get_completed_payments_average() is None
+
+
+def test__reports__transactions__payments__completed__total(reports_payments, paddle, now, days, usd):
+    assert TransactionsReport(provider_codename=paddle.codename, since=now, until=now+days(30)).get_completed_payments_total() == usd(680)
+
+
+def test__reports__transactions__payments__incompleted__amounts(reports_payments, paddle, now, days, usd):
+    amounts = TransactionsReport(provider_codename=paddle.codename, since=now, until=now+days(30)).get_incompleted_payments_amounts()
+    assert amounts == [usd(400), usd(400)]
+
+
+def test__reports__transactions__payments__incompleted__total(reports_payments, paddle, now, days, usd):
+    TransactionsReport(provider_codename=paddle.codename, since=now, until=now+days(30)).get_incompleted_payments_total() == usd(800)
+
+
+def test__reports__transactions__refunds__query(reports_payments, paddle, now, days):
+    pmts = reports_payments
+    assert list(TransactionsReport(provider_codename=paddle.codename, since=now, until=now+days(20)).refunds) == [pmts[-2]]
+
+
+def test__reports__transactions__refunds__count(reports_payments, paddle, now, days):
+    assert TransactionsReport(provider_codename=paddle.codename, since=now, until=now+days(20)).get_refunds_count() == 1
+
+
+def test__reports__transactions__refunds__amounts(reports_payments, paddle, now, days, usd):
+    assert TransactionsReport(provider_codename=paddle.codename, since=now, until=now+days(20)).get_refunds_amounts() == [usd(250)]
+
+
+def test__reports__transactions__refunds__average(reports_payments, paddle, now, days, usd):
+    assert TransactionsReport(provider_codename=paddle.codename, since=now, until=now+days(1)).get_refunds_average() is None
+    assert TransactionsReport(provider_codename=paddle.codename, since=now, until=now+days(20)).get_refunds_average() == usd(250)
+
+
+def test__reports__transactions__refunds__total(reports_payments, paddle, now, days, usd):
+    assert TransactionsReport(provider_codename=paddle.codename, since=now, until=now+days(1)).get_refunds_total() is None
+    assert TransactionsReport(provider_codename=paddle.codename, since=now, until=now+days(20)).get_refunds_total() == usd(250)

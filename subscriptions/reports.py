@@ -7,7 +7,6 @@ from typing import Dict, Iterator, List, Optional, Tuple
 
 from djmoney.money import Money
 from django.db.models import Q, QuerySet
-from django.db.models.aggregates import Count
 from django.utils.timezone import now
 
 from dateutil.rrule import rrule
@@ -28,6 +27,7 @@ class IterPeriodsMixin:
         For frequency, use `subscriptions.reports.[YEARLY|MONTHLY|WEEKLY|DAILY|HOURLY|MINUTELY|SECONDLY]`.
         """
         points_in_time = rrule(frequency, dtstart=since, until=until)
+        end = since
         for start, end in pairwise(points_in_time):
             yield cls(since=start, until=end, **kwargs)
 
@@ -130,15 +130,17 @@ class TransactionsReport(IterPeriodsMixin):
     def payments(self) -> QuerySet:
         return (
             SubscriptionPayment.objects
-            .overlap(self.since, self.until)
-            .filter(provider_codename=self.provider_codename)
+            .filter(
+                provider_codename=self.provider_codename,
+                created__gte=self.since,
+                created__lte=self.until,
+            )
             .order_by('created')
         )
 
-    def get_payments_count_by_status(self) -> Dict[AbstractTransaction.Status, int]:
+    def get_payments_count_by_status(self) -> Counter[AbstractTransaction.Status]:
         """ Payments' statuses and their respective counts."""
-        queryset = self.payments.values('status').annotate(count=Count('status'))
-        return {item['status']: item['count'] for item in queryset}
+        return Counter(self.payments.values_list('status', flat=True))
 
     @property
     def completed_payments(self) -> QuerySet:
@@ -147,41 +149,46 @@ class TransactionsReport(IterPeriodsMixin):
     def get_completed_payments_amounts(self) -> List[Optional[Money]]:
         """ List of amounts for completed payments. """
         return [
-            amount * quantity if amount is not None else None
-            for amount, quantity in self.completed_payments.values_list('amount', 'quantity')
+            Money(amount, amount_currency) * quantity if amount is not None else None
+            for amount, amount_currency, quantity
+            in self.completed_payments.values_list('amount', 'amount_currency', 'quantity')
         ]
 
     def get_completed_payments_average(self) -> Money:
         """ Median amount for completed payments. """
-        return median(
-            amount
-            for amount in self.get_completed_payments_amounts()
-            if amount is not None
-        )
+        if (amounts := self.get_completed_payments_amounts()):
+            return median(amount for amount in amounts if amount is not None)
 
-    def get_completed_payments_total(self) -> Decimal:
+    def get_completed_payments_total(self) -> Optional[Money]:
         """ Total amount for completed payments. """
-        return sum(
-            amount
-            for amount in self.get_completed_payments_amounts()
-            if amount is not None
-        )
+        if (amounts := self.get_completed_payments_amounts()):
+            return sum(amount for amount in amounts if amount is not None)
 
     def get_incompleted_payments_amounts(self) -> List[Optional[Decimal]]:
         """ List of amounts for incompleted payments. """
         incompleted_payments = self.payments.exclude(status=AbstractTransaction.Status.COMPLETED)
         return [
-            amount * quantity if amount is not None else None
-            for amount, quantity in incompleted_payments.values_list('amount', 'quantity')
+            Money(amount, amount_currency) * quantity if amount is not None else None
+            for amount, amount_currency, quantity
+            in incompleted_payments.values_list('amount', 'amount_currency', 'quantity')
         ]
 
-    def get_incompleted_payments_total(self) -> Decimal:
+    def get_incompleted_payments_total(self) -> Optional[Money]:
         """ Total amount for incompleted payments. """
-        return sum(amount for amount in self.get_incompleted_payments_amounts() if amount is not None)
+        if (amounts := self.get_incompleted_payments_amounts()):
+            return sum(amount for amount in amounts if amount is not None)
 
     @property
     def refunds(self) -> QuerySet:
-        return SubscriptionPaymentRefund.objects.overlap(self.since, self.until).order_by('created')
+        return (
+            SubscriptionPaymentRefund.objects
+            .filter(
+                created__gte=self.since,
+                created__lte=self.until,
+                status=SubscriptionPaymentRefund.Status.COMPLETED,
+            )
+            .order_by('created')
+        )
 
     def get_refunds_count(self) -> int:
         """ Total number of refunds."""
@@ -189,15 +196,20 @@ class TransactionsReport(IterPeriodsMixin):
 
     def get_refunds_amounts(self) -> List[Optional[Money]]:
         """ List of refunds' amounts. """
-        return list(self.refunds.values_list('amount', flat=True))
+        return list(
+            Money(amount, currency) if amount is not None else None
+            for amount, currency in self.refunds.values_list('amount', 'amount_currency')
+        )
 
-    def get_refunds_average(self) -> Money:
+    def get_refunds_average(self) -> Optional[Money]:
         """ Median amount for refunds. """
-        return median(amount for amount in self.get_refunds_amounts() if amount is not None)
+        if (amounts := self.get_refunds_amounts()):
+            return median(amount for amount in amounts if amount is not None)
 
-    def get_refunds_total(self) -> Money:
+    def get_refunds_total(self) -> Optional[Money]:
         """ Total amount for refunds. """
-        return sum(amount for amount in self.get_refunds_amounts() if amount is not None)
+        if (amounts := self.get_refunds_amounts()):
+            return sum(amount for amount in amounts if amount is not None)
 
     def get_estimated_charge_amounts_by_time(self) -> Dict[datetime, Money]:
         """
