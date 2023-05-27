@@ -2,20 +2,21 @@ from collections import Counter
 from more_itertools import partition
 from freezegun import freeze_time
 from subscriptions.models import SubscriptionPayment
-from subscriptions.reports import SubscriptionsReport, TransactionsReport, WEEKLY, MONTHLY
+from subscriptions.reports import SubscriptionsReport, TransactionsReport, WEEKLY, MONTHLY, NO_MONEY
 from datetime import timedelta
 
 
 def test__reports__subscriptions__iter_periods(now, days):
+    eps = timedelta(microseconds=1)
     assert list(SubscriptionsReport.iter_periods(WEEKLY, since=now, until=now+days(22))) == [
-        SubscriptionsReport(since=now, until=now+days(7)),
-        SubscriptionsReport(since=now+days(7), until=now+days(14)),
-        SubscriptionsReport(since=now+days(14), until=now+days(21)),
-        SubscriptionsReport(since=now+days(21), until=now+days(22)),
+        SubscriptionsReport(since=now, until=now+days(7)-eps),
+        SubscriptionsReport(since=now+days(7), until=now+days(14)-eps),
+        SubscriptionsReport(since=now+days(14), until=now+days(21)-eps),
+        SubscriptionsReport(since=now+days(21), until=now+days(22)-eps),
     ]
 
     assert list(SubscriptionsReport.iter_periods(MONTHLY, since=now, until=now+days(22))) == [
-        SubscriptionsReport(since=now, until=now+days(22)),
+        SubscriptionsReport(since=now, until=now+days(22)-eps),
     ]
 
 
@@ -214,5 +215,33 @@ def test__reports__transactions__refunds__average(reports_payments, paddle, now,
 
 
 def test__reports__transactions__refunds__total(reports_payments, paddle, now, days, usd):
-    assert TransactionsReport(provider_codename=paddle.codename, since=now, until=now+days(1)).get_refunds_total() is None
+    assert TransactionsReport(provider_codename=paddle.codename, since=now, until=now+days(1)).get_refunds_total() == NO_MONEY
     assert TransactionsReport(provider_codename=paddle.codename, since=now, until=now+days(20)).get_refunds_total() == usd(250)
+
+
+def test__reports__transactions__estimated_recurring_charge__by_time(reports_subscriptions, paddle, now, days, usd):
+    assert TransactionsReport(provider_codename=paddle.codename, since=now-days(2), until=now-days(1)).get_estimated_recurring_charge_amounts_by_time() == {}
+    assert TransactionsReport(provider_codename=paddle.codename, since=now-days(1), until=now+days(2)).get_estimated_recurring_charge_amounts_by_time() == {
+        now: usd(100) * 3,
+    }
+    assert TransactionsReport(provider_codename=paddle.codename, since=now, until=now+days(7)).get_estimated_recurring_charge_amounts_by_time() == {
+        now: usd(100) * 3,
+        now+days(7): usd(200),
+    }
+    assert TransactionsReport(provider_codename=paddle.codename, since=now+days(3), until=now+days(7)).get_estimated_recurring_charge_amounts_by_time() == {
+        now+days(7): usd(200),
+    }
+    assert TransactionsReport(provider_codename=paddle.codename, since=now-days(1), until=now+days(40)).get_estimated_recurring_charge_amounts_by_time() == {
+        now: usd(100) * 3,
+        now+days(7): usd(200),
+        now+days(30): usd(100) * 3,
+        now+days(37): usd(200),
+    }
+
+
+def test__reports__transactions__estimated_recurring_charge__total(reports_subscriptions, paddle, now, days, usd):
+    assert TransactionsReport(provider_codename=paddle.codename, since=now-days(2), until=now-days(1)).get_estimated_recurring_charge_total() == NO_MONEY
+    assert TransactionsReport(provider_codename=paddle.codename, since=now-days(1), until=now+days(2)).get_estimated_recurring_charge_total() == usd(300)
+    assert TransactionsReport(provider_codename=paddle.codename, since=now, until=now+days(7)).get_estimated_recurring_charge_total() == usd(500)
+    assert TransactionsReport(provider_codename=paddle.codename, since=now+days(3), until=now+days(7)).get_estimated_recurring_charge_total() == usd(200)
+    assert TransactionsReport(provider_codename=paddle.codename, since=now-days(1), until=now+days(40)).get_estimated_recurring_charge_total() == usd(1000)

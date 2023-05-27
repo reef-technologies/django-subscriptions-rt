@@ -1,4 +1,4 @@
-from collections import Counter
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from decimal import Decimal
@@ -15,6 +15,10 @@ from dateutil.rrule import YEARLY, MONTHLY, WEEKLY, DAILY, HOURLY, MINUTELY, SEC
 
 from .models import AbstractTransaction, Plan, Subscription, SubscriptionPayment, \
     SubscriptionPaymentRefund
+from .defaults import DEFAULT_CURRENCY
+
+
+NO_MONEY = Money(0, DEFAULT_CURRENCY)
 
 
 class IterPeriodsMixin:
@@ -22,17 +26,19 @@ class IterPeriodsMixin:
     @classmethod
     def iter_periods(cls, frequency: int, since: datetime, until: datetime, **kwargs) -> Iterator:
         """
-        Generate report instances for `since`-`until` period with desired frequency.
+        Generate report instances for [since, until) period with desired frequency.
 
         For frequency, use `subscriptions.reports.[YEARLY|MONTHLY|WEEKLY|DAILY|HOURLY|MINUTELY|SECONDLY]`.
         """
+        eps = timedelta(microseconds=1)
+
         points_in_time = rrule(frequency, dtstart=since, until=until)
         end = since
         for start, end in pairwise(points_in_time):
-            yield cls(since=start, until=end, **kwargs)
+            yield cls(since=start, until=end-eps, **kwargs)
 
         if end != until:  # remains if since-until period doesn't match frequency perfectly
-            yield cls(since=end, until=until, **kwargs)
+            yield cls(since=end, until=until-eps, **kwargs)
 
 
 @dataclass
@@ -154,15 +160,16 @@ class TransactionsReport(IterPeriodsMixin):
             in self.completed_payments.values_list('amount', 'amount_currency', 'quantity')
         ]
 
-    def get_completed_payments_average(self) -> Money:
+    def get_completed_payments_average(self) -> Optional[Money]:
         """ Median amount for completed payments. """
-        if (amounts := self.get_completed_payments_amounts()):
-            return median(amount for amount in amounts if amount is not None)
+        amounts = [amount for amount in self.get_completed_payments_amounts() if amount is not None]
+        if amounts:
+            return median(amounts)
 
-    def get_completed_payments_total(self) -> Optional[Money]:
+    def get_completed_payments_total(self) -> Money:
         """ Total amount for completed payments. """
-        if (amounts := self.get_completed_payments_amounts()):
-            return sum(amount for amount in amounts if amount is not None)
+        amounts = [amount for amount in self.get_completed_payments_amounts() if amount is not None]
+        return sum(amounts) if amounts else NO_MONEY
 
     def get_incompleted_payments_amounts(self) -> List[Optional[Decimal]]:
         """ List of amounts for incompleted payments. """
@@ -173,10 +180,10 @@ class TransactionsReport(IterPeriodsMixin):
             in incompleted_payments.values_list('amount', 'amount_currency', 'quantity')
         ]
 
-    def get_incompleted_payments_total(self) -> Optional[Money]:
+    def get_incompleted_payments_total(self) -> Money:
         """ Total amount for incompleted payments. """
-        if (amounts := self.get_incompleted_payments_amounts()):
-            return sum(amount for amount in amounts if amount is not None)
+        amounts = [amount for amount in self.get_incompleted_payments_amounts() if amount is not None]
+        return sum(amounts) if amounts else NO_MONEY
 
     @property
     def refunds(self) -> QuerySet:
@@ -196,22 +203,23 @@ class TransactionsReport(IterPeriodsMixin):
 
     def get_refunds_amounts(self) -> List[Optional[Money]]:
         """ List of refunds' amounts. """
-        return list(
+        return [
             Money(amount, currency) if amount is not None else None
             for amount, currency in self.refunds.values_list('amount', 'amount_currency')
-        )
+        ]
 
     def get_refunds_average(self) -> Optional[Money]:
         """ Median amount for refunds. """
-        if (amounts := self.get_refunds_amounts()):
-            return median(amount for amount in amounts if amount is not None)
+        amounts = [amount for amount in self.get_refunds_amounts() if amount is not None]
+        if amounts:
+            return median(amounts)
 
     def get_refunds_total(self) -> Optional[Money]:
         """ Total amount for refunds. """
-        if (amounts := self.get_refunds_amounts()):
-            return sum(amount for amount in amounts if amount is not None)
+        amounts = [amount for amount in self.get_refunds_amounts() if amount is not None]
+        return sum(amounts) if amounts else NO_MONEY
 
-    def get_estimated_charge_amounts_by_time(self) -> Dict[datetime, Money]:
+    def get_estimated_recurring_charge_amounts_by_time(self) -> Dict[datetime, Money]:
         """
         Estimated charge amount by datetime.
 
@@ -225,13 +233,20 @@ class TransactionsReport(IterPeriodsMixin):
             .select_related('plan')
         )
 
-        return {
-            charge_date: subscription.plan.charge_amount * subscription.quantity
-            for subscription in subscriptions
-            for charge_date in subscription.iter_charge_dates(self.since, self.until)
-            if subscription.plan.charge_amount is not None
-        }
+        estimated_charges = defaultdict(int)
+        for subscription in subscriptions:
+            if subscription.plan.charge_amount is None:
+                continue
 
-    def get_estimated_charge_total(self) -> Money:
+            amount = subscription.plan.charge_amount * subscription.quantity
+            for charge_date in subscription.iter_charge_dates(self.since, self.until):
+                estimated_charges[charge_date] += amount
+
+        return estimated_charges
+
+    def get_estimated_recurring_charge_total(self) -> Money:
         """ Total estimated charge amount. """
-        return sum(self.get_estimated_charge_amounts_by_time().values())
+        if (amounts_by_time := self.get_estimated_recurring_charge_amounts_by_time()):
+            return sum(amounts_by_time.values())
+
+        return NO_MONEY

@@ -292,7 +292,7 @@ class Subscription(models.Model):
             if charge_date < since:
                 continue
 
-            if charge_date > until:
+            if until and charge_date > until:
                 return
 
             yield charge_date

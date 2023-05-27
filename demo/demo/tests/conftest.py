@@ -27,6 +27,11 @@ from subscriptions.tasks import charge_recurring_subscriptions
 
 
 @pytest.fixture
+def usd() -> Callable:
+    return lambda value: Money(value, 'USD')
+
+
+@pytest.fixture
 def days():
     return lambda n: relativedelta(days=n)
 
@@ -60,11 +65,11 @@ def resource(db) -> Resource:
 
 
 @pytest.fixture
-def plan(db, days, resource) -> Plan:
+def plan(db, days, resource, usd) -> Plan:
     return Plan.objects.create(
         codename='plan',
         name='Plan',
-        charge_amount=Decimal(100),
+        charge_amount=usd(100),
         charge_period=days(30),
         max_duration=days(120),
         metadata={
@@ -83,11 +88,11 @@ def quota(db, plan, resource) -> Quota:
 
 
 @pytest.fixture
-def bigger_plan(db, days, resource) -> Plan:
+def bigger_plan(db, days, resource, usd) -> Plan:
     return Plan.objects.create(
         codename='bigger-plan',
         name='Bigger plan',
-        charge_amount=Decimal(200),
+        charge_amount=usd(200),
         charge_period=days(30),
     )
 
@@ -102,12 +107,12 @@ def bigger_quota(db, bigger_plan, resource) -> Quota:
 
 
 @pytest.fixture
-def recharge_plan(db, days, resource) -> Plan:
+def recharge_plan(db, days, resource, usd) -> Plan:
     # $10 for 10 resources, expires in 14 days
     return Plan.objects.create(
         codename='recharge-plan',
         name='Recharge plan',
-        charge_amount=Decimal(10),
+        charge_amount=usd(10),
         charge_period=INFINITY,
         max_duration=days(14),
     )
@@ -317,14 +322,14 @@ def apple_in_app(settings, apple_bundle_id) -> AppleInAppProvider:
 
 
 @pytest.fixture
-def paddle_unconfirmed_payment(db, paddle, plan, user) -> SubscriptionPayment:
+def paddle_unconfirmed_payment(db, paddle, plan, user, usd) -> SubscriptionPayment:
     return SubscriptionPayment.objects.create(
         user=user,
         plan=plan,
         subscription=None,
         provider_codename=paddle.codename,
         provider_transaction_id='12345',
-        amount=Money(100, 'USD'),
+        amount=usd(100),
     )
 
 
@@ -576,10 +581,10 @@ def google_in_app__subscription_purchase_dict(google_in_app) -> dict:
 
 
 @pytest.fixture
-def default_plan(db, settings) -> Plan:
+def default_plan(db, settings, usd) -> Plan:
     plan = Plan.objects.create(
         name='Default Plan',
-        charge_amount=Decimal('0.00'),
+        charge_amount=usd(0),
     )
     config.SUBSCRIPTIONS_DEFAULT_PLAN_ID = plan.id
     return plan
@@ -608,11 +613,6 @@ def reports_subscriptions(db, user, other_user, plan, bigger_plan, recharge_plan
         Subscription.objects.create(user=other_user, plan=plan, start=now, quantity=2),
         Subscription.objects.create(user=other_user, plan=recharge_plan, start=now+days(3), auto_prolong=False, quantity=10),
     ]
-
-
-@pytest.fixture
-def usd() -> Callable:
-    return lambda value: Money(value, 'USD')
 
 
 @pytest.fixture
