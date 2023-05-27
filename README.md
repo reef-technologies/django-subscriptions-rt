@@ -154,6 +154,83 @@ Workflow:
 
 [How to test](https://developer.android.com/google/play/billing/test)
 
+# Reports
+
+This app comes with basic reporting functionality, including (but not limited to) completed and incompleted payments during selected period of time, as well as estimated recurring charges' dates and amounts in past and future.
+
+Below is an example how to use reporting functionality:
+
+```python
+from django.utils.timezone import now
+from datetime import timedelta
+from subscriptions.reports import SubscriptionsReport, TransactionsReport
+from subscriptions.providers import get_provider
+
+subscriptions = SubscriptionsReport(
+   since=now()-timedelta(days=30),
+   until=now(),
+)
+
+print('New subscriptions count:', subscriptions.get_new_count())
+print('New subscriptions dates:', subscriptions.get_new_datetimes())
+
+print('Ended subscriptions count:', subscriptions.get_ended_count())
+print('Ended subscriptions dates:', subscriptions.get_ended_datetimes())
+print('Ended subscriptions ages:', subscriptions.get_ended_or_ending_ages())
+
+print('Active subscriptions count:', subscriptions.get_active_count())
+print('Active users count:', subscriptions.get_active_users_count())
+print('Active subscriptions ages:', subscriptions.get_active_ages())
+print('Active plans & quantities:', subscriptions.get_active_plans_and_quantities())
+print('Active plans -> quantity total:', subscriptions.get_active_plans_total())
+
+transactions = TransactionsReport(
+   provider_codename=get_provider().codename,
+   since=now()-timedelta(days=30),
+   until=now(),
+)
+
+print('Status -> num payments:', transactions.get_payments_count_by_status())
+
+print('Completed payments amounts:', transactions.get_completed_payments_amounts())
+print('Completed payments average:', transactions.get_completed_payments_average())
+print('Completed payments total:', transactions.get_completed_payments_total())
+
+print('Inompleted payments amounts:', transactions.get_incompleted_payments_amounts())
+print('Incompleted payments amounts:', transactions.get_incompleted_payments_total())
+
+print('Refunds count:', transactions.get_refunds_count())
+print('Refunds amounts:', transactions.get_refunds_amounts())
+print('Refunds average:', transactions.get_refunds_average())
+print('Refunds total:', transactions.get_refunds_total())
+
+print('Datetime -> estimated charge amount:', transactions.get_estimated_recurring_charge_amounts_by_time())
+print('Estimated charge total:', transactions.get_estimated_recurring_charge_total())
+```
+
+Usually it is handy to generate reports for some periods e.g. weeks, months, or years. There is a class method which will auto-generate subsequent reports with desired frequency:
+
+```python
+from subscriptions.reports import SubscriptionsReport, TransactionsReport, MONTHLY, DAILY
+
+for report in SubscriptionsReport.iter_periods(
+   frequency=MONTHLY,
+   since=now()-timedelta(days=90),
+   until=now(),
+):
+   print(f'New subscriptions count for {report.since}-{report.until}: {report.get_new_count()}')
+
+for report in TransactionsReport.iter_periods(
+   frequency=DAILY,
+   since=now()-timedelta(days=30),
+   until=now(),
+   provider_codename=get_provider().codename,
+):
+   print(f'Completed payments amount for {report.since}-{report.until}: {report.get_completed_payments_total()}')
+```
+
+Reports may be extended by subclassing the above classes.
+
 # Development setup
 
 Install the `subscriptions` as a development module using
