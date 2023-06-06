@@ -10,6 +10,8 @@ from subscriptions.models import Plan, Subscription, SubscriptionPayment
 from subscriptions.providers.google_in_app.models import GoogleAcknowledgementState, GoogleSubscription, GoogleSubscriptionNotificationType, GoogleSubscriptionState, GoogleSubscriptionPurchaseV2
 from subscriptions.utils import fromisoformat
 
+from .helpers import days
+
 
 def test_iter_subscriptions(google_in_app):
     list(google_in_app.iter_subscriptions())
@@ -225,7 +227,7 @@ def test_check_event():
     ...  # TODO
 
 
-def test_purchase_flow(google_in_app, purchase_token, user, plan_with_google, client, user_client, app_notification, google_subscription_purchase, google_rtdn_notification_factory, now, days):
+def test_purchase_flow(google_in_app, purchase_token, user, plan_with_google, client, user_client, app_notification, google_subscription_purchase, google_rtdn_notification_factory, now):
     """ Test initial purchase and renewal """
 
     with mock.patch('subscriptions.providers.google_in_app.GoogleInAppProvider.get_purchase', return_value=google_subscription_purchase):
@@ -261,7 +263,7 @@ def test_purchase_flow(google_in_app, purchase_token, user, plan_with_google, cl
     assert payment2.subscription.end == payment2.subscription_end
 
 
-def test_expiration_notification(google_in_app, purchase_token, user, plan_with_google, client, google_rtdn_notification_factory, google_in_app_payment, google_subscription_purchase, days):
+def test_expiration_notification(google_in_app, purchase_token, user, plan_with_google, client, google_rtdn_notification_factory, google_in_app_payment, google_subscription_purchase):
 
     assert google_in_app_payment.subscription.end == google_in_app_payment.subscription_end
     initial_subscription_end = google_in_app_payment.subscription_end

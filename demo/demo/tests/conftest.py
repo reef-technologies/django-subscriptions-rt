@@ -2,13 +2,11 @@ import json
 from base64 import b64encode
 from datetime import datetime, timedelta
 from datetime import timezone as tz
-from decimal import Decimal
 from functools import wraps
 from typing import Callable, List, Optional
 
 import pytest
 from constance import config
-from dateutil.relativedelta import relativedelta
 from django.contrib.auth import get_user_model
 from django.core.cache import caches
 from django.test import Client
@@ -24,21 +22,31 @@ from subscriptions.providers.google_in_app.models import GoogleAcknowledgementSt
 from subscriptions.providers.paddle import PaddleProvider
 from subscriptions.tasks import charge_recurring_subscriptions
 
-
-@pytest.fixture
-def days():
-    return lambda n: relativedelta(days=n)
+from .helpers import usd, days
+from .conftest_reports import *  # noqa
 
 
 @pytest.fixture
-def now():
+def now() -> datetime:
     return datetime(2022, 1, 1, 12, 00, 00, tzinfo=tz.utc)
+
+
+@pytest.fixture
+def eps() -> timedelta:
+    return timedelta(microseconds=1)
 
 
 @pytest.fixture
 def user(db):
     return get_user_model().objects.create(
         username='test',
+    )
+
+
+@pytest.fixture
+def other_user(db):
+    return get_user_model().objects.create(
+        username='test2',
     )
 
 
@@ -50,11 +58,11 @@ def resource(db) -> Resource:
 
 
 @pytest.fixture
-def plan(db, days, resource) -> Plan:
+def plan(db, resource) -> Plan:
     return Plan.objects.create(
         codename='plan',
         name='Plan',
-        charge_amount=Decimal(100),
+        charge_amount=usd(100),
         charge_period=days(30),
         max_duration=days(120),
         metadata={
@@ -73,11 +81,11 @@ def quota(db, plan, resource) -> Quota:
 
 
 @pytest.fixture
-def bigger_plan(db, days, resource) -> Plan:
+def bigger_plan(db, resource) -> Plan:
     return Plan.objects.create(
         codename='bigger-plan',
         name='Bigger plan',
-        charge_amount=Decimal(200),
+        charge_amount=usd(200),
         charge_period=days(30),
     )
 
@@ -92,12 +100,12 @@ def bigger_quota(db, bigger_plan, resource) -> Quota:
 
 
 @pytest.fixture
-def recharge_plan(db, days, resource) -> Plan:
+def recharge_plan(db, resource) -> Plan:
     # $10 for 10 resources, expires in 14 days
     return Plan.objects.create(
         codename='recharge-plan',
         name='Recharge plan',
-        charge_amount=Decimal(10),
+        charge_amount=usd(10),
         charge_period=INFINITY,
         max_duration=days(14),
     )
@@ -161,7 +169,7 @@ def get_cache(remaining_chunks) -> Callable:
 
 
 @pytest.fixture
-def two_subscriptions(user, now, days, resource) -> List[Subscription]:
+def two_subscriptions(user, now, resource) -> List[Subscription]:
     """
                          Subscription 1
     --------------[========================]------------> time
@@ -228,7 +236,7 @@ def two_subscriptions(user, now, days, resource) -> List[Subscription]:
 
 
 @pytest.fixture
-def five_subscriptions(db, plan, user, now, days) -> List[Subscription]:
+def five_subscriptions(db, plan, user, now) -> List[Subscription]:
     """
     Subscriptions:                    |now
     ----------------------------------[====sub0=====]-----> overlaps with "now"
@@ -314,7 +322,7 @@ def paddle_unconfirmed_payment(db, paddle, plan, user) -> SubscriptionPayment:
         subscription=None,
         provider_codename=paddle.codename,
         provider_transaction_id='12345',
-        amount=Money(100, 'USD'),
+        amount=usd(100),
     )
 
 
@@ -444,7 +452,7 @@ def google_plan_id() -> str:
 
 
 @pytest.fixture
-def google_subscription_purchase(now, days, google_plan_id) -> GoogleSubscriptionPurchaseV2:
+def google_subscription_purchase(now, google_plan_id) -> GoogleSubscriptionPurchaseV2:
     return GoogleSubscriptionPurchaseV2(
         lineItems=[GoogleSubscriptionPurchaseLineItem(
             productId=google_plan_id,
@@ -523,7 +531,7 @@ def google_test_notification() -> dict:
 
 
 @pytest.fixture
-def google_in_app_payment(google_in_app, purchase_token, plan_with_google, user, now, days) -> Subscription:
+def google_in_app_payment(google_in_app, purchase_token, plan_with_google, user, now) -> Subscription:
     return SubscriptionPayment.objects.create(
         provider_codename=google_in_app.codename,
         provider_transaction_id=purchase_token,
@@ -569,7 +577,7 @@ def google_in_app__subscription_purchase_dict(google_in_app) -> dict:
 def default_plan(db, settings) -> Plan:
     plan = Plan.objects.create(
         name='Default Plan',
-        charge_amount=Decimal('0.00'),
+        charge_amount=usd(0),
     )
     config.SUBSCRIPTIONS_DEFAULT_PLAN_ID = plan.id
     return plan

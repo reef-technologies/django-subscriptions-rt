@@ -8,6 +8,8 @@ from django.utils.timezone import now
 from subscriptions.functions import get_default_plan
 from subscriptions.models import Plan, Subscription
 
+from .helpers import days
+
 
 def test__default_plan__does_not_exist(settings, plan):
     assert get_default_plan() is None
@@ -32,7 +34,7 @@ def test__default_plan__created_for_new_user(default_plan, plan):
     assert subscription.user == user
     now_ = now()
     assert now_ - timedelta(seconds=1) < subscription.start < now_
-    assert subscription.end > now_ + timedelta(days=365*5)  # I will probably work somewhere else in 5 years, so no need to check further :D
+    assert subscription.end > now_ + days(365*5)  # I will probably work somewhere else in 5 years, so no need to check further :D
 
 
 def test__default_plan__no_overlap_with_subscriptions(default_plan, plan, user):
@@ -55,14 +57,14 @@ def test__default_plan__no_overlap_with_subscriptions(default_plan, plan, user):
         user=user,
         plan=plan,
         start=now_,
-        end=now_ + timedelta(days=7),
+        end=now_ + days(7),
     )
 
     Subscription.objects.create(
         user=user,
         plan=plan,
-        start=now_ + timedelta(days=3),
-        end=now_ + timedelta(days=10),
+        start=now_ + days(3),
+        end=now_ + days(10),
     )
 
     assert user.subscriptions.count() == 4
@@ -70,8 +72,8 @@ def test__default_plan__no_overlap_with_subscriptions(default_plan, plan, user):
 
     assert default_sub_before.start < now_
     assert default_sub_before.end == now_
-    assert default_sub_after.start == now_ + timedelta(days=10)
-    assert default_sub_after.end > now_ + timedelta(days=356*5)
+    assert default_sub_after.start == now_ + days(10)
+    assert default_sub_after.end > now_ + days(356*5)
 
 
 def test__default_plan__shift_if_subscription_prolonged(default_plan, plan, user, subscription):
@@ -111,9 +113,12 @@ def test__default_plan__split_if_subscription_appears(default_plan, plan, user):
     assert user.subscriptions.active().count() == 1
     default_subscription_old = user.subscriptions.filter(plan=default_plan).first()
 
+    now_ = now()
     subscription = Subscription.objects.create(
         user=user,
         plan=plan,
+        start=now_,
+        end=now_ + days(7),
     )
     assert user.subscriptions.active().count() == 1
     assert user.subscriptions.active().first() == subscription
@@ -150,7 +155,7 @@ def test__default_plan__enable__old_subscription(user, subscription, settings):
     assert subscriptions[0] == subscription
     assert subscriptions[1].plan == default_plan
     assert now_ - timedelta(seconds=1) < subscriptions[1].start < now_ + timedelta(seconds=1)
-    assert subscriptions[1].end > now_ + timedelta(days=365*5)
+    assert subscriptions[1].end > now_ + days(365*5)
 
 
 def test__default_plan__enable__active_subscription(user, subscription, settings):
@@ -162,7 +167,7 @@ def test__default_plan__enable__active_subscription(user, subscription, settings
                          ^-now
     """
     assert user.subscriptions.count() == 1
-    subscription.end = now() + timedelta(days=7)
+    subscription.end = now() + days(7)
     subscription.save()
 
     default_plan = Plan.objects.create(codename='default', charge_amount=0)
@@ -173,7 +178,7 @@ def test__default_plan__enable__active_subscription(user, subscription, settings
     assert subscriptions[0] == subscription
     assert subscriptions[1].plan == default_plan
     assert subscriptions[1].start == subscription.end
-    assert subscriptions[1].end > subscription.end + timedelta(days=365*5)
+    assert subscriptions[1].end > subscription.end + days(365*5)
 
 
 def test__default_plan__disabling__active(user, default_plan, subscription):
@@ -210,7 +215,7 @@ def test__default_plan__disabling__future(user, default_plan, subscription):
                          ^-now
     """
 
-    subscription.end = now() + timedelta(days=7)
+    subscription.end = now() + days(7)
     subscription.save()
 
     assert user.subscriptions.count() == 2
@@ -236,7 +241,7 @@ def test__default_plan__switch__active(user, default_plan):
     assert user.subscriptions.count() == 1
     subscription = user.subscriptions.first()
     assert subscription.plan == default_plan
-    assert subscription.end > now() + timedelta(days=365)
+    assert subscription.end > now() + days(365)
 
     new_default_plan = Plan.objects.create(codename='new default', charge_amount=0)
     config.SUBSCRIPTIONS_DEFAULT_PLAN_ID = new_default_plan.id
@@ -250,7 +255,7 @@ def test__default_plan__switch__active(user, default_plan):
     new_subscription = Subscription.objects.active().first()
     assert new_subscription.plan == new_default_plan
     assert now() - timedelta(seconds=1) < new_subscription.start < now()
-    assert new_subscription.end > now() + timedelta(days=365)
+    assert new_subscription.end > now() + days(365)
 
 
 def test__default_plan__switch__future(user, default_plan, subscription):
@@ -264,7 +269,7 @@ def test__default_plan__switch__future(user, default_plan, subscription):
     assert user.subscriptions.count() == 2
 
     subscription = user.subscriptions.first()
-    subscription.end = now() + timedelta(days=7)
+    subscription.end = now() + days(7)
     subscription.save()
 
     default_subscription = user.subscriptions.order_by('end').last()

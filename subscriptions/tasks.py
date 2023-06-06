@@ -110,7 +110,7 @@ def _charge_recurring_subscription(
 
         # here we create a failed SubscriptionPayment to indicate that we tried
         # to charge but something went wrong, so that subsequent task calls
-        # won't try charging and sending email again withing same charge_period
+        # won't try charging and sending email again within same charge_period
         SubscriptionPayment.objects.create(
             provider_codename='',
             status=SubscriptionPayment.Status.ERROR,
