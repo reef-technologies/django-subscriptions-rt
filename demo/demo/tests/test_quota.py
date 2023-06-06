@@ -2,6 +2,8 @@ from datetime import timedelta
 
 from subscriptions.models import INFINITY, Quota
 
+from .helpers import days
+
 
 def test_quota_without_subscription(db, plan, resource, remains, now):
     Quota.objects.create(
@@ -13,7 +15,7 @@ def test_quota_without_subscription(db, plan, resource, remains, now):
     assert remains(at=now) == 0
 
 
-def test_quota_without_usage(db, subscription, resource, remains, days):
+def test_quota_without_usage(db, subscription, resource, remains):
     """
                      Subscription
     --------------[================]------------> time
@@ -35,7 +37,7 @@ def test_quota_without_usage(db, subscription, resource, remains, days):
     assert remains(at=subscription.end + timedelta(seconds=1)) == 0
 
 
-def test_quota_recharge(db, subscription, resource, remains, days):
+def test_quota_recharge(db, subscription, resource, remains):
     """
                    Subscription
     ----------[=========================]-------------> time
@@ -61,7 +63,7 @@ def test_quota_recharge(db, subscription, resource, remains, days):
     assert remains(at=subscription.end) == 0
 
 
-def test_quota_burn(db, subscription, resource, remains, days):
+def test_quota_burn(db, subscription, resource, remains):
     """
                    Subscription
     ----------[=========================]-------------> time

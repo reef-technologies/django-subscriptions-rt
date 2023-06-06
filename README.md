@@ -158,7 +158,7 @@ Workflow:
 
 This app comes with basic reporting functionality, including (but not limited to) completed and incompleted payments during selected period of time, as well as estimated recurring charges' dates and amounts in past and future.
 
-Below is an example how to use reporting functionality:
+Below is an example how to use reporting functionality. Please pay attention that arguments are converted to a period `[since, until)` (`until` is not included).
 
 ```python
 from django.utils.timezone import now
@@ -197,7 +197,7 @@ print('Completed payments average:', transactions.get_completed_payments_average
 print('Completed payments total:', transactions.get_completed_payments_total())
 
 print('Inompleted payments amounts:', transactions.get_incompleted_payments_amounts())
-print('Incompleted payments amounts:', transactions.get_incompleted_payments_total())
+print('Incompleted payments total:', transactions.get_incompleted_payments_total())
 
 print('Refunds count:', transactions.get_refunds_count())
 print('Refunds amounts:', transactions.get_refunds_amounts())

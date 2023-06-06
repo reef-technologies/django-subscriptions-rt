@@ -1,22 +1,19 @@
-from copy import copy
 import json
 from base64 import b64encode
 from datetime import datetime, timedelta
 from datetime import timezone as tz
-from decimal import Decimal
 from functools import wraps
 from typing import Callable, List, Optional
 
 import pytest
 from constance import config
-from dateutil.relativedelta import relativedelta
 from django.contrib.auth import get_user_model
 from django.core.cache import caches
 from django.test import Client
 from djmoney.money import Money
 
 from subscriptions.functions import get_remaining_amount, get_remaining_chunks, get_resource_refresh_moments
-from subscriptions.models import INFINITY, Plan, Quota, QuotaCache, Resource, Subscription, SubscriptionPayment, SubscriptionPaymentRefund, Usage
+from subscriptions.models import INFINITY, Plan, Quota, QuotaCache, Resource, Subscription, SubscriptionPayment, Usage
 from subscriptions.providers import get_provider, get_providers
 from subscriptions.providers.apple_in_app import AppleInAppProvider
 from subscriptions.providers.dummy import DummyProvider
@@ -25,20 +22,18 @@ from subscriptions.providers.google_in_app.models import GoogleAcknowledgementSt
 from subscriptions.providers.paddle import PaddleProvider
 from subscriptions.tasks import charge_recurring_subscriptions
 
-
-@pytest.fixture
-def usd() -> Callable:
-    return lambda value: Money(value, 'USD')
+from .helpers import usd, days
+from .conftest_reports import *  # noqa
 
 
 @pytest.fixture
-def days():
-    return lambda n: relativedelta(days=n)
-
-
-@pytest.fixture
-def now():
+def now() -> datetime:
     return datetime(2022, 1, 1, 12, 00, 00, tzinfo=tz.utc)
+
+
+@pytest.fixture
+def eps() -> timedelta:
+    return timedelta(microseconds=1)
 
 
 @pytest.fixture
@@ -49,12 +44,10 @@ def user(db):
 
 
 @pytest.fixture
-def other_user(user):
-    other_user = copy(user)
-    other_user.id = None
-    other_user.username = 'test2'
-    other_user.save()
-    return other_user
+def other_user(db):
+    return get_user_model().objects.create(
+        username='test2',
+    )
 
 
 @pytest.fixture
@@ -65,7 +58,7 @@ def resource(db) -> Resource:
 
 
 @pytest.fixture
-def plan(db, days, resource, usd) -> Plan:
+def plan(db, resource) -> Plan:
     return Plan.objects.create(
         codename='plan',
         name='Plan',
@@ -88,7 +81,7 @@ def quota(db, plan, resource) -> Quota:
 
 
 @pytest.fixture
-def bigger_plan(db, days, resource, usd) -> Plan:
+def bigger_plan(db, resource) -> Plan:
     return Plan.objects.create(
         codename='bigger-plan',
         name='Bigger plan',
@@ -107,7 +100,7 @@ def bigger_quota(db, bigger_plan, resource) -> Quota:
 
 
 @pytest.fixture
-def recharge_plan(db, days, resource, usd) -> Plan:
+def recharge_plan(db, resource) -> Plan:
     # $10 for 10 resources, expires in 14 days
     return Plan.objects.create(
         codename='recharge-plan',
@@ -176,7 +169,7 @@ def get_cache(remaining_chunks) -> Callable:
 
 
 @pytest.fixture
-def two_subscriptions(user, now, days, resource) -> List[Subscription]:
+def two_subscriptions(user, now, resource) -> List[Subscription]:
     """
                          Subscription 1
     --------------[========================]------------> time
@@ -243,7 +236,7 @@ def two_subscriptions(user, now, days, resource) -> List[Subscription]:
 
 
 @pytest.fixture
-def five_subscriptions(db, plan, user, now, days) -> List[Subscription]:
+def five_subscriptions(db, plan, user, now) -> List[Subscription]:
     """
     Subscriptions:                    |now
     ----------------------------------[====sub0=====]-----> overlaps with "now"
@@ -322,7 +315,7 @@ def apple_in_app(settings, apple_bundle_id) -> AppleInAppProvider:
 
 
 @pytest.fixture
-def paddle_unconfirmed_payment(db, paddle, plan, user, usd) -> SubscriptionPayment:
+def paddle_unconfirmed_payment(db, paddle, plan, user) -> SubscriptionPayment:
     return SubscriptionPayment.objects.create(
         user=user,
         plan=plan,
@@ -459,7 +452,7 @@ def google_plan_id() -> str:
 
 
 @pytest.fixture
-def google_subscription_purchase(now, days, google_plan_id) -> GoogleSubscriptionPurchaseV2:
+def google_subscription_purchase(now, google_plan_id) -> GoogleSubscriptionPurchaseV2:
     return GoogleSubscriptionPurchaseV2(
         lineItems=[GoogleSubscriptionPurchaseLineItem(
             productId=google_plan_id,
@@ -538,7 +531,7 @@ def google_test_notification() -> dict:
 
 
 @pytest.fixture
-def google_in_app_payment(google_in_app, purchase_token, plan_with_google, user, now, days) -> Subscription:
+def google_in_app_payment(google_in_app, purchase_token, plan_with_google, user, now) -> Subscription:
     return SubscriptionPayment.objects.create(
         provider_codename=google_in_app.codename,
         provider_transaction_id=purchase_token,
@@ -581,77 +574,10 @@ def google_in_app__subscription_purchase_dict(google_in_app) -> dict:
 
 
 @pytest.fixture
-def default_plan(db, settings, usd) -> Plan:
+def default_plan(db, settings) -> Plan:
     plan = Plan.objects.create(
         name='Default Plan',
         charge_amount=usd(0),
     )
     config.SUBSCRIPTIONS_DEFAULT_PLAN_ID = plan.id
     return plan
-
-
-@pytest.fixture
-def reports_subscriptions(db, user, other_user, plan, bigger_plan, recharge_plan, now, days) -> List[Subscription]:
-    """
-    plan (no prolongation)
-    -------[============================]x------------------------------->
-
-    bigger plan (we expect prolongation)
-    ----------------[========================](========================)->
-
-    x2 plan (other user)
-    -------[============================](============================)-->
-
-    x10 recharge plan (other user)
-    ------------[==============]x---------------------------------------->
-
-    days:--0----3---7----------17-------30---37-------------------------->
-    """
-    return [
-        Subscription.objects.create(user=user, plan=plan, start=now, auto_prolong=False),
-        Subscription.objects.create(user=user, plan=bigger_plan, start=now+days(7)),
-        Subscription.objects.create(user=other_user, plan=plan, start=now, quantity=2),
-        Subscription.objects.create(user=other_user, plan=recharge_plan, start=now+days(3), auto_prolong=False, quantity=10),
-    ]
-
-
-@pytest.fixture
-def reports_payments(db, user, other_user, plan, bigger_plan, now, days, paddle, usd) -> List[SubscriptionPayment]:
-    """
-    x2 plan $100, $90, $80, $70, user, COMPLETED
-    -------x----------x----------x----------x---------->
-
-    x2 bigger_plan $200, other_user, PENDING, CANCELLED
-    ------------------x----------x--------------------->
-
-    x3 plan $?, other_user, COMPLETED
-    -----------------------------x--------------------->
-
-    refund $250 for #0, COMPLETED
-    ------------------x-------------------------------->
-
-    refund $20 for #4, CANCELLED
-    -----------------------------x--------------------->
-
-    days:--0----------10---------20---------30--------->
-    """
-    Status = SubscriptionPayment.Status
-
-    pmts = [
-        SubscriptionPayment.objects.create(created=now, user=user, plan=plan, status=Status.COMPLETED, quantity=2, amount=usd(100), provider_codename=paddle.codename),
-        SubscriptionPayment.objects.create(created=now+days(10), user=user, plan=plan, status=Status.COMPLETED, quantity=2, amount=usd(90), provider_codename=paddle.codename),
-        SubscriptionPayment.objects.create(created=now+days(20), user=user, plan=plan, status=Status.COMPLETED, quantity=2, amount=usd(80), provider_codename=paddle.codename),
-        SubscriptionPayment.objects.create(created=now+days(30), user=user, plan=plan, status=Status.COMPLETED, quantity=2, amount=usd(70), provider_codename=paddle.codename),
-
-        SubscriptionPayment.objects.create(created=now+days(10), user=other_user, plan=bigger_plan, status=Status.PENDING, quantity=2, amount=usd(200), provider_codename=paddle.codename),
-        SubscriptionPayment.objects.create(created=now+days(20), user=other_user, plan=bigger_plan, status=Status.CANCELLED, quantity=2, amount=usd(200), provider_codename=paddle.codename),
-
-        SubscriptionPayment.objects.create(created=now+days(20), user=other_user, plan=plan, status=Status.COMPLETED, quantity=3, amount=None, provider_codename=paddle.codename),
-    ]
-
-    refunds = [
-        SubscriptionPaymentRefund.objects.create(created=now+days(10), original_payment=pmts[0], status=Status.COMPLETED, amount=usd(250), provider_codename=paddle.codename),
-        SubscriptionPaymentRefund.objects.create(created=now+days(20), original_payment=pmts[4], status=Status.CANCELLED, amount=usd(20), provider_codename=paddle.codename),
-    ]
-
-    return pmts + refunds

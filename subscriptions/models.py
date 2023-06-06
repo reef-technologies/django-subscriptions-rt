@@ -152,7 +152,7 @@ class QuotaCache:
 class SubscriptionQuerySet(models.QuerySet):
 
     def overlap(self, since: datetime, until: datetime) -> QuerySet:
-        return self.filter(end__gte=since, start__lte=until)
+        return self.filter(end__gte=since, start__lt=until)
 
     def active(self, at: Optional[datetime] = None) -> QuerySet:
         at = at or now()

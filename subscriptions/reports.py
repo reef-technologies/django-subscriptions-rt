@@ -8,6 +8,7 @@ from typing import Dict, Iterator, List, Optional, Tuple
 from djmoney.money import Money
 from django.db.models import Q, QuerySet
 from django.utils.timezone import now
+from django.conf import settings
 
 from dateutil.rrule import rrule
 from more_itertools import pairwise
@@ -15,10 +16,11 @@ from dateutil.rrule import YEARLY, MONTHLY, WEEKLY, DAILY, HOURLY, MINUTELY, SEC
 
 from .models import AbstractTransaction, Plan, Subscription, SubscriptionPayment, \
     SubscriptionPaymentRefund
-from .defaults import DEFAULT_CURRENCY
+from .defaults import DEFAULT_SUBSCRIPTIONS_CURRENCY
 
 
-NO_MONEY = Money(0, DEFAULT_CURRENCY)
+default_currency = getattr(settings, 'SUBSCRIPTIONS_DEFAULT_CURRENCY', DEFAULT_SUBSCRIPTIONS_CURRENCY)
+NO_MONEY = Money(0, default_currency)
 
 
 class IterPeriodsMixin:
@@ -30,19 +32,20 @@ class IterPeriodsMixin:
 
         For frequency, use `subscriptions.reports.[YEARLY|MONTHLY|WEEKLY|DAILY|HOURLY|MINUTELY|SECONDLY]`.
         """
-        eps = timedelta(microseconds=1)
-
         points_in_time = rrule(frequency, dtstart=since, until=until)
         end = since
         for start, end in pairwise(points_in_time):
-            yield cls(since=start, until=end-eps, **kwargs)
+            yield cls(since=start, until=end, **kwargs)
 
         if end != until:  # remains if since-until period doesn't match frequency perfectly
-            yield cls(since=end, until=until-eps, **kwargs)
+            yield cls(since=end, until=until, **kwargs)
 
 
 @dataclass
 class SubscriptionsReport(IterPeriodsMixin):
+    """
+    Report for subscriptions. Period's end is excluded: [since, until)
+    """
 
     since: datetime
     until: datetime = field(default_factory=now)
@@ -125,6 +128,9 @@ class SubscriptionsReport(IterPeriodsMixin):
 
 @dataclass
 class TransactionsReport(IterPeriodsMixin):
+    """
+    Report for transactions. Period's end is excluded: [since, until)
+    """
 
     provider_codename: str
     since: datetime
