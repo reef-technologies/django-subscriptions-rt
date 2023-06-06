@@ -268,7 +268,6 @@ def test__default_plan__switch__future(user, default_plan, subscription):
     """
     assert user.subscriptions.count() == 2
 
-    subscription = user.subscriptions.first()
     subscription.end = now() + days(7)
     subscription.save()
 
@@ -277,12 +276,12 @@ def test__default_plan__switch__future(user, default_plan, subscription):
     new_default_plan = Plan.objects.create(codename='new default', name='New default', charge_amount=0)
     config.SUBSCRIPTIONS_DEFAULT_PLAN_ID = new_default_plan.id
 
-    assert user.subscriptions.count() == 3
+    assert user.subscriptions.count() == 2
     new_subscription = user.subscriptions.order_by('end').last()
 
-    assert new_subscription.pk != default_subscription.pk
+    assert new_subscription.pk == default_subscription.pk
     assert new_subscription.plan == new_default_plan
-    assert now() - timedelta(seconds=1) < new_subscription.start < now()
+    assert new_subscription.start == default_subscription.start
     assert new_subscription.end == default_subscription.end
 
 

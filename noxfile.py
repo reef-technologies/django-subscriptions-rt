@@ -4,7 +4,7 @@ from pathlib import Path
 
 ROOT = Path('.')
 PYTHON_VERSIONS = ['3.9', '3.10'][::-1]  # TODO: 3.8 fails to run
-DJANGO_VERSIONS = ['3.1', '3.2', '4.0'][::-1]
+DJANGO_VERSIONS = ['3.1', '3.2', '4.0', '4.1', '4.2'][::-1]
 DEMO_APP_DIR = ROOT / 'demo'
 
 nox.options.default_venv_backend = 'venv'

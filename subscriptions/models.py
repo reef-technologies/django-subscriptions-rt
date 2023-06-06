@@ -151,12 +151,16 @@ class QuotaCache:
 
 class SubscriptionQuerySet(models.QuerySet):
 
-    def overlap(self, since: datetime, until: datetime) -> QuerySet:
-        return self.filter(end__gte=since, start__lt=until)
+    def overlap(self, since: datetime, until: datetime, include_until: bool = False) -> QuerySet:
+        """ Filter subscriptions that overlap with [since, until) period (include_until==False) or [since, until] period (include_until==True) . """
+        return self.filter(**{
+            'end__gte': since,
+            'start__lte' if include_until else 'start__lt': until,
+        })
 
     def active(self, at: Optional[datetime] = None) -> QuerySet:
         at = at or now()
-        return self.overlap(at, at)
+        return self.overlap(at, at, include_until=True)
 
     def expiring(self, within: datetime, since: Optional[datetime] = None) -> QuerySet:
         since = since or now()
@@ -336,7 +340,7 @@ class Subscription(models.Model):
 
         default_subscriptions = (
             Subscription.objects
-            .overlap(self.start, self.end)
+            .overlap(self.start, self.end, include_until=True)
             .filter(user=self.user, plan=default_plan)
         )
 

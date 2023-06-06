@@ -88,7 +88,7 @@ def test_remaining_chunks_performance(db, two_subscriptions, now, remaining_chun
         remaining_chunks(at=now + days(test_day), quota_cache=cache)
 
 
-def test_usage_with_simple_quota(db, subscription, resource, remains, days):
+def test_usage_with_simple_quota(db, subscription, resource, remains):
     """
                      Subscription
     --------------[================]------------> time
@@ -200,7 +200,7 @@ def test_subtraction_priority(db, subscription, resource, remains):
     assert remains(at=subscription.start + days(10)) == 0
 
 
-def test_multiple_subscriptions(db, two_subscriptions, user, resource, now, remains, days):
+def test_multiple_subscriptions(db, two_subscriptions, user, resource, now, remains):
 
     assert remains(at=now - days(1)) == 0
     assert remains(at=now + days(0)) == 100
