@@ -7,7 +7,7 @@ from django.test.client import MULTIPART_CONTENT
 from django.utils.timezone import now
 from djmoney.money import Money
 from freezegun import freeze_time
-from tenacity import Retrying, TryAgain, stop_after_attempt, wait_fixed
+from tenacity import Retrying, TryAgain, stop_after_attempt, wait_incrementing
 
 from subscriptions.exceptions import BadReferencePayment
 from subscriptions.models import Plan, Subscription, SubscriptionPayment
@@ -61,7 +61,7 @@ def test_payment_flow(paddle, user_client, plan, card_number):
     }
 
     # ---- test_payment_status_endpoint_post ----
-    for attempt in Retrying(wait=wait_fixed(2), stop=stop_after_attempt(10)):
+    for attempt in Retrying(wait=wait_incrementing(start=2, increment=2), stop=stop_after_attempt(10)):
         with attempt:
             response = user_client.post(f'/api/payments/{payment.id}/')
             assert response.status_code == 200, response.content

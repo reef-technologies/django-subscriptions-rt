@@ -1,5 +1,9 @@
 # Django-subscriptions-rt: subscriptions and payments for your Django app
 
+# Supported versions
+
+See [noxfile.py](noxfile.py) for list of Python and Django versions supported (variables `PYTHON_VERSIONS` and `DJANGO_VERSIONS`).
+
 # Features
 
 TODO
