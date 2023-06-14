@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import logging
 from contextlib import suppress
@@ -12,6 +14,7 @@ from django.contrib.auth.models import AbstractBaseUser
 from django.core.exceptions import SuspiciousOperation
 from django.db import transaction
 from django.utils.timezone import now
+from djmoney.money import Money
 from googleapiclient.discovery import Resource, build
 from more_itertools import one
 from oauth2client import service_account
@@ -26,7 +29,7 @@ from ...models import Plan, SubscriptionPayment
 from ...utils import fromisoformat
 from .. import Provider
 from .exceptions import InvalidOperation
-from .models import AppNotification, GoogleAcknowledgementState, GoogleAutoRenewingBasePlanType, GoogleBasePlan, GoogleBasePlanState, GoogleDeveloperNotification, GoogleMoney, GooglePubSubData, GoogleRegionalBasePlanConfig, GoogleResubscribeState, GoogleSubscription, GoogleSubscriptionNotificationType, GoogleSubscriptionProrationMode, GoogleSubscriptionPurchaseV2, GoogleSubscriptionState, Metadata, MultiNotification
+from .models import AppNotification, GoogleAcknowledgementState, GoogleAutoRenewingBasePlanType, GoogleBasePlan, GoogleBasePlanState, GoogleDeveloperNotification, GoogleMoney, GooglePubSubData, GoogleRegionalBasePlanConfig, GoogleResubscribeState, GoogleSubscription, GoogleSubscriptionNotificationType, GoogleSubscriptionProrationMode, GoogleSubscriptionPurchase, GoogleSubscriptionPurchaseV2, GoogleSubscriptionState, Metadata, MultiNotification
 
 log = logging.getLogger(__name__)
 
@@ -70,6 +73,7 @@ class GoogleInAppProvider(Provider):
         http = credentials.authorize(http)
 
         # https://googleapis.github.io/google-api-python-client/docs/dyn/androidpublisher_v3.html
+        # https://github.com/googleapis/google-api-python-client/blob/main/docs/start.md
         self.api = build('androidpublisher', 'v3', http=http)
         self.subscriptions_api = self.subscriptions_api or self.api.monetization().subscriptions()
 
@@ -86,7 +90,7 @@ class GoogleInAppProvider(Provider):
     @classmethod
     def get_plan_by_google_id(cls, google_id: str) -> Plan:
         return Plan.objects.get(**{
-            f'metadata__{cls.codename}__productId': google_id,
+            f'metadata__{cls.codename}__productId': google_id,  # TODO: just create a separate table for this
         })
 
     def charge_offline(self, *args, **kwargs) -> SubscriptionPayment:
@@ -302,8 +306,17 @@ class GoogleInAppProvider(Provider):
         else:
             raise ValueError(f'Unknown notification type {notification}')
 
-    def get_purchase(self, purchase_token: str) -> GoogleSubscriptionPurchaseV2:
-        # https://github.com/googleapis/google-api-python-client/blob/main/docs/start.md
+    def get_purchase(self, subscription_id: str, purchase_token: str) -> GoogleSubscriptionPurchase:
+        # https://developers.google.com/android-publisher/api-ref/rest/v3/purchases.subscriptions/get
+        subscription_purchase_dict = self.api.purchases().subscriptions().get(
+            packageName=self.package_name,
+            subscriptionId=subscription_id,
+            token=purchase_token,
+        ).execute()
+        return GoogleSubscriptionPurchase.parse_obj(subscription_purchase_dict)
+
+    def get_purchase_v2(self, purchase_token: str) -> GoogleSubscriptionPurchaseV2:
+        # https://developers.google.com/android-publisher/api-ref/rest/v3/purchases.subscriptionsv2/get
         subscription_purchase_dict = self.api.purchases().subscriptionsv2().get(
             packageName=self.package_name,
             token=purchase_token,
@@ -316,6 +329,7 @@ class GoogleInAppProvider(Provider):
         Handle notification from the app. It is expected that app sends a notification
         on initial purchase at least once, so that user <--> purchase token mapping is saved.
         All other status change notifications come from RTDN.
+        It is expected that app notification is sent before RTDN (Google) notifications.
         """
         log.debug('Received app notification %s for user %s', notification, user)
 
@@ -348,6 +362,7 @@ class GoogleInAppProvider(Provider):
         log.debug('Received RTDN notification %s', notification)
         payment = self.update_or_create_subscription(
             purchase_token=notification.subscriptionNotification.purchaseToken,
+            subscription_id=notification.subscriptionNotification.subscriptionId,
             event=notification.subscriptionNotification.notificationType,
         )
 
@@ -367,6 +382,7 @@ class GoogleInAppProvider(Provider):
         self,
         purchase_token: str,
         event: GoogleSubscriptionNotificationType,
+        subscription_id: str | None = None,
         user: Optional[AbstractBaseUser] = None,
     ) -> Optional[SubscriptionPayment]:
         """
@@ -375,10 +391,12 @@ class GoogleInAppProvider(Provider):
         This method also sends an acknowledgement to Google when Subscription is created.
         """
 
-        purchase = self.get_purchase(purchase_token)
-        linked_token = purchase.linkedPurchaseToken
+        purchase = self.get_purchase(subscription_id, purchase_token) if subscription_id else None
+        amount = purchase and Money(int(purchase.priceAmountMicros) / 1_000_000, purchase.priceCurrencyCode)
+        purchase_v2 = self.get_purchase_v2(purchase_token)
+        linked_token = purchase_v2.linkedPurchaseToken
 
-        purchase_item = one(purchase.lineItems)
+        purchase_item = one(purchase_v2.lineItems)
         product_id = purchase_item.productId
         purchase_end = fromisoformat(purchase_item.expiryTime)
 
@@ -395,7 +413,7 @@ class GoogleInAppProvider(Provider):
                 return
         assert user
 
-        self.check_event(event, purchase)
+        self.check_event(event, purchase_v2)
 
         with transaction.atomic(durable=True):
 
@@ -415,10 +433,12 @@ class GoogleInAppProvider(Provider):
                 last_payment = self.get_last_payment(purchase_token)
                 if purchase_end > last_payment.subscription_end:
                     last_payment.uid = None
+                    last_payment._state.adding = True
+                    last_payment.amount = amount
                     last_payment.subscription_start = last_payment.subscription_end
                     last_payment.subscription_end = purchase_end
                     last_payment.created = last_payment.updated = None
-                    last_payment.meta = Metadata(purchase=purchase)
+                    last_payment.meta = Metadata(purchase=purchase_v2)
                     last_payment.save()
 
             elif event == GoogleSubscriptionNotificationType.CANCELED:
@@ -438,15 +458,19 @@ class GoogleInAppProvider(Provider):
                     provider_codename=self.codename,
                     provider_transaction_id=purchase_token,
                     defaults=dict(
-                        user=user,
                         status=SubscriptionPayment.Status.COMPLETED,
                         plan=plan,
-                        amount=None,
-                        subscription_start=fromisoformat(purchase.startTime),
+                        user=user,
+                        subscription_start=fromisoformat(purchase_v2.startTime),
                         subscription_end=purchase_end,
-                        metadata=Metadata(purchase=purchase).dict(),
+                        metadata=Metadata(purchase=purchase_v2).dict(),
                     )
                 )
+
+                # in case RTDN notification came after app notification
+                if amount and not last_payment.amount:
+                    last_payment.amount = amount
+                    last_payment.save()
 
             elif event in {
                 GoogleSubscriptionNotificationType.ON_HOLD,
@@ -489,7 +513,7 @@ class GoogleInAppProvider(Provider):
                 assert purchase_token != linked_token
                 self.dismiss_token(linked_token)
 
-            if purchase.acknowledgementState == GoogleAcknowledgementState.PENDING and subscription:
+            if purchase_v2.acknowledgementState == GoogleAcknowledgementState.PENDING and subscription:
                 self.acknowledge(
                     packageName=self.package_name,
                     subscriptionId=product_id,

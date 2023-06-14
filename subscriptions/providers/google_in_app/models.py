@@ -236,6 +236,16 @@ class GoogleSubscriptionPurchaseLineItem(BaseModel):
         extra = Extra.forbid
 
 
+class GoogleSubscriptionPurchase(BaseModel):
+    # https://developers.google.com/android-publisher/api-ref/rest/v3/purchases.subscriptions#SubscriptionPurchase
+    autoRenewing: bool
+    priceCurrencyCode: str
+    priceAmountMicros: str
+
+    class Config:
+        extra = Extra.ignore
+
+
 class GoogleSubscriptionPurchaseV2(BaseModel):
     # https://developers.google.com/android-publisher/api-ref/rest/v3/purchases.subscriptionsv2#resource:-subscriptionpurchasev2
     lineItems: List[GoogleSubscriptionPurchaseLineItem]
