@@ -1,5 +1,9 @@
 from typing import Callable, Dict, Iterable, Iterator, TypeVar
 from datetime import datetime
+from django.conf import settings
+from djmoney.money import Money
+
+from .defaults import DEFAULT_SUBSCRIPTIONS_CURRENCY
 
 
 T = TypeVar('T')
@@ -36,3 +40,7 @@ def merge_iter(*iterables: Iterable[T], key: Callable = lambda x: x) -> Iterator
 
 def fromisoformat(value: str) -> datetime:
     return datetime.fromisoformat(value.replace('Z', '+00:00'))
+
+
+default_currency = getattr(settings, 'SUBSCRIPTIONS_DEFAULT_CURRENCY', DEFAULT_SUBSCRIPTIONS_CURRENCY)
+NO_MONEY = Money(0, default_currency)

@@ -184,12 +184,17 @@ class SubscriptionQuerySet(models.QuerySet):
         return self.filter(start__gte=since, start__lte=until)
 
 
+def default_initial_charge() -> relativedelta:
+    return relativedelta()
+
+
 class Subscription(models.Model):
     uid = models.UUIDField(primary_key=True, default=uuid4)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='subscriptions')
     plan = models.ForeignKey(Plan, on_delete=models.PROTECT, related_name='subscriptions')
     auto_prolong = models.BooleanField(default=True)
     quantity = models.PositiveIntegerField(default=1)
+    initial_charge_offset = RelativeDurationField(default=default_initial_charge)
     start = models.DateTimeField(blank=True)
     end = models.DateTimeField(blank=True)
 
@@ -283,15 +288,16 @@ class Subscription(models.Model):
 
     def iter_charge_dates(
         self,
-        since: Optional[datetime] = None,
-        until: Optional[datetime] = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
     ) -> Iterator[datetime]:
-        """ Including first charge (i.e. charge to create subscription) """
+        """ Including first charge """
+
         charge_period = self.plan.charge_period
         since = since or self.start
 
         for i in count(start=0):
-            charge_date = self.start + charge_period * i
+            charge_date = self.start + self.initial_charge_offset + charge_period * i
 
             if charge_date < since:
                 continue
@@ -299,9 +305,10 @@ class Subscription(models.Model):
             if until and charge_date > until:
                 return
 
-            yield charge_date
-            if charge_period == INFINITY:
+            if charge_period == INFINITY and i != 0:
                 return
+
+            yield charge_date
 
     def charge_offline(self):
         from .providers import get_provider

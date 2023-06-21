@@ -15,6 +15,7 @@ from django.contrib.auth.models import User
 from django.core.exceptions import SuspiciousOperation
 from django.db import transaction
 from django.utils import timezone
+from djmoney.money import Money
 from pydantic import (
     BaseModel,
     ValidationError,
@@ -68,6 +69,7 @@ class AppleInAppMetadata(BaseModel):
 class AppleInAppProvider(Provider):
     # This is also name of the field in metadata of the Plan, that stores Apple App Store product id.
     codename: ClassVar[str] = 'apple_in_app'
+    is_external: ClassVar[bool] = True
     bundle_id: ClassVar[str] = settings.APPLE_BUNDLE_ID
     api: AppleAppStoreAPI = None
     metadata_class = AppleInAppMetadata
@@ -77,16 +79,13 @@ class AppleInAppProvider(Provider):
         # Check whether the Apple certificate is provided and is a valid certificate.
         get_original_apple_certificate()
 
-    def charge_online(self, user: AbstractBaseUser, plan: Plan, subscription: Optional[Subscription] = None,
-                      quantity: int = 1) -> Tuple[SubscriptionPayment, str]:
+    def charge_online(self, *args, **kwargs) -> Tuple[SubscriptionPayment, str]:
         """
         In case of in-app purchase this operation is triggered from the mobile application library.
         """
         raise AppleInvalidOperation()
 
-    def charge_offline(self, user: AbstractBaseUser, plan: Plan, subscription: Optional[Subscription] = None,
-                       quantity: int = 1,
-                       reference_payment: Optional[SubscriptionPayment] = None) -> SubscriptionPayment:
+    def charge_offline(self, *args, **kwargs) -> SubscriptionPayment:
         raise AppleInvalidOperation()
 
     def webhook(self, request: Request, payload: dict) -> Response:

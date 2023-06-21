@@ -65,6 +65,65 @@ CONSTANCE_CONFIG = {
 
 Changing default plan value will adjust default subscriptions automatically.
 
+## Trial period
+
+It is possible to postpone user's first payment by some timedelta. When creating a subscription, set `initial_charge_offset`, which will shift all charge dates by this offset:
+
+```python
+from dateutil.relativedelta import relativedelta
+from django.utils.timezone import now
+
+now_ = now()
+offset = relativedelta(days=7)
+subscription = Subscription.objects.create(
+   # ...
+   start=now_,
+   initial_charge_offset=offset,
+)
+
+assert next(subscription.iter_charge_dates()) == now_ + offset
+```
+
+There is a handy setting `SUBSCRIPTIONS_TRIAL_PERIOD`:
+
+```python
+from dateutil.relativedelta import relativedelta
+
+SUBSCRIPTIONS_TRIAL_PERIOD = relativedelta(days=7)
+```
+
+If
+* subscription is created via `POST` request to `SubscriptionSelectView` (which by default is at path `/subscribe/`),
+* selected plan's `charge_amount` is non-zero,
+* selected plan is recurring,
+* user hasn't completed ANY payments (even zero ones),
+* user never had any recurring subscriptions,
+
+then charge amount will become zero, thus user only enters CC info without paying anything. The set of rules mentioned above may be changed by redefining `get_trial_period` method.
+
+> Remember that "external" providers may not respect this setting at all.
+
+Internally, trial period works like this:
+
+1) User asks API to create new subscription
+2) If situation is eligible for trial period, a new zero-amount `SubscriptionPayment` is requested, as well as corresponding `Subscription` is created with zero duration:
+
+```
+------[=======(Payment, cost=0)=======]-------->
+                                      ^- trial period end
+------[]--------------------------------------->
+      ^--- Subscription with initial_charge_offset = trial_period
+```
+
+3) Users enters CC details for the payment -> it gets confirmed; when the payment is confirmed, its subscription is extended till the end of trial period:
+
+```
+------[=======(Payment, cost=0)=======]-------->
+                                      ^- trial period end
+------[===Subscription================]-------->
+                                       ^--- Here real price will be charged
+```
+
 # Cache
 
 Cache is required for fast resource calculations.
@@ -84,17 +143,19 @@ It is costy - calculates resources for each authenticated user's request! May be
 
 # Payment providers
 
-## Website
+There is a clear distinction between "self-hosted" vs "external" subscription solutions. "Self-hosted" means that everything (plans, upgrade/downgrade rules, charging schedules etc) is set up on backend side, and payment provider is only used to store CC information and charge money when  backend asks to do so. However, some payment providers don't allow that, thus it is called "external" - everything is configured in provider dashboard, and it's a provider who does periodic charges etc. The only thing backend does - receives webhook (or periodically fetches information itself, or both altogether), and updates subscriptions (changes timespan, pauses, resumes etc).
 
-### Paddle
+"Self-hosted" provider means that backend is the command center, and it is capable of implementing custom logic of any complexity. The drawback here is that backend is responsible for periodic checks and charges, which requires monitoring and extra setup.
 
+"External" providers are limited to whatever logic is provided by third-party developers. However, it is much easier to setup and maintain it.
 
+## Paddle
 
-## Mobile apps
+Uses [paddle.com](https://paddle.com) as payment provider.
 
-Mobile apps are example of providers where most of the job is done on 3rd-party and backend only has to keep database up-to-date.
+This implementation is self-hosted. Paddle does not provide a lot of control over charges, however it has an undocumented opportunity to create a zero-cost subscription with infinite charge period. After this subscription is created, user can be charged by backend at any moment with any amount.
 
-### App store
+## App store
 
 Workflow from the mobile application perspective:
 
@@ -111,7 +172,7 @@ Workflow from the mobile application perspective:
    restart. Utmost care should be taken when handling the receipt. It should be stored on the device until the server
    accepts the operation. Failure to comply will result in client dissatisfaction and a potential refund
 
-#### WARNING
+### WARNING
 
 Server is unable to reject any payment coming from Apple. Receipt that we receive means that the user has already paid.
 Thus, it is in the best interest of the frontend application to prohibit user that is already on a paid plan from

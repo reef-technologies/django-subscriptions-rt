@@ -17,7 +17,7 @@ from subscriptions.tasks import check_unfinished_payments
 from subscriptions.utils import fromisoformat
 
 
-def test_payment_flow(paddle, user_client, plan, card_number):
+def test__payment_flow__regular(paddle, user_client, plan, card_number):
     response = user_client.post('/api/subscribe/', {'plan': plan.id})
     assert response.status_code == 200, response.content
 
@@ -86,6 +86,7 @@ def test_payment_flow(paddle, user_client, plan, card_number):
             'quantity': 1,
             'start': payment.subscription.start.isoformat().replace('+00:00', 'Z'),
             'end': payment.subscription.end.isoformat().replace('+00:00', 'Z'),
+            'next_charge_date': next(payment.subscription.iter_charge_dates(since=now())).isoformat().replace('+00:00', 'Z'),
             'plan': {
                 'charge_amount': 100,
                 'charge_amount_currency': 'USD',
@@ -108,6 +109,73 @@ def test_payment_flow(paddle, user_client, plan, card_number):
     check_unfinished_payments(within=timedelta(hours=1))
     payment = SubscriptionPayment.objects.latest()
     assert payment.status == SubscriptionPayment.Status.COMPLETED
+
+    # ---- test_charge_offline ----
+    assert 'subscription_id' in payment.metadata
+    payment.subscription.charge_offline()
+    assert SubscriptionPayment.objects.count() == 2
+
+    last_payment = SubscriptionPayment.objects.latest()
+    subscription = last_payment.subscription
+
+    assert last_payment.provider_codename == payment.provider_codename
+    provider = get_provider(last_payment.provider_codename)
+    assert last_payment.amount == provider.get_amount(
+        user=last_payment.user,
+        plan=plan,
+    )
+    assert last_payment.quantity == subscription.quantity
+    assert last_payment.user == subscription.user
+    assert last_payment.subscription == subscription
+    assert last_payment.plan == plan
+
+    # check subsequent offline charge
+    payment.subscription.charge_offline()
+
+
+def test__payment_flow__trial_period(trial_period, paddle, user, user_client, plan, card_number):
+    assert not user.subscriptions.exists()
+
+    response = user_client.post('/api/subscribe/', {'plan': plan.id})
+    assert response.status_code == 200, response.content
+
+    result = response.json()
+
+    redirect_url = result.pop('redirect_url')
+    assert 'paddle.com' in redirect_url
+
+    payment = SubscriptionPayment.objects.latest()
+    assert result == {
+        'plan': plan.id,
+        'quantity': 1,
+        'background_charge_succeeded': False,
+        'payment_id': payment.id,
+    }
+
+    assert 'payment_url' in payment.metadata
+
+    assert user.subscriptions.count() == 1
+    subscription = user.subscriptions.first()
+    assert subscription.start == subscription.end
+    assert subscription.initial_charge_offset == trial_period
+
+    # TODO: automate this
+    input(f'Enter card {card_number} here: {redirect_url}\nThen press Enter')
+
+    # ensure that status didn't change because webhook didn't go through
+    assert payment.status == SubscriptionPayment.Status.PENDING
+
+    # ---- test_check_unfinished_payments ----
+    payment = SubscriptionPayment.objects.latest()
+    payment.status = SubscriptionPayment.Status.PENDING
+    payment.save()
+
+    check_unfinished_payments(within=timedelta(hours=1))
+    payment = SubscriptionPayment.objects.latest()
+    assert payment.status == SubscriptionPayment.Status.COMPLETED
+    assert payment.amount == plan.charge_amount * 0
+    assert payment.subscription.start + trial_period == payment.subscription.end
+    assert payment.subscription.start == payment.subscription_start
 
     # ---- test_charge_offline ----
     assert 'subscription_id' in payment.metadata

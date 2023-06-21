@@ -51,6 +51,7 @@ class GoogleInAppProvider(Provider):
     https://developer.android.com/google/play/billing/test
     """
     codename: ClassVar[str] = 'google_in_app'
+    is_external: ClassVar[bool] = True
     package_name: ClassVar[str] = settings.GOOGLE_PLAY_PACKAGE_NAME
     metadata_class: ClassVar[BaseModel] = Metadata
 

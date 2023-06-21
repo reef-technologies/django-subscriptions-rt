@@ -4,6 +4,7 @@ from typing import ClassVar, Iterable, Optional, Tuple
 from django.contrib.auth.models import AbstractBaseUser
 from django.forms import Form
 from django.utils.crypto import get_random_string
+from djmoney.money import Money
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.status import HTTP_200_OK, HTTP_404_NOT_FOUND, HTTP_400_BAD_REQUEST
@@ -25,13 +26,18 @@ class DummyProvider(Provider):
         user: AbstractBaseUser,
         plan: Plan,
         subscription: Optional[Subscription] = None,
+        amount: Optional[Money] = None,
         quantity: int = 1,
     ) -> Tuple[SubscriptionPayment, str]:
+
         transaction_id = get_random_string(8)
+        if amount is None:
+            amount = self.get_amount(user=user, plan=plan)
+
         payment = SubscriptionPayment.objects.create(  # TODO: limit number of creations per day
             provider_codename=self.codename,
             provider_transaction_id=transaction_id,
-            amount=self.get_amount(user=user, plan=plan),
+            amount=amount,
             quantity=quantity,
             user=user,
             plan=plan,
@@ -43,9 +49,14 @@ class DummyProvider(Provider):
         self,
         user: AbstractBaseUser,
         plan: Plan, subscription: Optional[Subscription] = None,
+        amount: Optional[Money] = None,
         quantity: int = 1,
         reference_payment: Optional[SubscriptionPayment] = None,
     ) -> SubscriptionPayment:
+
+        if amount is None:
+            amount = self.get_amount(user=user, plan=plan)
+
         return SubscriptionPayment.objects.create(  # TODO: limit number of creations per day
             provider_codename=self.codename,
             provider_transaction_id=get_random_string(8),

@@ -11,6 +11,7 @@ from django.contrib.auth import get_user_model
 from django.core.cache import caches
 from django.test import Client
 from djmoney.money import Money
+from dateutil.relativedelta import relativedelta
 
 from subscriptions.functions import get_remaining_amount, get_remaining_chunks, get_resource_refresh_moments
 from subscriptions.models import INFINITY, Plan, Quota, QuotaCache, Resource, Subscription, SubscriptionPayment, Usage
@@ -581,3 +582,9 @@ def default_plan(db, settings) -> Plan:
     )
     config.SUBSCRIPTIONS_DEFAULT_PLAN_ID = plan.id
     return plan
+
+
+@pytest.fixture
+def trial_period(db, settings) -> relativedelta:
+    settings.SUBSCRIPTIONS_TRIAL_PERIOD = trial_period = relativedelta(days=7)
+    return trial_period
