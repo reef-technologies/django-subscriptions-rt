@@ -1,13 +1,16 @@
 from dataclasses import dataclass
+from datetime import datetime
 from typing import ClassVar, Iterable, Optional, Tuple
 
 from django.contrib.auth.models import AbstractBaseUser
 from django.forms import Form
 from django.utils.crypto import get_random_string
+from djmoney.money import Money
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.status import HTTP_200_OK, HTTP_404_NOT_FOUND, HTTP_400_BAD_REQUEST
 
+from ...exceptions import PaymentError
 from ...models import Plan, Subscription, SubscriptionPayment
 from .. import Provider
 from .forms import DummyForm
@@ -25,17 +28,26 @@ class DummyProvider(Provider):
         user: AbstractBaseUser,
         plan: Plan,
         subscription: Optional[Subscription] = None,
+        amount: Optional[Money] = None,
         quantity: int = 1,
+        subscription_start: Optional[datetime] = None,
+        subscription_end: Optional[datetime] = None,
     ) -> Tuple[SubscriptionPayment, str]:
+
         transaction_id = get_random_string(8)
+        if amount is None:
+            amount = self.get_amount(user=user, plan=plan)
+
         payment = SubscriptionPayment.objects.create(  # TODO: limit number of creations per day
             provider_codename=self.codename,
             provider_transaction_id=transaction_id,
-            amount=self.get_amount(user=user, plan=plan),
+            amount=amount,
             quantity=quantity,
             user=user,
             plan=plan,
             subscription=subscription,
+            subscription_start=subscription_start,
+            subscription_end=subscription_end,
         )
         return payment, self._payment_url.format(transaction_id)
 
@@ -43,9 +55,20 @@ class DummyProvider(Provider):
         self,
         user: AbstractBaseUser,
         plan: Plan, subscription: Optional[Subscription] = None,
+        amount: Optional[Money] = None,
         quantity: int = 1,
         reference_payment: Optional[SubscriptionPayment] = None,
     ) -> SubscriptionPayment:
+
+        if not user.payments.filter(
+            provider_codename=self.codename,
+            status=SubscriptionPayment.Status.COMPLETED,
+        ).exists():
+            raise PaymentError('Cannot offline-charge without previous successful charge')
+
+        if amount is None:
+            amount = self.get_amount(user=user, plan=plan)
+
         return SubscriptionPayment.objects.create(  # TODO: limit number of creations per day
             provider_codename=self.codename,
             provider_transaction_id=get_random_string(8),
@@ -54,6 +77,7 @@ class DummyProvider(Provider):
             user=user,
             plan=plan,
             subscription=subscription,
+            status=SubscriptionPayment.Status.COMPLETED,
         )
 
     def webhook(self, request: Request, payload: dict) -> Response:
@@ -66,7 +90,7 @@ class DummyProvider(Provider):
             return Response(status=HTTP_404_NOT_FOUND)
 
         if payment.status != payment.Status.PENDING:
-            return
+            return Response(status=HTTP_400_BAD_REQUEST)
 
         payment.status = SubscriptionPayment.Status.COMPLETED
         payment.save()

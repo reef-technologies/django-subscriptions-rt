@@ -1,18 +1,23 @@
+from __future__ import annotations
+
 import logging
 from typing import Type
 
+from dateutil.relativedelta import relativedelta
 from django.conf import settings
+from django.db import transaction
 from django.http import QueryDict
+from django.utils.timezone import now
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.views import APIView
-from rest_framework.generics import GenericAPIView, ListAPIView, RetrieveAPIView
+from rest_framework.generics import DestroyAPIView, GenericAPIView, ListAPIView, RetrieveAPIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.schemas.openapi import AutoSchema
 
 from subscriptions.functions import get_remaining_amount
 
-from ..defaults import DEFAULT_SUBSCRIPTIONS_SUCCESS_URL
+from ..defaults import DEFAULT_SUBSCRIPTIONS_SUCCESS_URL, DEFAULT_SUBSCRIPTIONS_TRIAL_PERIOD
 from ..exceptions import PaymentError, SubscriptionError
 from ..models import Plan, Subscription, SubscriptionPayment
 from ..providers import Provider, get_provider, get_providers
@@ -66,6 +71,21 @@ class SubscriptionListView(ListAPIView):
         return Subscription.objects.active().select_related('plan').filter(user=self.request.user)
 
 
+class SubscriptionCancelView(DestroyAPIView):
+    permission_classes = IsAuthenticated,
+    serializer_class = SubscriptionSerializer
+    schema = AutoSchema()
+    lookup_url_kwarg = 'uid'
+
+    def get_queryset(self):
+        return Subscription.objects.active().filter(user=self.request.user)
+
+    def perform_destroy(self, instance):
+        instance.end = now()
+        instance.auto_prolong = False
+        instance.save()
+
+
 class SubscriptionSelectView(GenericAPIView):
     permission_classes = IsAuthenticated,
     serializer_class = SubscriptionSelectSerializer
@@ -75,28 +95,45 @@ class SubscriptionSelectView(GenericAPIView):
     def select_payment_provider(cls) -> Type[Provider]:
         return get_provider()
 
+    @classmethod
+    def get_trial_period(cls, plan, user) -> relativedelta:
+        trial_period = getattr(settings, 'SUBSCRIPTIONS_TRIAL_PERIOD', DEFAULT_SUBSCRIPTIONS_TRIAL_PERIOD)
+
+        if (
+            trial_period and
+            plan.charge_amount and
+            plan.is_recurring() and
+            not user.payments.filter(status=SubscriptionPayment.Status.COMPLETED).exists() and
+            not user.subscriptions.recurring().exists()
+        ):
+            return trial_period
+
+        return relativedelta(0)
+
+    @transaction.atomic(durable=True)
     def post(self, request, *args, **kwargs) -> Response:
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         # TODO: handle quantity
 
         plan = serializer.validated_data['plan']
-        active_subscriptions = request.user.subscriptions.active().order_by('end')
+        quantity = serializer.validated_data['quantity']
+        charge_params = {
+            'user': request.user,
+            'plan': plan,
+            'quantity': quantity,
+        }
 
+        active_subscriptions = request.user.subscriptions.active().order_by('end')
         for validator in get_validators():
             try:
                 validator(active_subscriptions, plan)
             except SubscriptionError as exc:
-                raise PermissionDenied(detail=getattr(exc, 'user_message', '')) from exc
+                raise PermissionDenied(detail=str(exc)) from exc
 
         provider = self.select_payment_provider()
-        quantity = serializer.validated_data['quantity']
-        charge_params = dict(
-            user=request.user,
-            plan=plan,
-            quantity=quantity,
-        )
         background_charge_succeeded = False
+
         try:
             payment = provider.charge_offline(**charge_params)
             background_charge_succeeded = True
@@ -104,13 +141,38 @@ class SubscriptionSelectView(GenericAPIView):
         except Exception as exc:
             if not isinstance(exc, (PaymentError, NotImplementedError)):
                 log.exception('Offline charge error')
+
+        if not background_charge_succeeded:
+            trial_period = self.get_trial_period(plan, request.user)
+
+            if trial_period:
+                now_ = now()
+                charge_params.update({
+                    'amount': plan.charge_amount * 0,  # this makes currencies match
+                    'subscription_start': now_,
+                    'subscription_end': now_ + trial_period,
+                })
+
             payment, redirect_url = provider.charge_online(**charge_params)
+
+            if trial_period:
+                assert not payment.subscription
+                payment.subscription = Subscription.objects.create(
+                    user=request.user,
+                    plan=plan,
+                    quantity=quantity,
+                    start=now_,
+                    end=now_,
+                    initial_charge_offset=trial_period,
+                )
+                payment.subscription.save()
+                payment.save()
 
         return Response(self.serializer_class({
             'redirect_url': redirect_url,
             'background_charge_succeeded': background_charge_succeeded,
-            'quantity': quantity,
-            'plan': plan,
+            'quantity': payment.quantity,
+            'plan': payment.plan,
             'payment_id': payment.id,
         }).data)
 

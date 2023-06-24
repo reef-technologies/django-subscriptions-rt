@@ -1,5 +1,8 @@
+from contextlib import suppress
+from datetime import datetime
 from decimal import Decimal
 from typing import Optional
+from django.utils.timezone import now
 
 from rest_framework.serializers import BooleanField, CharField, DateTimeField, IntegerField, ModelSerializer, PrimaryKeyRelatedField, Serializer, SerializerMethodField
 
@@ -29,10 +32,15 @@ class PlanSerializer(ModelSerializer):
 
 class SubscriptionSerializer(ModelSerializer):
     plan = PlanSerializer()
+    next_charge_date = SerializerMethodField()
 
     class Meta:
         model = Subscription
-        fields = 'id', 'plan', 'quantity', 'start', 'end',
+        fields = 'id', 'plan', 'quantity', 'start', 'end', 'next_charge_date',
+
+    def get_next_charge_date(self, obj) -> Optional[datetime]:
+        with suppress(StopIteration):
+            return next(obj.iter_charge_dates(since=now()))
 
 
 class PaymentProviderSerializer(Serializer):

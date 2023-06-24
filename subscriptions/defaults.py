@@ -1,6 +1,7 @@
 from datetime import timedelta
 
 from django.urls import reverse_lazy
+from dateutil.relativedelta import relativedelta
 
 DEFAULT_SUBSCRIPTIONS_PAYMENT_PROVIDERS = [
     'subscriptions.providers.dummy.DummyProvider',
@@ -25,3 +26,4 @@ DEFAULT_SUBSCRIPTIONS_OFFLINE_CHARGE_ATTEMPTS_SCHEDULE = (
 
 DEFAULT_SUBSCRIPTIONS_CACHE_NAME = 'subscriptions'
 DEFAULT_SUBSCRIPTIONS_CURRENCY = 'USD'
+DEFAULT_SUBSCRIPTIONS_TRIAL_PERIOD = relativedelta(seconds=0)

@@ -1,21 +1,20 @@
 import logging
 import re
-from datetime import datetime
+from datetime import timedelta
+from django.utils.timezone import now
 
 import pytest
 from freezegun import freeze_time
+from dateutil.relativedelta import relativedelta
 
 from subscriptions.exceptions import PaymentError
 from subscriptions.fields import relativedelta_to_dict
 from subscriptions.functions import use_resource
 from subscriptions.models import SubscriptionPayment, Usage
 from subscriptions.providers import get_providers
+from subscriptions.validators import get_validators
 
-from .helpers import days
-
-
-def datetime_to_api(dt: datetime) -> str:
-    return dt.replace(microsecond=0).isoformat().replace('+00:00', 'Z')
+from .helpers import days, datetime_to_api
 
 
 def test_plans(plan, client):
@@ -54,7 +53,7 @@ def test_unauthorized_subscriptions(client, two_subscriptions):
 
 
 def test_subscriptions(user_client, two_subscriptions, now):
-    with freeze_time(now):
+    with freeze_time(now + timedelta(seconds=1)):
         response = user_client.get('/api/subscriptions/')
         assert response.status_code == 200, response.content
         subscription = two_subscriptions[0]
@@ -63,6 +62,7 @@ def test_subscriptions(user_client, two_subscriptions, now):
             'start': datetime_to_api(subscription.start),
             'end': datetime_to_api(subscription.end),
             'quantity': 1,
+            'next_charge_date': None,
             'plan': {
                 'id': subscription.plan.id,
                 'codename': subscription.plan.codename,
@@ -77,22 +77,41 @@ def test_subscriptions(user_client, two_subscriptions, now):
         }]
 
 
+def test_subscriptions__next_charge_date(user_client, subscription, now):
+    subscription.end = now + relativedelta(days=90)
+    subscription.save()
+
+    with freeze_time(subscription.start):
+        response = user_client.get('/api/subscriptions/')
+        assert response.status_code == 200, response.content
+        assert response.json()[0]['next_charge_date'] == datetime_to_api(subscription.start)
+
+    with freeze_time(subscription.start + timedelta(days=1)):
+        response = user_client.get('/api/subscriptions/')
+        assert response.status_code == 200, response.content
+        assert response.json()[0]['next_charge_date'] == datetime_to_api(subscription.start + relativedelta(days=30))
+
+    with freeze_time(subscription.start + timedelta(days=31)):
+        response = user_client.get('/api/subscriptions/')
+        assert response.status_code == 200, response.content
+        assert response.json()[0]['next_charge_date'] == datetime_to_api(subscription.start + relativedelta(days=60))
+
+
 def test_unauthorized_subscribe(client, plan):
     response = client.post('/api/subscribe/', {'plan': plan.id})
     assert response.status_code == 403
 
 
-def test_subscribe(client, user_client, plan, now):
+def test_subscribe(client, user_client, plan, now, dummy):
     with freeze_time(now):
         response = user_client.post('/api/subscribe/', {'plan': plan.id, 'quantity': 2})
         assert response.status_code == 200, response.content
-        assert response.json() == {
-            'plan': plan.id,
-            'payment_id': SubscriptionPayment.objects.latest().id,
-            'quantity': 2,
-            'redirect_url': '/subscribe/success',
-            'background_charge_succeeded': True,
-        }
+        result = response.json()
+        assert result['plan'] == plan.id
+        assert result['payment_id'] == SubscriptionPayment.objects.latest().id
+        assert result['quantity'] == 2
+        assert result['redirect_url'].startswith('/payment/')
+        assert result['background_charge_succeeded'] is False
 
         response = user_client.get('/api/subscriptions/')
         assert response.status_code == 200, response.content
@@ -157,20 +176,19 @@ def test_recurring_plan_switch(user_client, subscription, bigger_plan, now):
     with freeze_time(now + days(2)):
         response = user_client.post('/api/subscribe/', {'plan': bigger_plan.id})
         assert response.status_code == 403, response.content
-        assert response.json() == {'detail': ''}  # TODO {'detail': 'Too many recurring subscriptions'}
+        assert response.json() == {'detail': 'Too many recurring subscriptions'}
 
 
 def test_recharge_plan_subscription(client, user_client, subscription, quota, recharge_plan, recharge_quota, now, resource):
     with freeze_time(now + days(2)):
         response = user_client.post('/api/subscribe/', {'plan': recharge_plan.id})
         assert response.status_code == 200, response.content
-        assert response.json() == {
-            'plan': recharge_plan.id,
-            'quantity': 1,
-            'payment_id': SubscriptionPayment.objects.latest().id,
-            'redirect_url': '/subscribe/success',
-            'background_charge_succeeded': True,
-        }
+        result = response.json()
+        assert result['plan'] == recharge_plan.id
+        assert result['quantity'] == 1
+        assert result['payment_id'] == SubscriptionPayment.objects.latest().id
+        assert result['redirect_url'].startswith('/payment/')
+        assert result['background_charge_succeeded'] is False
 
         transaction_id = SubscriptionPayment.objects.latest().provider_transaction_id
         response = client.post('/api/webhook/dummy/', {'transaction_id': transaction_id})
@@ -234,6 +252,7 @@ def test_payments(user_client, payment):
             "quantity": 2,
             "start": datetime_to_api(payment.subscription.start),
             "end": datetime_to_api(payment.subscription.end),
+            "next_charge_date": datetime_to_api(next(payment.subscription.iter_charge_dates(since=now()))),
         },
         "quantity": 2,
         "amount": 100.0,
@@ -270,3 +289,107 @@ def test__api__resource_headers_mixin__exists(user, user_client, resource, subsc
             response = user_client.get('/api/headers_mixin/')
             assert response.status_code == 200
             assert response.headers[f'X-Resource-{resource.codename}'] == str(available - 10)
+
+
+def test_subscriptions__cancel(user, user_client, subscription, now):
+    subscription.start = now
+    subscription.end = now + relativedelta(days=90)
+    subscription.auto_prolong = True
+    subscription.save()
+
+    with freeze_time(subscription.end + timedelta(days=1)):
+        response = user_client.delete(f'/api/subscriptions/{subscription.uid}/')
+        assert response.status_code == 404, response.content
+        assert user.subscriptions.active().count() == 0
+
+    with freeze_time(subscription.start + timedelta(days=1)):
+        response = user_client.delete(f'/api/subscriptions/{subscription.uid}/')
+        assert response.status_code == 204, response.content
+
+    with freeze_time(subscription.start + timedelta(days=1, seconds=1)):
+        assert user.subscriptions.active().count() == 0
+        assert user.subscriptions.last().end == subscription.start + timedelta(days=1)
+        assert user.subscriptions.last().auto_prolong is False
+
+
+def test__trial_period__only_once__subsequent(db, trial_period, dummy, plan, user, user_client):
+    assert user.subscriptions.active().count() == 0
+
+    # create new subscription
+    response = user_client.post('/api/subscribe/', {'plan': plan.id})
+    assert response.status_code == 200, response.content
+    response = user_client.post('/api/webhook/dummy/', {
+        'transaction_id': SubscriptionPayment.objects.latest().provider_transaction_id,
+    })
+    assert response.status_code == 200, response.content
+    assert user.subscriptions.active().count() == 1
+
+    subscription = user.subscriptions.latest()
+    assert subscription.payments.count() == 1
+    payment = subscription.payments.first()
+    assert payment.amount == plan.charge_amount * 0
+    assert payment.subscription_start + trial_period == payment.subscription_end
+
+    # end subscription
+    response = user_client.delete(f'/api/subscriptions/{subscription.uid}/')
+    assert response.status_code == 204, response.content
+
+    assert user.subscriptions.active().count() == 0
+
+    # create another subscription and ensure no trial period is there
+    response = user_client.post('/api/subscribe/', {'plan': plan.id})
+    assert response.status_code == 200, response.content
+    assert user.subscriptions.active().count() == 1
+
+    subscription = user.subscriptions.latest()
+    assert subscription.payments.count() == 1
+    payment = subscription.payments.latest()
+    assert payment.amount == plan.charge_amount
+    assert payment.subscription_start + plan.charge_period == payment.subscription_end
+
+
+def test__trial_period__only_once__simultaneous(db, settings, trial_period, dummy, plan, bigger_plan, recharge_plan, user, user_client):
+    get_validators.cache_clear()
+    settings.SUBSCRIPTIONS_VALIDATORS = [
+        'subscriptions.validators.OnlyEnabledPlans',
+        'subscriptions.validators.AtLeastOneRecurringSubscription',
+    ]
+
+    assert user.subscriptions.active().count() == 0
+
+    # create new subscription
+    response = user_client.post('/api/subscribe/', {'plan': plan.id})
+    assert response.status_code == 200, response.content
+    response = user_client.post('/api/webhook/dummy/', {
+        'transaction_id': SubscriptionPayment.objects.latest().provider_transaction_id,
+    })
+    assert response.status_code == 200, response.content
+    assert user.subscriptions.active().count() == 1
+
+    subscription = user.subscriptions.latest()
+    assert subscription.payments.count() == 1
+    payment = subscription.payments.latest()
+    assert payment.amount == plan.charge_amount * 0
+    assert payment.subscription_start + trial_period == payment.subscription_end
+
+    # add resources and ensure no trial period is there
+    response = user_client.post('/api/subscribe/', {'plan': recharge_plan.id})
+    assert response.status_code == 200, response.content
+    assert user.subscriptions.active().count() == 2
+
+    subscription = user.subscriptions.latest()
+    assert subscription.payments.count() == 1
+    payment = subscription.payments.latest()
+    assert payment.amount == recharge_plan.charge_amount
+    assert payment.subscription_start + recharge_plan.max_duration == payment.subscription_end
+
+    # create another subscription and ensure no trial period is there
+    response = user_client.post('/api/subscribe/', {'plan': bigger_plan.id})
+    assert response.status_code == 200, response.content
+    assert user.subscriptions.active().count() == 3
+
+    subscription = user.subscriptions.latest()
+    assert subscription.payments.count() == 1
+    payment = subscription.payments.latest()
+    assert payment.amount == bigger_plan.charge_amount
+    assert payment.subscription_start + bigger_plan.charge_period == payment.subscription_end

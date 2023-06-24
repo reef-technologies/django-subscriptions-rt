@@ -289,7 +289,7 @@ def get_default_plan_id() -> Optional[int]:
         return config.SUBSCRIPTIONS_DEFAULT_PLAN_ID
 
 
-def get_default_plan() -> Plan:
+def get_default_plan() -> Optional[Plan]:
     from .models import Plan
 
     if not (default_plan_id := get_default_plan_id()):

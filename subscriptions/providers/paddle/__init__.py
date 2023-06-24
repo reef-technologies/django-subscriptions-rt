@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal
 from functools import cached_property
 from logging import getLogger
@@ -28,6 +28,7 @@ log = getLogger(__name__)
 @dataclass
 class PaddleProvider(Provider):
     codename: ClassVar[str] = 'paddle'
+    is_external: ClassVar[bool] = False
 
     vendor_id: ClassVar[str] = settings.PADDLE_VENDOR_ID
     vendor_auth_code: ClassVar[str] = settings.PADDLE_VENDOR_AUTH_CODE
@@ -58,7 +59,7 @@ class PaddleProvider(Provider):
             f'There should be exactly one subscription plan, but there are {num_plans}: {plans}'
         return plans[0]
 
-    def get_amount(self, user: AbstractBaseUser, plan: Plan) -> Money:
+    def get_amount(self, user: AbstractBaseUser, plan: Plan) -> Optional[Money]:
         if self.STAFF_DISCOUNT and user.is_staff:
             return Money(
                 amount=Decimal('1.0') + Decimal('0.01') * plan.id,
@@ -72,10 +73,14 @@ class PaddleProvider(Provider):
         user: AbstractBaseUser,
         plan: Plan,
         subscription: Optional[Subscription] = None,
+        amount: Optional[Money] = None,
         quantity: int = 1,
+        subscription_start: Optional[datetime] = None,
+        subscription_end: Optional[datetime] = None,
     ) -> Tuple[SubscriptionPayment, str]:
 
-        amount = self.get_amount(user=user, plan=plan)
+        if amount is None:
+            amount = self.get_amount(user=user, plan=plan)
 
         payment, is_new = SubscriptionPayment.objects.get_or_create(
             created__gte=now() - self.ONLINE_CHARGE_DUPLICATE_LOOKUP_TIME,
@@ -90,6 +95,8 @@ class PaddleProvider(Provider):
             quantity=quantity,
             defaults=dict(
                 provider_transaction_id=None,
+                subscription_start=subscription_start,
+                subscription_end=subscription_end,
             ),
         )
 
@@ -117,13 +124,16 @@ class PaddleProvider(Provider):
         user: AbstractBaseUser,
         plan: Plan,
         subscription: Optional[Subscription] = None,
+        amount: Optional[Money] = None,
         quantity: int = 1,
         reference_payment: Optional[SubscriptionPayment] = None,
     ) -> SubscriptionPayment:
 
         assert quantity > 0
 
-        amount = self.get_amount(user=user, plan=plan)
+        if amount is None:
+            amount = self.get_amount(user=user, plan=plan)
+
         if amount is None or amount.amount == 0:
             return SubscriptionPayment.objects.create(
                 provider_codename=self.codename,

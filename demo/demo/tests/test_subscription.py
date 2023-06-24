@@ -52,16 +52,16 @@ def test_unlimited_plan_duration(db, user, plan, now):
         assert subscription.end == now + i * days(300)
 
 
-def test_subscription_charge_dates(db, plan, subscription):
+def test__subscription__iter_charge_dates__main(db, plan, subscription):
     plan.charge_period = relativedelta(months=1)
-    plan.save(update_fields=['charge_period'])
+    plan.save()
 
     subscription.start = datetime(2021, 11, 30, 12, 00, 00, tzinfo=tz.utc)
     subscription.end = subscription.start + days(65)
-    subscription.save(update_fields=['start', 'end'])
+    subscription.save()
 
     expected_charge_dates = [
-        subscription.start,
+        datetime(2021, 11, 30, 12, 00, 00, tzinfo=tz.utc),
         datetime(2021, 12, 30, 12, 00, 00, tzinfo=tz.utc),
         datetime(2022, 1, 30, 12, 00, 00, tzinfo=tz.utc),
         datetime(2022, 2, 28, 12, 00, 00, tzinfo=tz.utc),
@@ -76,12 +76,32 @@ def test_subscription_charge_dates(db, plan, subscription):
     assert list(islice(subscription.iter_charge_dates(since=subscription.start + days(60)), 3)) == expected_charge_dates[2:5]
 
 
-def test_subscription_iter_charge_dates_performance(db, subscription, django_assert_num_queries):
+def test__subscription__iter_charge_dates__initial_charge_offset(db, plan, subscription, now):
+    plan.charge_period = relativedelta(months=1)
+    plan.save()
+
+    subscription.start = datetime(2021, 11, 30, 12, 00, 00, tzinfo=tz.utc)
+    subscription.end = subscription.start + days(65)
+    subscription.initial_charge_offset = relativedelta(days=10)
+    subscription.save()
+
+    expected_charge_dates = [
+        datetime(2021, 12, 10, 12, 00, 00, tzinfo=tz.utc),
+        datetime(2022, 1, 10, 12, 00, 00, tzinfo=tz.utc),
+        datetime(2022, 2, 10, 12, 00, 00, tzinfo=tz.utc),
+        datetime(2022, 3, 10, 12, 00, 00, tzinfo=tz.utc),
+        datetime(2022, 4, 10, 12, 00, 00, tzinfo=tz.utc),
+    ]
+
+    assert list(islice(subscription.iter_charge_dates(), 5)) == expected_charge_dates
+
+
+def test__subscription__iter_charge_dates__performance(db, subscription, django_assert_num_queries):
     with django_assert_num_queries(0):
         list(islice(subscription.iter_charge_dates(), 10))
 
 
-def test_subscription_charge_dates_with_no_charge_period(db, plan, subscription, now):
+def test__subscription__iter_charge_dates___no_charge_period(db, plan, subscription, now):
     plan.charge_period = None
     plan.save(update_fields=['charge_period'])
     assert list(subscription.iter_charge_dates()) == [subscription.start]

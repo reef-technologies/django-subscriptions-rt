@@ -60,18 +60,9 @@ def _charge_recurring_subscription(
     )
 
     previous_payment_attempts = subscription.payments.filter(
-        or_(
-            # any attempt in this period
-            Q(created__gte=charge_period[0], created__lt=charge_period[1]),
-            # or any PENDING or COMPLETED attempt in previous periods
-            Q(
-                created__gte=charge_dates[0], created__lt=charge_period[0],
-                status__in={
-                    SubscriptionPayment.Status.PENDING,
-                    SubscriptionPayment.Status.COMPLETED,
-                }
-            ),
-        )
+        # any attempt in this period
+        created__gte=charge_period[0],
+        created__lt=charge_period[1],
     )
 
     if previous_payment_attempts.exists():

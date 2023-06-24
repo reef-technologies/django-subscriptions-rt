@@ -8,7 +8,6 @@ from typing import Dict, Iterator, List, Optional, Tuple
 from djmoney.money import Money
 from django.db.models import Q, QuerySet
 from django.utils.timezone import now
-from django.conf import settings
 
 from dateutil.rrule import rrule
 from more_itertools import pairwise
@@ -16,11 +15,7 @@ from dateutil.rrule import YEARLY, MONTHLY, WEEKLY, DAILY, HOURLY, MINUTELY, SEC
 
 from .models import AbstractTransaction, Plan, Subscription, SubscriptionPayment, \
     SubscriptionPaymentRefund
-from .defaults import DEFAULT_SUBSCRIPTIONS_CURRENCY
-
-
-default_currency = getattr(settings, 'SUBSCRIPTIONS_DEFAULT_CURRENCY', DEFAULT_SUBSCRIPTIONS_CURRENCY)
-NO_MONEY = Money(0, default_currency)
+from .utils import NO_MONEY
 
 
 class IterPeriodsMixin:

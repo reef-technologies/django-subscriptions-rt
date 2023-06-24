@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import datetime
 from functools import lru_cache
 from logging import getLogger
 from typing import ClassVar, Iterable, List, Optional, Tuple
@@ -22,7 +23,8 @@ log = getLogger(__name__)
 
 @dataclass
 class Provider:
-    codename: ClassVar[str] = 'default'
+    codename: ClassVar[str]
+    is_external: ClassVar[bool]
     is_enabled: ClassVar[bool] = True
     form: ClassVar[Optional[Form]] = None
     metadata_class: ClassVar[BaseModel] = BaseModel
@@ -35,7 +37,10 @@ class Provider:
         user: AbstractBaseUser,
         plan: Plan,
         subscription: Optional[Subscription] = None,
+        amount: Optional[Money] = None,
         quantity: int = 1,
+        subscription_start: Optional[datetime] = None,
+        subscription_end: Optional[datetime] = None,
     ) -> Tuple[SubscriptionPayment, str]:
         raise NotImplementedError()
 
@@ -44,6 +49,7 @@ class Provider:
         user: AbstractBaseUser,
         plan: Plan,
         subscription: Optional[Subscription] = None,
+        amount: Optional[Money] = None,
         quantity: int = 1,
         reference_payment: Optional[SubscriptionPayment] = None,
     ) -> SubscriptionPayment:
