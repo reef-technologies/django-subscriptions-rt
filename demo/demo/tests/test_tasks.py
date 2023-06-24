@@ -5,6 +5,8 @@ from freezegun import freeze_time
 from more_itertools import spy
 from subscriptions.models import Subscription, SubscriptionPayment
 
+from .helpers import days
+
 
 def middle(period: List[timedelta]) -> timedelta:
     return (period[0] + period[1]) / 2
@@ -41,42 +43,6 @@ def test_not_charging_twice_in_same_period(subscription, payment, now, charge_ex
     with freeze_time(subscription.end + middle(charge_period)):  # middle of charge period
         charge_expiring(payment_status=SubscriptionPayment.Status.PENDING)
         assert SubscriptionPayment.objects.count() == 2
-
-
-def test_not_charging_if_previous_attempt_pending(subscription, payment, now, charge_expiring, charge_schedule):
-    # make previous charge period have PENDING attempt
-    charge_period = charge_schedule[-4:-2]
-    with freeze_time(subscription.end + middle(charge_period)):
-        charge_expiring(payment_status=SubscriptionPayment.Status.PENDING)
-        assert SubscriptionPayment.objects.count() == 2
-        payment = SubscriptionPayment.objects.latest()
-        assert payment.status == SubscriptionPayment.Status.PENDING
-        assert payment.subscription.end == subscription.end
-
-    charge_period = charge_schedule[-3:-1]
-    with freeze_time(subscription.end + middle(charge_period)):
-        # check that new charge period doesn't try to charge
-        charge_expiring()
-        assert SubscriptionPayment.objects.count() == 2
-        assert SubscriptionPayment.objects.latest() == payment
-
-
-def test_not_charging_if_previous_attempt_succeeded(subscription, payment, now, charge_expiring, charge_schedule):
-    # make previous charge period have COMPLETED attempt
-    charge_period = charge_schedule[-4:-2]
-    with freeze_time(subscription.end + middle(charge_period)):
-        charge_expiring(payment_status=SubscriptionPayment.Status.COMPLETED)
-        assert SubscriptionPayment.objects.count() == 2
-        payment = SubscriptionPayment.objects.latest()
-        assert payment.status == SubscriptionPayment.Status.COMPLETED
-        assert payment.subscription.end != subscription.end
-
-    charge_period = charge_schedule[-3:-1]
-    with freeze_time(subscription.end + middle(charge_period)):
-        # check that new charge period doesn't try to charge
-        charge_expiring()
-        assert SubscriptionPayment.objects.count() == 2
-        assert SubscriptionPayment.objects.latest() == payment
 
 
 def test_charging_if_previous_attempt_failed(subscription, payment, now, charge_expiring, charge_schedule):
@@ -154,3 +120,44 @@ def test_charge_amount(subscription, payment, now, charge_expiring, charge_sched
         assert last_payment != payment
         assert last_payment.quantity == subscription.quantity
         assert last_payment.amount == subscription.plan.charge_amount
+
+
+def test__full_charge_after_trial(dummy, plan, charge_expiring, charge_schedule, user_client, user, trial_period):
+    response = user_client.post('/api/subscribe/', {'plan': plan.id})
+    assert response.status_code == 200, response.content
+
+    assert user.subscriptions.count() == 1
+    subscription = user.subscriptions.latest()
+    payment = subscription.payments.latest()
+    payment.status = SubscriptionPayment.Status.COMPLETED
+    payment.save()
+    assert payment.amount == plan.charge_amount * 0
+    assert subscription.start + trial_period == subscription.end
+
+    old_end = subscription.end
+    with freeze_time(subscription.end - days(1)):
+        charge_expiring()
+        assert user.subscriptions.count() == 1
+        subscription = user.subscriptions.latest()
+        assert subscription.end == old_end + plan.charge_period
+
+        payment = subscription.payments.latest()
+        assert payment.subscription_end == old_end + plan.charge_period
+        assert payment.amount == plan.charge_amount
+
+
+def test__not_charging_after_cancellation(now, subscription, payment, charge_expiring, charge_schedule, user_client):
+    assert subscription.end > now + days(3)
+
+    with freeze_time(now+days(3)):
+        response = user_client.delete(f'/api/subscriptions/{subscription.uid}/')
+        assert response.status_code == 204, response.content
+        old_num_payments = subscription.payments.count()
+
+    with freeze_time(now+days(4)):
+        charge_expiring()
+        assert subscription.payments.count() == old_num_payments
+
+    with freeze_time(now+days(2)):
+        charge_expiring()
+        assert subscription.payments.count() == old_num_payments

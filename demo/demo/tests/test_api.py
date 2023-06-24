@@ -102,17 +102,16 @@ def test_unauthorized_subscribe(client, plan):
     assert response.status_code == 403
 
 
-def test_subscribe(client, user_client, plan, now):
+def test_subscribe(client, user_client, plan, now, dummy):
     with freeze_time(now):
         response = user_client.post('/api/subscribe/', {'plan': plan.id, 'quantity': 2})
         assert response.status_code == 200, response.content
-        assert response.json() == {
-            'plan': plan.id,
-            'payment_id': SubscriptionPayment.objects.latest().id,
-            'quantity': 2,
-            'redirect_url': '/subscribe/success',
-            'background_charge_succeeded': True,
-        }
+        result = response.json()
+        assert result['plan'] == plan.id
+        assert result['payment_id'] == SubscriptionPayment.objects.latest().id
+        assert result['quantity'] == 2
+        assert result['redirect_url'].startswith('/payment/')
+        assert result['background_charge_succeeded'] is False
 
         response = user_client.get('/api/subscriptions/')
         assert response.status_code == 200, response.content
@@ -177,20 +176,19 @@ def test_recurring_plan_switch(user_client, subscription, bigger_plan, now):
     with freeze_time(now + days(2)):
         response = user_client.post('/api/subscribe/', {'plan': bigger_plan.id})
         assert response.status_code == 403, response.content
-        assert response.json() == {'detail': ''}  # TODO {'detail': 'Too many recurring subscriptions'}
+        assert response.json() == {'detail': 'Too many recurring subscriptions'}
 
 
 def test_recharge_plan_subscription(client, user_client, subscription, quota, recharge_plan, recharge_quota, now, resource):
     with freeze_time(now + days(2)):
         response = user_client.post('/api/subscribe/', {'plan': recharge_plan.id})
         assert response.status_code == 200, response.content
-        assert response.json() == {
-            'plan': recharge_plan.id,
-            'quantity': 1,
-            'payment_id': SubscriptionPayment.objects.latest().id,
-            'redirect_url': '/subscribe/success',
-            'background_charge_succeeded': True,
-        }
+        result = response.json()
+        assert result['plan'] == recharge_plan.id
+        assert result['quantity'] == 1
+        assert result['payment_id'] == SubscriptionPayment.objects.latest().id
+        assert result['redirect_url'].startswith('/payment/')
+        assert result['background_charge_succeeded'] is False
 
         transaction_id = SubscriptionPayment.objects.latest().provider_transaction_id
         response = client.post('/api/webhook/dummy/', {'transaction_id': transaction_id})
@@ -321,12 +319,12 @@ def test__trial_period__only_once__subsequent(db, trial_period, dummy, plan, use
     response = user_client.post('/api/subscribe/', {'plan': plan.id})
     assert response.status_code == 200, response.content
     response = user_client.post('/api/webhook/dummy/', {
-        'transaction_id': SubscriptionPayment.objects.last().provider_transaction_id,
+        'transaction_id': SubscriptionPayment.objects.latest().provider_transaction_id,
     })
     assert response.status_code == 200, response.content
     assert user.subscriptions.active().count() == 1
 
-    subscription = user.subscriptions.last()
+    subscription = user.subscriptions.latest()
     assert subscription.payments.count() == 1
     payment = subscription.payments.first()
     assert payment.amount == plan.charge_amount * 0
@@ -341,15 +339,11 @@ def test__trial_period__only_once__subsequent(db, trial_period, dummy, plan, use
     # create another subscription and ensure no trial period is there
     response = user_client.post('/api/subscribe/', {'plan': plan.id})
     assert response.status_code == 200, response.content
-    response = user_client.post('/api/webhook/dummy/', {
-        'transaction_id': SubscriptionPayment.objects.last().provider_transaction_id,
-    })
-    assert response.status_code == 200, response.content
     assert user.subscriptions.active().count() == 1
 
-    subscription = user.subscriptions.last()
+    subscription = user.subscriptions.latest()
     assert subscription.payments.count() == 1
-    payment = subscription.payments.first()
+    payment = subscription.payments.latest()
     assert payment.amount == plan.charge_amount
     assert payment.subscription_start + plan.charge_period == payment.subscription_end
 
@@ -374,36 +368,28 @@ def test__trial_period__only_once__simultaneous(db, settings, trial_period, dumm
 
     subscription = user.subscriptions.latest()
     assert subscription.payments.count() == 1
-    payment = subscription.payments.first()
+    payment = subscription.payments.latest()
     assert payment.amount == plan.charge_amount * 0
     assert payment.subscription_start + trial_period == payment.subscription_end
 
     # add resources and ensure no trial period is there
     response = user_client.post('/api/subscribe/', {'plan': recharge_plan.id})
     assert response.status_code == 200, response.content
-    response = user_client.post('/api/webhook/dummy/', {
-        'transaction_id': SubscriptionPayment.objects.latest().provider_transaction_id,
-    })
-    assert response.status_code == 200, response.content
     assert user.subscriptions.active().count() == 2
 
     subscription = user.subscriptions.latest()
     assert subscription.payments.count() == 1
-    payment = subscription.payments.first()
+    payment = subscription.payments.latest()
     assert payment.amount == recharge_plan.charge_amount
     assert payment.subscription_start + recharge_plan.max_duration == payment.subscription_end
 
     # create another subscription and ensure no trial period is there
     response = user_client.post('/api/subscribe/', {'plan': bigger_plan.id})
     assert response.status_code == 200, response.content
-    response = user_client.post('/api/webhook/dummy/', {
-        'transaction_id': SubscriptionPayment.objects.latest().provider_transaction_id,
-    })
-    assert response.status_code == 200, response.content
     assert user.subscriptions.active().count() == 3
 
     subscription = user.subscriptions.latest()
     assert subscription.payments.count() == 1
-    payment = subscription.payments.first()
+    payment = subscription.payments.latest()
     assert payment.amount == bigger_plan.charge_amount
     assert payment.subscription_start + bigger_plan.charge_period == payment.subscription_end

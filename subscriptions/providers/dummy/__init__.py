@@ -77,6 +77,7 @@ class DummyProvider(Provider):
             user=user,
             plan=plan,
             subscription=subscription,
+            status=SubscriptionPayment.Status.COMPLETED,
         )
 
     def webhook(self, request: Request, payload: dict) -> Response:
@@ -89,7 +90,7 @@ class DummyProvider(Provider):
             return Response(status=HTTP_404_NOT_FOUND)
 
         if payment.status != payment.Status.PENDING:
-            return
+            return Response(status=HTTP_400_BAD_REQUEST)
 
         payment.status = SubscriptionPayment.Status.COMPLETED
         payment.save()
