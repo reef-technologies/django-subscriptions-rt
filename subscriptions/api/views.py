@@ -96,7 +96,7 @@ class SubscriptionSelectView(GenericAPIView):
         return get_provider()
 
     @classmethod
-    def get_trial_period(cls, plan, user) -> relativedelta | None:
+    def get_trial_period(cls, plan, user) -> relativedelta:
         trial_period = getattr(settings, 'SUBSCRIPTIONS_TRIAL_PERIOD', DEFAULT_SUBSCRIPTIONS_TRIAL_PERIOD)
 
         if (
@@ -129,7 +129,7 @@ class SubscriptionSelectView(GenericAPIView):
             try:
                 validator(active_subscriptions, plan)
             except SubscriptionError as exc:
-                raise PermissionDenied(detail=getattr(exc, 'user_message', '')) from exc
+                raise PermissionDenied(detail=str(exc)) from exc
 
         provider = self.select_payment_provider()
         background_charge_succeeded = False
@@ -166,6 +166,7 @@ class SubscriptionSelectView(GenericAPIView):
                     initial_charge_offset=trial_period,
                 )
                 payment.subscription.save()
+                payment.save()
 
         return Response(self.serializer_class({
             'redirect_url': redirect_url,

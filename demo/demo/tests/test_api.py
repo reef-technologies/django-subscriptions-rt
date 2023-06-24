@@ -12,6 +12,7 @@ from subscriptions.fields import relativedelta_to_dict
 from subscriptions.functions import use_resource
 from subscriptions.models import SubscriptionPayment, Usage
 from subscriptions.providers import get_providers
+from subscriptions.validators import get_validators
 
 from .helpers import days, datetime_to_api
 
@@ -311,3 +312,98 @@ def test_subscriptions__cancel(user, user_client, subscription, now):
         assert user.subscriptions.active().count() == 0
         assert user.subscriptions.last().end == subscription.start + timedelta(days=1)
         assert user.subscriptions.last().auto_prolong is False
+
+
+def test__trial_period__only_once__subsequent(db, trial_period, dummy, plan, user, user_client):
+    assert user.subscriptions.active().count() == 0
+
+    # create new subscription
+    response = user_client.post('/api/subscribe/', {'plan': plan.id})
+    assert response.status_code == 200, response.content
+    response = user_client.post('/api/webhook/dummy/', {
+        'transaction_id': SubscriptionPayment.objects.last().provider_transaction_id,
+    })
+    assert response.status_code == 200, response.content
+    assert user.subscriptions.active().count() == 1
+
+    subscription = user.subscriptions.last()
+    assert subscription.payments.count() == 1
+    payment = subscription.payments.first()
+    assert payment.amount == plan.charge_amount * 0
+    assert payment.subscription_start + trial_period == payment.subscription_end
+
+    # end subscription
+    response = user_client.delete(f'/api/subscriptions/{subscription.uid}/')
+    assert response.status_code == 204, response.content
+
+    assert user.subscriptions.active().count() == 0
+
+    # create another subscription and ensure no trial period is there
+    response = user_client.post('/api/subscribe/', {'plan': plan.id})
+    assert response.status_code == 200, response.content
+    response = user_client.post('/api/webhook/dummy/', {
+        'transaction_id': SubscriptionPayment.objects.last().provider_transaction_id,
+    })
+    assert response.status_code == 200, response.content
+    assert user.subscriptions.active().count() == 1
+
+    subscription = user.subscriptions.last()
+    assert subscription.payments.count() == 1
+    payment = subscription.payments.first()
+    assert payment.amount == plan.charge_amount
+    assert payment.subscription_start + plan.charge_period == payment.subscription_end
+
+
+def test__trial_period__only_once__simultaneous(db, settings, trial_period, dummy, plan, bigger_plan, recharge_plan, user, user_client):
+    get_validators.cache_clear()
+    settings.SUBSCRIPTIONS_VALIDATORS = [
+        'subscriptions.validators.OnlyEnabledPlans',
+        'subscriptions.validators.AtLeastOneRecurringSubscription',
+    ]
+
+    assert user.subscriptions.active().count() == 0
+
+    # create new subscription
+    response = user_client.post('/api/subscribe/', {'plan': plan.id})
+    assert response.status_code == 200, response.content
+    response = user_client.post('/api/webhook/dummy/', {
+        'transaction_id': SubscriptionPayment.objects.latest().provider_transaction_id,
+    })
+    assert response.status_code == 200, response.content
+    assert user.subscriptions.active().count() == 1
+
+    subscription = user.subscriptions.latest()
+    assert subscription.payments.count() == 1
+    payment = subscription.payments.first()
+    assert payment.amount == plan.charge_amount * 0
+    assert payment.subscription_start + trial_period == payment.subscription_end
+
+    # add resources and ensure no trial period is there
+    response = user_client.post('/api/subscribe/', {'plan': recharge_plan.id})
+    assert response.status_code == 200, response.content
+    response = user_client.post('/api/webhook/dummy/', {
+        'transaction_id': SubscriptionPayment.objects.latest().provider_transaction_id,
+    })
+    assert response.status_code == 200, response.content
+    assert user.subscriptions.active().count() == 2
+
+    subscription = user.subscriptions.latest()
+    assert subscription.payments.count() == 1
+    payment = subscription.payments.first()
+    assert payment.amount == recharge_plan.charge_amount
+    assert payment.subscription_start + recharge_plan.max_duration == payment.subscription_end
+
+    # create another subscription and ensure no trial period is there
+    response = user_client.post('/api/subscribe/', {'plan': bigger_plan.id})
+    assert response.status_code == 200, response.content
+    response = user_client.post('/api/webhook/dummy/', {
+        'transaction_id': SubscriptionPayment.objects.latest().provider_transaction_id,
+    })
+    assert response.status_code == 200, response.content
+    assert user.subscriptions.active().count() == 3
+
+    subscription = user.subscriptions.latest()
+    assert subscription.payments.count() == 1
+    payment = subscription.payments.first()
+    assert payment.amount == bigger_plan.charge_amount
+    assert payment.subscription_start + bigger_plan.charge_period == payment.subscription_end

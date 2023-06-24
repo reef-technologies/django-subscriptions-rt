@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import datetime
 from typing import ClassVar, Iterable, Optional, Tuple
 
 from django.contrib.auth.models import AbstractBaseUser
@@ -9,6 +10,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.status import HTTP_200_OK, HTTP_404_NOT_FOUND, HTTP_400_BAD_REQUEST
 
+from ...exceptions import PaymentError
 from ...models import Plan, Subscription, SubscriptionPayment
 from .. import Provider
 from .forms import DummyForm
@@ -28,6 +30,8 @@ class DummyProvider(Provider):
         subscription: Optional[Subscription] = None,
         amount: Optional[Money] = None,
         quantity: int = 1,
+        subscription_start: Optional[datetime] = None,
+        subscription_end: Optional[datetime] = None,
     ) -> Tuple[SubscriptionPayment, str]:
 
         transaction_id = get_random_string(8)
@@ -42,6 +46,8 @@ class DummyProvider(Provider):
             user=user,
             plan=plan,
             subscription=subscription,
+            subscription_start=subscription_start,
+            subscription_end=subscription_end,
         )
         return payment, self._payment_url.format(transaction_id)
 
@@ -53,6 +59,12 @@ class DummyProvider(Provider):
         quantity: int = 1,
         reference_payment: Optional[SubscriptionPayment] = None,
     ) -> SubscriptionPayment:
+
+        if not user.payments.filter(
+            provider_codename=self.codename,
+            status=SubscriptionPayment.Status.COMPLETED,
+        ).exists():
+            raise PaymentError('Cannot offline-charge without previous successful charge')
 
         if amount is None:
             amount = self.get_amount(user=user, plan=plan)
