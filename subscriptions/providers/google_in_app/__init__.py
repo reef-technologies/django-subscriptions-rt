@@ -490,14 +490,14 @@ class GoogleInAppProvider(Provider):
                 assert purchase_token != linked_token
                 self.dismiss_token(linked_token)
 
-            if purchase.acknowledgementState == GoogleAcknowledgementState.PENDING and subscription:
+            if purchase.acknowledgementState == GoogleAcknowledgementState.PENDING:
                 self.acknowledge(
                     packageName=self.package_name,
                     subscriptionId=product_id,
                     token=purchase_token,
                     body={
                         'developerPayload': json.dumps({
-                            'subscription.id': subscription.id,
+                            'subscription.id': last_payment.subscription.id,
                             'user.id': user.id
                         }),
                     },
