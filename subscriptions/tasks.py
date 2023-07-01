@@ -35,7 +35,7 @@ def _charge_recurring_subscription(
     if lock:
         # here we lock specific subscription object, so that we don't try charging it twice
         # at the same time
-        _ = Subscription.objects.filter(pk=subscription.pk).select_for_update(of=('self',))  # TODO: skip_locked=True?
+        _ = list(Subscription.objects.filter(pk=subscription.pk).select_for_update(of=('self',)))  # TODO: skip_locked=True?
 
     log.debug('Processing subscription %s', subscription)
 

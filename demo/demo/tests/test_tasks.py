@@ -1,9 +1,12 @@
+from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from typing import List
 
 from freezegun import freeze_time
 from more_itertools import spy
+import pytest
 from subscriptions.models import Subscription, SubscriptionPayment
+from subscriptions.tasks import charge_recurring_subscriptions
 
 from .helpers import days
 
@@ -32,7 +35,7 @@ def test_not_charged_beyond_schedule(subscription, payment, now, charge_expiring
         assert SubscriptionPayment.objects.count() == 2
 
 
-def test_not_charging_twice_in_same_period(subscription, payment, now, charge_expiring, charge_schedule):
+def test_not_charging_twice_in_same_period(subscription, payment, charge_expiring, charge_schedule):
     assert SubscriptionPayment.objects.count() == 1
     charge_period = charge_schedule[1:3]
 
@@ -43,6 +46,25 @@ def test_not_charging_twice_in_same_period(subscription, payment, now, charge_ex
     with freeze_time(subscription.end + middle(charge_period)):  # middle of charge period
         charge_expiring(payment_status=SubscriptionPayment.Status.PENDING)
         assert SubscriptionPayment.objects.count() == 2
+
+
+@pytest.mark.django_db(transaction=True)
+def test__charge_recurring_subscriptions__multiple_threads__not_charge_twice(
+    subscription,
+    payment,
+    charge_schedule,
+):
+    assert SubscriptionPayment.objects.count() == 1
+    charge_period = charge_schedule[1:3]
+
+    num_parallel_threads = 8
+    with freeze_time(subscription.end + middle(charge_period)):
+
+        with ThreadPoolExecutor(max_workers=num_parallel_threads) as pool:
+            for _ in range(num_parallel_threads):
+                pool.submit(charge_recurring_subscriptions, schedule=charge_schedule, num_threads=1)
+
+    assert SubscriptionPayment.objects.count() == 2
 
 
 def test_charging_if_previous_attempt_failed(subscription, payment, now, charge_expiring, charge_schedule):
