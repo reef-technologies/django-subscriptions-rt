@@ -4,18 +4,19 @@ from django.db import migrations
 
 
 def fill_in_uid_fks(apps, schema_editor):
+    db_alias = schema_editor.connection.alias
     SubscriptionPayment = apps.get_model('subscriptions', 'SubscriptionPayment')
-    for payment in SubscriptionPayment.objects.exclude(subscription=None):
+    for payment in SubscriptionPayment.objects.using(db_alias).exclude(subscription=None):
         payment.subscription_uid = payment.subscription
         payment.save()
 
     SubscriptionPaymentRefund = apps.get_model('subscriptions', 'SubscriptionPaymentRefund')
-    for refund in SubscriptionPaymentRefund.objects.all():
+    for refund in SubscriptionPaymentRefund.objects.using(db_alias).all():
         refund.original_payment_uid = refund.original_payment.uid
         refund.save()
 
     Tax = apps.get_model('subscriptions', 'Tax')
-    for tax in Tax.objects.all():
+    for tax in Tax.objects.using(db_alias).all():
         tax.subscription_payment_uid = tax.subscription_payment.uid
         tax.save()
 

@@ -6,9 +6,10 @@ from uuid import uuid4
 
 
 def populate_uuids(apps, schema_editor):
+    db_alias = schema_editor.connection.alias
     for model in {'Subscription', 'SubscriptionPayment', 'SubscriptionPaymentRefund'}:
         cls = apps.get_model('subscriptions', model)
-        for instance in cls.objects.all():
+        for instance in cls.objects.using(db_alias).all():
             instance.uid = uuid4()
             instance.save()
 
