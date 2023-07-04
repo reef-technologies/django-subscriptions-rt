@@ -11,7 +11,8 @@ from logging import getLogger
 log = getLogger(__name__)
 
 
-def remove_apple_in_app_subscription_duplicates(apps, scheme_editor):
+def remove_apple_in_app_subscription_duplicates(apps, schema_editor):
+    db_alias = schema_editor.connection.alias
     subscription_payment_model = apps.get_model('subscriptions', 'SubscriptionPayment')
 
     # We need to find all the entries that share the same provider_transaction_id for provider_codename `apple_in_app`.
@@ -21,7 +22,7 @@ def remove_apple_in_app_subscription_duplicates(apps, scheme_editor):
     # Thus, we need to gather all subscription payment objects and determine how many attached payments has each
     # subscription.
 
-    all_entries = subscription_payment_model.objects \
+    all_entries = subscription_payment_model.objects.using(db_alias) \
         .filter(provider_codename='apple_in_app') \
         .select_related('subscription', 'plan')
 
