@@ -201,7 +201,7 @@ def check_unfinished_payments(within: timedelta = timedelta(hours=12)):
         )
 
 
-def check_duplicated_payments():
+def check_duplicated_payments() -> dict[tuple[str, str], list[SubscriptionPayment]]:
     # This is rather massive as it's checking all operations.
     all_entries = SubscriptionPayment.objects.prefetch_related('subscription').all()
 
@@ -213,6 +213,7 @@ def check_duplicated_payments():
         key = (entry.provider_codename, entry.provider_transaction_id)
         transaction_id_to_entries[key].append(entry)
 
+    result = {}
     for (provider_codename, transaction_id), transaction_id_entries in transaction_id_to_entries.items():
         # Single entry – no issue.
         if len(transaction_id_entries) == 1:
@@ -224,5 +225,9 @@ def check_duplicated_payments():
         for idx, entry in enumerate(transaction_id_entries):
             log.info('\t%s: Subscription UID: %s, payment UID: %s',
                      (idx + 1), entry.subscription.uid, entry.uid)
+
+        result[(provider_codename, transaction_id)] = transaction_id_entries
+
+    return result
 
 # TODO: check for concurrency issues, probably add transactions
