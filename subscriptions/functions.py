@@ -327,9 +327,9 @@ def add_default_plan_to_users():
 
 
 def get_resource_refresh_moments(
-        user: AbstractUser,
-        at: Optional[datetime] = None,
-        assume_subscription_refresh: bool = True,
+    user: AbstractUser,
+    at: Optional[datetime] = None,
+    assume_subscription_refresh: bool = True,
 ) -> dict[Resource, datetime]:
     """
     For given user and moment in time, provides information when all the resources will be refreshed.
