@@ -313,8 +313,9 @@ class Subscription(models.Model):
     def charge_offline(self):
         from .providers import get_provider
 
-        last_payment = SubscriptionPayment.get_last_successful(self.user)
-        if not last_payment:
+        try:
+            last_payment = self.payments.filter(status=SubscriptionPayment.Status.COMPLETED).latest()
+        except SubscriptionPayment.DoesNotExist:
             raise PaymentError('There is no previous successful payment to take credentials from')
 
         provider_codename = last_payment.provider_codename
