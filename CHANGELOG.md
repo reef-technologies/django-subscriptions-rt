@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Fix subscriptions cancellation
 - Set auto_prolong flag correctly after google RTDN notification
+- Fix charge_offline not able to find subscription_id in reference payment metadata
 
 ## [1.0.4] - 2023-07-04
 
