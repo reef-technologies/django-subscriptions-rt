@@ -27,7 +27,7 @@ class Provider:
     form: ClassVar[Optional[Form]] = None
     metadata_class: ClassVar[BaseModel] = BaseModel
 
-    def get_amount(self, user: AbstractBaseUser, plan: Plan, quantity: int) -> Money:
+    def get_amount(self, user: AbstractBaseUser, plan: Plan) -> Money:
         return plan.charge_amount
 
     def charge_online(

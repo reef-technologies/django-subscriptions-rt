@@ -15,7 +15,8 @@ from django.conf import settings
 from django.contrib.auth.models import AbstractBaseUser
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import models
-from django.db.models import Index, QuerySet, UniqueConstraint
+from django.db.models import F, Q, DateTimeField, ExpressionWrapper, Index, QuerySet, UniqueConstraint
+from django.db.models.functions import Least
 from django.urls import reverse
 from django.utils.timezone import now
 from pydantic import BaseModel
@@ -149,17 +150,38 @@ class QuotaCache:
 
 
 class SubscriptionQuerySet(models.QuerySet):
+
+    def overlap(self, since: datetime, until: datetime, include_until: bool = False) -> QuerySet:
+        """ Filter subscriptions that overlap with [since, until) period (include_until==False) or [since, until] period (include_until==True) . """
+        return self.filter(**{
+            'end__gte': since,
+            'start__lte' if include_until else 'start__lt': until,
+        })
+
     def active(self, at: Optional[datetime] = None) -> QuerySet:
         at = at or now()
-        return self.filter(start__lte=at, end__gt=at)
+        return self.overlap(at, at, include_until=True)
 
     def expiring(self, within: datetime, since: Optional[datetime] = None) -> QuerySet:
         since = since or now()
         return self.filter(end__gte=since, end__lte=since + within)
 
-    def recurring(self, value: bool = True) -> QuerySet:
+    def recurring(self, predicate: bool = True) -> QuerySet:
         subscriptions = self.select_related('plan')
-        return subscriptions.exclude(plan__charge_period=INFINITY) if value else subscriptions.filter(plan__charge_period=INFINITY)
+        return subscriptions.exclude(plan__charge_period=INFINITY) if predicate else subscriptions.filter(plan__charge_period=INFINITY)
+
+    def with_ages(self, at: Optional[datetime] = None) -> QuerySet:
+        return self.annotate(
+            age=ExpressionWrapper(Least(at or now(), F('end')) - F('start'), output_field=DateTimeField()),
+        )
+
+    def ended_or_ending(self) -> QuerySet:
+        now_ = now()
+        return self.filter(Q(end__lte=now_) | Q(end__gt=now_, auto_prolong=False))
+
+    def new(self, since: datetime, until: datetime) -> QuerySet:
+        """ Newly created subscriptions within selected period. """
+        return self.filter(start__gte=since, start__lte=until)
 
 
 class Subscription(models.Model):
@@ -195,7 +217,8 @@ class Subscription(models.Model):
     def save(self, *args, **kwargs):
         self.start = self.start or now()
         self.end = self.end or min(self.start + self.plan.charge_period, self.max_end)
-        return super().save(*args, **kwargs)
+        super().save(*args, **kwargs)
+        self.adjust_default_subscription()
 
     def stop(self):
         self.end = now()
@@ -258,7 +281,11 @@ class Subscription(models.Model):
                 remains=amount,
             )
 
-    def iter_charge_dates(self, since: Optional[datetime] = None) -> Iterator[datetime]:
+    def iter_charge_dates(
+        self,
+        since: Optional[datetime] = None,
+        until: Optional[datetime] = None,
+    ) -> Iterator[datetime]:
         """ Including first charge (i.e. charge to create subscription) """
         charge_period = self.plan.charge_period
         since = since or self.start
@@ -268,6 +295,9 @@ class Subscription(models.Model):
 
             if charge_date < since:
                 continue
+
+            if until and charge_date > until:
+                return
 
             yield charge_date
             if charge_period == INFINITY:
@@ -293,6 +323,40 @@ class Subscription(models.Model):
             quantity=self.quantity,
             reference_payment=last_payment,
         )
+
+    def adjust_default_subscription(self):
+        # this subscription pushes out every default subscription out of its (start,end) period;
+        # IMPORTANT: this does not "fill in" gaps with default sub if current subscription is shrinked
+
+        from .functions import get_default_plan
+
+        try:
+            default_plan = get_default_plan()
+        except Plan.DoesNotExist:
+            return
+
+        if self.plan == default_plan or not self.plan.is_recurring():
+            return
+
+        default_subscriptions = (
+            Subscription.objects
+            .overlap(self.start, self.end, include_until=True)
+            .filter(user=self.user, plan=default_plan)
+        )
+
+        for default_subscription in default_subscriptions:
+            if default_subscription.start < self.start:  # split default subscription into two parts
+                default_subscription.end = self.start
+                default_subscription.save()
+
+                default_subscription.pk = None
+                default_subscription.start = self.end
+                default_subscription.end = self.end + INFINITY
+                default_subscription.save()
+
+            else:  # just shift default subscription to end of current subscription
+                default_subscription.start = self.end
+                default_subscription.save()
 
 
 class Quota(models.Model):
@@ -493,3 +557,6 @@ class Tax(models.Model):
 
     def __str__(self) -> str:
         return f'{self.id} {self.amount}'
+
+
+from .signals import create_default_subscription_for_new_user  # noqa

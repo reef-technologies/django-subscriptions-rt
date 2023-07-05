@@ -1,5 +1,5 @@
-from datetime import timedelta
-from itertools import product
+from datetime import datetime, timedelta
+from itertools import count, product
 from operator import attrgetter
 from time import sleep
 from typing import List
@@ -13,10 +13,12 @@ from freezegun import freeze_time
 
 from subscriptions.exceptions import InconsistentQuotaCache, QuotaLimitExceeded
 from subscriptions.functions import cache, get_cache_name, get_default_features, get_remaining_amount, iter_subscriptions_involved, merge_feature_sets, use_resource
-from subscriptions.models import INFINITY, Feature, Plan, Quota, QuotaCache, QuotaChunk, Subscription, Tier, Usage
+from subscriptions.models import Feature, INFINITY, Plan, Quota, QuotaCache, QuotaChunk, Subscription, Tier, Usage
+
+from .helpers import days
 
 
-def test_subscriptions_involved(five_subscriptions, user, plan, now, days):
+def test_subscriptions_involved(five_subscriptions, user, plan, now):
     subscriptions_involved = iter_subscriptions_involved(user=user, at=now)
     assert sorted(subscriptions_involved, key=attrgetter('start')) == [
         five_subscriptions[1], five_subscriptions[3], five_subscriptions[0],
@@ -28,7 +30,7 @@ def test_subscriptions_involved_performance(five_subscriptions, django_assert_ma
         list(iter_subscriptions_involved(user=user, at=now))
 
 
-def test_cache_apply(resource, now, days):
+def test_cache_apply(resource, now):
     chunks = [
         QuotaChunk(resource=resource, start=now + days(2), end=now + days(3), amount=100, remains=100),
         QuotaChunk(resource=resource, start=now, end=now + days(1), amount=100, remains=100),
@@ -58,7 +60,7 @@ def test_cache_apply(resource, now, days):
     ]
 
 
-def test_cache_inconsistencies(resource, now, days):
+def test_cache_inconsistencies(resource, now):
     chunks = [
         QuotaChunk(resource=resource, start=now, end=now + days(1), amount=100, remains=100),
         QuotaChunk(resource=resource, start=now + days(1), end=now + days(2), amount=100, remains=100),
@@ -75,7 +77,7 @@ def test_cache_inconsistencies(resource, now, days):
         list(cache.apply(chunks))
 
 
-def test_remaining_chunks_performance(db, two_subscriptions, now, remaining_chunks, django_assert_max_num_queries, get_cache, days):
+def test_remaining_chunks_performance(db, two_subscriptions, now, remaining_chunks, django_assert_max_num_queries, get_cache):
     cache_day, test_day = 8, 10
 
     with django_assert_max_num_queries(3):
@@ -86,7 +88,7 @@ def test_remaining_chunks_performance(db, two_subscriptions, now, remaining_chun
         remaining_chunks(at=now + days(test_day), quota_cache=cache)
 
 
-def test_usage_with_simple_quota(db, subscription, resource, remains, days):
+def test_usage_with_simple_quota(db, subscription, resource, remains):
     """
                      Subscription
     --------------[================]------------> time
@@ -116,7 +118,7 @@ def test_usage_with_simple_quota(db, subscription, resource, remains, days):
     assert remains(at=subscription.start + days(10)) == 0
 
 
-def test_usage_with_recharging_quota(db, subscription, resource, remains, days):
+def test_usage_with_recharging_quota(db, subscription, resource, remains):
     """
                          Subscription
     --------------[========================]------------> time
@@ -160,7 +162,7 @@ def test_usage_with_recharging_quota(db, subscription, resource, remains, days):
     assert remains(at=subscription.start + days(9)) == 70
 
 
-def test_subtraction_priority(db, subscription, resource, remains, days):
+def test_subtraction_priority(db, subscription, resource, remains):
     """
                          Subscription
     --------------[========================]------------> time
@@ -198,7 +200,7 @@ def test_subtraction_priority(db, subscription, resource, remains, days):
     assert remains(at=subscription.start + days(10)) == 0
 
 
-def test_multiple_subscriptions(db, two_subscriptions, user, resource, now, remains, days):
+def test_multiple_subscriptions(db, two_subscriptions, user, resource, now, remains):
 
     assert remains(at=now - days(1)) == 0
     assert remains(at=now + days(0)) == 100
@@ -215,7 +217,50 @@ def test_multiple_subscriptions(db, two_subscriptions, user, resource, now, rema
     assert remains(at=now + days(16)) == 0
 
 
-def test_cache(db, two_subscriptions, now, remaining_chunks, get_cache, days):
+def test_multiple_subscriptions_refreshes(db, two_subscriptions, user, resource, now, refreshes):
+    pairs = [
+        (sub.start, Quota.objects.get(plan=sub.plan).recharge_period, sub.end)
+        for sub in two_subscriptions
+    ]
+
+    def assert_expected(at: datetime) -> None:
+        output = []
+
+        for sub_start, recharge_period, sub_end in pairs:
+            if sub_start > at:
+                continue
+
+            for idx in count(start=0):
+                moment = sub_start + idx * recharge_period
+                if moment >= sub_end:
+                    break
+                if moment >= at:
+                    output.append(moment)
+                    break
+
+        if not output:
+            expected_result = None
+        else:
+            expected_result = min(output)
+
+        assert refreshes(at=at, assume_subscription_refresh=False) == expected_result, output
+
+    assert_expected(at=now - days(1))
+    assert_expected(at=now + days(0))
+    assert_expected(at=now + days(1))
+    assert_expected(at=now + days(2))
+    assert_expected(at=now + days(4))
+    assert_expected(at=now + days(5))
+    assert_expected(at=now + days(6))
+    assert_expected(at=now + days(7))
+    assert_expected(at=now + days(9))
+    assert_expected(at=now + days(10))
+    assert_expected(at=now + days(11))
+    assert_expected(at=now + days(12))
+    assert_expected(at=now + days(16))
+
+
+def test_cache(db, two_subscriptions, now, remaining_chunks, get_cache):
 
     for cache_day, test_day in product(range(13), range(13)):
         assert remaining_chunks(
@@ -233,7 +278,7 @@ def test_cache(db, two_subscriptions, now, remaining_chunks, get_cache, days):
         )  # corner cases
 
 
-def test_use_resource(db, user, subscription, quota, resource, remains, now, days):
+def test_use_resource(db, user, subscription, quota, resource, remains, now):
     with freeze_time(now):
         assert remains() == 100
         with use_resource(user, resource, 10) as left:
@@ -261,7 +306,7 @@ def test_use_resource(db, user, subscription, quota, resource, remains, now, day
             pass
 
 
-def test_cache_backend_correctness(cache_backend, db, user, two_subscriptions, remains, days, now, resource):
+def test_cache_backend_correctness(cache_backend, db, user, two_subscriptions, remains, now, resource):
     cache = caches['subscriptions']
 
     assert cache.get(user.pk) is None
@@ -511,3 +556,33 @@ def test__cache(db, django_assert_num_queries, cache_backend):
     sleep(5)
     with django_assert_num_queries(1):
         _ = get_tiers()
+
+
+def test_resource_refresh_moments(db, subscription, resource, remains, refreshes):
+    subscription.end = subscription.start + days(3)
+    subscription.save(update_fields=['end'])
+
+    Quota.objects.create(
+        plan=subscription.plan,
+        resource=resource,
+        limit=1,
+        recharge_period=days(1),
+    )
+
+    # Refresh just occurred.
+    assert refreshes(at=subscription.start) == subscription.start
+    # Next refresh will be the next day.
+    assert refreshes(at=subscription.start + timedelta(hours=4)) == subscription.start + days(1)
+    # Refresh just occurred.
+    assert refreshes(at=subscription.start + days(1)) == subscription.start + days(1)
+    # Another refresh in another day, despite just tiny amount of time has passed.
+    assert refreshes(at=subscription.start + timedelta(days=1, microseconds=1)) == subscription.start + days(2)
+
+    # If we think that the user will not refresh subscription, there will be no another refresh.
+    assert refreshes(at=subscription.start + timedelta(days=2, seconds=1), assume_subscription_refresh=False) is None
+    # If we assume that the user will refresh subscription, next one will be again in the next day.
+    assert refreshes(at=subscription.start + timedelta(days=2, seconds=1)) == subscription.start + days(3)
+
+    # No matter what we assume, if at given moment there is no subscription, we cannot assume anything about the future.
+    assert refreshes(at=subscription.start + days(3), assume_subscription_refresh=False) is None
+    assert refreshes(at=subscription.start + days(3)) is None

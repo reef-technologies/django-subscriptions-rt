@@ -1,5 +1,5 @@
-from contextlib import contextmanager
-from datetime import datetime, timedelta
+from contextlib import contextmanager, suppress
+from datetime import datetime, timedelta, timezone
 from functools import cached_property
 from itertools import chain
 from logging import getLogger
@@ -7,6 +7,7 @@ from operator import attrgetter
 from typing import Callable, Dict, Iterable, Iterator, List, Optional, Set
 
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AbstractUser
 from django.core.cache import InvalidCacheBackendError, caches
 from django.core.cache.backends.base import BaseCache
@@ -17,8 +18,9 @@ from more_itertools import spy
 
 from .defaults import DEFAULT_SUBSCRIPTIONS_CACHE_NAME
 from .exceptions import InconsistentQuotaCache, QuotaLimitExceeded
-from .models import Feature, Quota, QuotaCache, QuotaChunk, Resource, Subscription, Tier, Usage
-from .utils import HardDBLock, merge_iter
+from .models import INFINITY, Feature, Plan, Quota, QuotaCache, QuotaChunk, Resource, Subscription, Tier, Usage
+from .utils import HardDBLock
+from .utils import merge_iter
 
 log = getLogger(__name__)
 
@@ -284,3 +286,73 @@ class cache:
 def get_default_features() -> Set[Feature]:
     default_tiers = Tier.objects.filter(is_default=True).prefetch_related('features')
     return merge_feature_sets(*(tier.features.all() for tier in default_tiers))
+
+
+def get_default_plan_id() -> Optional[int]:
+    with suppress(AttributeError, ImportError):
+        from constance import config
+        return config.SUBSCRIPTIONS_DEFAULT_PLAN_ID
+
+
+def get_default_plan() -> Plan:
+    from .models import Plan
+
+    if not (default_plan_id := get_default_plan_id()):
+        return
+
+    return Plan.objects.get(id=default_plan_id)
+
+
+def add_default_plan_to_users():
+    User = get_user_model()
+
+    try:
+        default_plan = get_default_plan()
+    except Plan.DoesNotExist:
+        return
+
+    now_ = now()
+    for user in User.objects.all():
+        last_subscription = user.subscriptions.recurring().order_by('end').last()
+        if last_subscription and last_subscription.plan == default_plan and last_subscription.end > now_:
+            continue
+
+        start = max(last_subscription.end, now_) if last_subscription else now_
+        Subscription.objects.create(
+            user=user,
+            plan=default_plan,
+            start=start,
+            end=start + INFINITY,
+        )
+
+
+def get_resource_refresh_moments(
+        user: AbstractUser,
+        at: Optional[datetime] = None,
+        assume_subscription_refresh: bool = True,
+) -> dict[Resource, datetime]:
+    """
+    For given user and moment in time, provides information when all the resources will be refreshed.
+    If the given resource won't be refreshed (e.g. because subscription ends), it will be absent from the dictionary.
+
+    If `assume_subscription_refresh` is set to `True` we allow
+    the recharge moments to be beyond the current subscription end.
+    """
+    at = at or now()
+    result = {}
+    datetime_max = datetime.max.replace(tzinfo=timezone.utc)
+
+    for subscription in iter_subscriptions_involved(user, at):
+        for quota in subscription.plan.quotas.all():
+            # Find first moment after `at` that will be a recharge.
+            recharge_moment = subscription.start
+            while recharge_moment < at:
+                recharge_moment += quota.recharge_period
+            # If we get a recharge after the subscription will end, it is of no use.
+            if recharge_moment >= subscription.end and not assume_subscription_refresh:
+                continue
+            # If multiple quotas from multiple subscription affect this resource,
+            # point at the one that happens earliest.
+            result[quota.resource] = min(result.get(quota.resource, datetime_max), recharge_moment)
+
+    return result

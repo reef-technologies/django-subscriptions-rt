@@ -8,8 +8,10 @@ from django.utils.timezone import now
 from subscriptions.exceptions import PaymentError, ProlongationImpossible
 from subscriptions.models import Quota, QuotaChunk, Subscription, SubscriptionPayment
 
+from .helpers import days
 
-def test_limited_plan_duration(db, user, plan, now, days):
+
+def test_limited_plan_duration(db, user, plan, now):
     plan.max_duration = days(30)
     plan.charge_period = days(10)
     plan.save(update_fields=['max_duration', 'charge_period'])
@@ -32,7 +34,7 @@ def test_limited_plan_duration(db, user, plan, now, days):
         subscription.prolong()
 
 
-def test_unlimited_plan_duration(db, user, plan, now, days):
+def test_unlimited_plan_duration(db, user, plan, now):
     plan.max_duration = None
     plan.charge_period = days(300)
     plan.save(update_fields=['max_duration'])
@@ -50,7 +52,7 @@ def test_unlimited_plan_duration(db, user, plan, now, days):
         assert subscription.end == now + i * days(300)
 
 
-def test_subscription_charge_dates(db, plan, subscription, days):
+def test_subscription_charge_dates(db, plan, subscription):
     plan.charge_period = relativedelta(months=1)
     plan.save(update_fields=['charge_period'])
 
@@ -85,7 +87,7 @@ def test_subscription_charge_dates_with_no_charge_period(db, plan, subscription,
     assert list(subscription.iter_charge_dates()) == [subscription.start]
 
 
-def test_active_subscription_filter(db, subscription, now, days):
+def test_active_subscription_filter(db, subscription, now):
     subscription.start = now - days(2)
     subscription.end = now - days(1)
     subscription.save(update_fields=['start', 'end'])
@@ -96,7 +98,7 @@ def test_active_subscription_filter(db, subscription, now, days):
     assert subscription in Subscription.objects.active(at=now)
 
 
-def test_iter_quota_chunks(db, subscription, resource, days):
+def test_iter_quota_chunks(db, subscription, resource):
     """
                        Subscription
     ----------[=========================]-------------> time
@@ -133,7 +135,7 @@ def test_iter_quota_chunks(db, subscription, resource, days):
     assert list(subscription.iter_quota_chunks(since=subscription.end - days(1))) == chunks[1:]
 
 
-def test_subscription_expiring_performance(django_assert_num_queries, two_subscriptions, days):
+def test_subscription_expiring_performance(django_assert_num_queries, two_subscriptions):
     with django_assert_num_queries(1):
         list(Subscription.objects.expiring(within=days(5)))
 
@@ -216,7 +218,7 @@ def test_subscription_auto_creation_on_payment(db, plan, user, dummy):
     assert payment.subscription_end == payment.subscription.end
 
 
-def test_subscription_duration_set_by_payment(db, plan, user, dummy, now, days):
+def test_subscription_duration_set_by_payment(db, plan, user, dummy, now):
     assert not Subscription.objects.exists()
 
     payment = SubscriptionPayment.objects.create(

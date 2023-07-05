@@ -13,6 +13,7 @@ https://docs.djangoproject.com/en/4.0/ref/settings/
 from pathlib import Path
 from typing import List
 from os import environ
+from constance import config
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -40,8 +41,9 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
 
-    # 'django_extensions',
     'rest_framework',
+    'constance',
+    'constance.backends.database',
 
     'demo',
     'subscriptions',
@@ -101,6 +103,11 @@ DATABASES = {
         'PORT': environ['POSTGRES_PORT'],
         'ATOMIC_REQUESTS': False,
     }
+}
+
+CONSTANCE_BACKEND = 'constance.backends.database.DatabaseBackend'
+CONSTANCE_CONFIG = {
+    'SUBSCRIPTIONS_DEFAULT_PLAN_ID': (0, 'Default plan ID', int),
 }
 
 SUBSCRIPTIONS_PAYMENT_PROVIDERS = [

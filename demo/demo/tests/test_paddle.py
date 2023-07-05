@@ -122,7 +122,6 @@ def test_payment_flow(paddle, user_client, plan, card_number):
     assert last_payment.amount == provider.get_amount(
         user=last_payment.user,
         plan=plan,
-        quantity=last_payment.quantity,
     )
     assert last_payment.quantity == subscription.quantity
     assert last_payment.user == subscription.user
@@ -273,3 +272,27 @@ def test_reference_payment_non_matching_currency(paddle, user_client, paddle_unc
             user=paddle_unconfirmed_payment.user,
             plan=other_currency_plan,
         )
+
+
+def test_subscription_charge_offline_zero_amount(paddle, user_client, paddle_unconfirmed_payment):
+    paddle_unconfirmed_payment.status = SubscriptionPayment.Status.COMPLETED
+    paddle_unconfirmed_payment.save()
+
+    assert SubscriptionPayment.objects.count() == 1
+
+    free_plan = Plan.objects.create(
+        codename='other',
+        name='Other',
+        charge_amount=None,
+        charge_period=relativedelta(days=30),
+    )
+
+    provider = get_provider()
+    provider.charge_offline(
+        user=paddle_unconfirmed_payment.user,
+        plan=free_plan,
+    )
+    assert SubscriptionPayment.objects.count() == 2
+    last_payment = SubscriptionPayment.objects.order_by('subscription_end').last()
+    assert last_payment.plan == free_plan
+    assert last_payment.amount is None

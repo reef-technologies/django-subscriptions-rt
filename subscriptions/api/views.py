@@ -4,6 +4,7 @@ from typing import Type
 from django.conf import settings
 from django.http import QueryDict
 from rest_framework.exceptions import PermissionDenied
+from rest_framework.views import APIView
 from rest_framework.generics import GenericAPIView, ListAPIView, RetrieveAPIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -19,6 +20,15 @@ from ..validators import get_validators
 from .serializers import PaymentProviderListSerializer, PlanSerializer, ResourcesSerializer, SubscriptionPaymentSerializer, SubscriptionSelectSerializer, SubscriptionSerializer, WebhookSerializer
 
 log = logging.getLogger(__name__)
+
+
+class ResourceHeadersMixin(APIView):
+    def finalize_response(self, request, *args, **kwargs):
+        response = super().finalize_response(request, *args, **kwargs)
+        if request.user.is_authenticated:
+            for resource, remains in get_remaining_amount(request.user).items():
+                response[f'X-Resource-{resource.codename.capitalize()}'] = remains
+        return response
 
 
 class PlanListView(ListAPIView):
