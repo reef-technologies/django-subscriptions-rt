@@ -1,3 +1,4 @@
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, wait
 from datetime import datetime, timedelta
 from functools import partial
@@ -199,5 +200,29 @@ def check_unfinished_payments(within: timedelta = timedelta(hours=12)):
             unfinished_payments.filter(provider_codename=codename)
         )
 
+
+def check_duplicated_payments():
+    # This is rather massive as it's checking all operations.
+    all_entries = SubscriptionPayment.objects.prefetch_related('subscription').all()
+
+    transaction_id_to_entries: defaultdict[tuple[str, str], list[SubscriptionPayment]] = defaultdict(list)
+    for entry in all_entries:
+        # This happens for e.g.: unconfirmed paddle. We don't worry about these.
+        if entry.provider_transaction_id is None:
+            continue
+        key = (entry.provider_codename, entry.provider_transaction_id)
+        transaction_id_to_entries[key].append(entry)
+
+    for (provider_codename, transaction_id), transaction_id_entries in transaction_id_to_entries.items():
+        # Single entry – no issue.
+        if len(transaction_id_entries) == 1:
+            continue
+
+        log.info('Found transaction ID: %s provider: %s with %s duplicates.',
+                 transaction_id, provider_codename, len(transaction_id_entries))
+
+        for idx, entry in enumerate(transaction_id_entries):
+            log.info('\t%s: Subscription UID: %s, payment UID: %s',
+                     (idx + 1), entry.subscription.uid, entry.uid)
 
 # TODO: check for concurrency issues, probably add transactions
