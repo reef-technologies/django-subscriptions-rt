@@ -298,3 +298,45 @@ def test_check_payments(google_in_app):
 
 def test_subscription_notification_models(google_in_app__subscription_purchase_dict):
     GoogleSubscriptionPurchaseV2.parse_obj(google_in_app__subscription_purchase_dict)
+
+
+def test_subscriptions__cancel__google(
+    user,
+    client,
+    user_client,
+    subscription,
+    google_in_app,
+    google_subscription_purchase,
+    google_rtdn_notification_factory,
+):
+    subscription.end = now() + days(10)
+    subscription.save()
+
+    SubscriptionPayment.objects.create(
+        user=user,
+        plan=subscription.plan,
+        subscription=subscription,
+        provider_codename=google_in_app.codename,
+        provider_transaction_id='12345',
+        status=SubscriptionPayment.Status.PENDING,
+        subscription_start=now() + days(10),
+        subscription_end=now() + days(40),
+    )
+
+    assert user.subscriptions.active().count() == 1
+
+    # manual cancellation doesn't work
+    response = user_client.delete(f'/api/subscriptions/{subscription.uid}/')
+    assert response.status_code == 400, response.content
+    assert user.subscriptions.active().count() == 1
+    assert user.subscriptions.active().first().auto_prolong is True
+
+    # google play store cancellation works
+    google_subscription_purchase.subscriptionState = GoogleSubscriptionState.CANCELED
+    with mock.patch('subscriptions.providers.google_in_app.GoogleInAppProvider.get_purchase', return_value=google_subscription_purchase):
+        notification = google_rtdn_notification_factory(GoogleSubscriptionNotificationType.CANCELED)
+        response = client.post('/api/webhook/google_in_app/', notification, content_type="application/json")
+        assert response.status_code == 200, response.content
+
+    assert user.subscriptions.active().count() == 0
+    assert user.subscriptions.latest().auto_prolong is False

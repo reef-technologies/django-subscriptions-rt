@@ -403,13 +403,17 @@ class GoogleInAppProvider(Provider):
             if event in {
                 GoogleSubscriptionNotificationType.RECOVERED,
                 GoogleSubscriptionNotificationType.DEFERRED,
+                GoogleSubscriptionNotificationType.IN_GRACE_PERIOD,
+                GoogleSubscriptionNotificationType.RESTARTED,
+                GoogleSubscriptionNotificationType.PRICE_CHANGE_CONFIRMED,
+                GoogleSubscriptionNotificationType.PAUSE_SCHEDULE_CHANGED,
             }:
                 # just prolong if needed
                 last_payment = self.get_last_payment(purchase_token)
                 subscription = last_payment.subscription
-                if purchase_end > subscription.end:
-                    subscription.end = purchase_end
-                    subscription.save()
+                subscription.end = max(subscription.end, purchase_end)
+                subscription.auto_prolong = True
+                subscription.save()
 
             elif event == GoogleSubscriptionNotificationType.RENEWED:
                 # TODO: handle case when subscription is resumed from a pause
@@ -422,12 +426,17 @@ class GoogleInAppProvider(Provider):
                     last_payment.meta = Metadata(purchase=purchase)
                     last_payment.save()
 
+                subscription = last_payment.subscription
+                subscription.auto_prolong = True
+                subscription.save()
+
             elif event == GoogleSubscriptionNotificationType.CANCELED:
                 last_payment = self.get_last_payment(purchase_token)
                 subscription = last_payment.subscription
-                if subscription.end != purchase_end:
-                    subscription.end = purchase_end
-                    subscription.save()
+
+                subscription.end = purchase_end
+                subscription.auto_prolong = False
+                subscription.save()
 
                 if last_payment.subscription_end > subscription.end:
                     last_payment.subscription_end = subscription.end
@@ -455,22 +464,17 @@ class GoogleInAppProvider(Provider):
                 GoogleSubscriptionNotificationType.REVOKED,
             }:
                 last_payment = self.get_last_payment(purchase_token)
-                last_payment.subscription.end = now()
-                last_payment.subscription.save()
+                subscription = last_payment.subscription
 
-            elif event in {
-                GoogleSubscriptionNotificationType.IN_GRACE_PERIOD,
-                GoogleSubscriptionNotificationType.RESTARTED,
-                GoogleSubscriptionNotificationType.PRICE_CHANGE_CONFIRMED,
-                GoogleSubscriptionNotificationType.PAUSE_SCHEDULE_CHANGED,
-            }:
-                last_payment = self.get_last_payment(purchase_token)
-                log.warning('Event %s not yet supported (purchase token: %s)', event, purchase_token)
+                subscription.end = now()
+                subscription.auto_prolong = False
+                subscription.save()
 
             elif event == GoogleSubscriptionNotificationType.EXPIRED:
                 last_payment = self.get_last_payment(purchase_token)
                 subscription = last_payment.subscription
                 subscription.end = purchase_end
+                subscription.auto_prolong = False
                 subscription.save()
 
             else:

@@ -1,4 +1,5 @@
 from __future__ import annotations
+from contextlib import suppress
 
 import logging
 from typing import Type
@@ -15,14 +16,14 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.schemas.openapi import AutoSchema
 
-from subscriptions.functions import get_remaining_amount
-
+from ..functions import get_remaining_amount
 from ..defaults import DEFAULT_SUBSCRIPTIONS_SUCCESS_URL, DEFAULT_SUBSCRIPTIONS_TRIAL_PERIOD
-from ..exceptions import PaymentError, SubscriptionError
+from ..exceptions import PaymentError, RecurringSubscriptionsAlreadyExist, SubscriptionError
 from ..models import Plan, Subscription, SubscriptionPayment
 from ..providers import Provider, get_provider, get_providers
 from ..validators import get_validators
 from .serializers import PaymentProviderListSerializer, PlanSerializer, ResourcesSerializer, SubscriptionPaymentSerializer, SubscriptionSelectSerializer, SubscriptionSerializer, WebhookSerializer
+from .exceptions import BadRequest
 
 log = logging.getLogger(__name__)
 
@@ -71,7 +72,7 @@ class SubscriptionListView(ListAPIView):
         return Subscription.objects.active().select_related('plan').filter(user=self.request.user)
 
 
-class SubscriptionCancelView(DestroyAPIView):
+class SubscriptionView(DestroyAPIView):
     permission_classes = IsAuthenticated,
     serializer_class = SubscriptionSerializer
     schema = AutoSchema()
@@ -81,7 +82,11 @@ class SubscriptionCancelView(DestroyAPIView):
         return Subscription.objects.active().filter(user=self.request.user)
 
     def perform_destroy(self, instance):
-        instance.end = now()
+        with suppress(SubscriptionPayment.DoesNotExist):
+            latest_payment = instance.payments.latest()
+            if get_provider(latest_payment.provider_codename).is_external:
+                raise BadRequest(detail='Cancellation endpoint is not allowed for this provider')
+
         instance.auto_prolong = False
         instance.save()
 
@@ -128,6 +133,13 @@ class SubscriptionSelectView(GenericAPIView):
         for validator in get_validators():
             try:
                 validator(active_subscriptions, plan)
+            except RecurringSubscriptionsAlreadyExist as exc:
+                # if there are recurring subscriptions and they are conflicting,
+                # we force-terminate them and go on with creating a new one
+                now_ = now()
+                for subscription in exc.subscriptions:
+                    subscription.end = now()
+                    subscription.save()
             except SubscriptionError as exc:
                 raise PermissionDenied(detail=str(exc)) from exc
 

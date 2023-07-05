@@ -7,7 +7,7 @@ from django.db.models import QuerySet
 from django.utils.module_loading import import_string
 
 from .defaults import DEFAULT_SUBSCRIPTIONS_VALIDATORS
-from .exceptions import SubscriptionError
+from .exceptions import SubscriptionError, RecurringSubscriptionsAlreadyExist
 from .models import Plan
 
 
@@ -32,15 +32,17 @@ class AtLeastOneRecurringSubscription(SubscriptionValidator):
 
 
 @dataclass(frozen=True)
-class SimultaneousRecurringSubscriptions(SubscriptionValidator):
-    MAX_NUMBER: ClassVar[int] = 1
+class SingleRecurringSubscription(SubscriptionValidator):
 
     def __call__(self, active_subscriptions: QuerySet, requested_plan: Plan):
         if not requested_plan.is_recurring():
             return
 
-        if active_subscriptions.recurring().count() > self.MAX_NUMBER - 1:
-            raise SubscriptionError('Too many recurring subscriptions')
+        if (active_recurring_subscriptions := list(active_subscriptions.recurring())):
+            raise RecurringSubscriptionsAlreadyExist(
+                f'{len(active_recurring_subscriptions)} recurring subscription(s) already exist',
+                subscriptions=active_recurring_subscriptions,
+            )
 
 
 @lru_cache(maxsize=1)

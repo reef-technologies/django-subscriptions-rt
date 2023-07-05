@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 from datetime import datetime
 from typing import ClassVar, Iterable, Optional, Tuple
 
@@ -16,9 +15,9 @@ from .. import Provider
 from .forms import DummyForm
 
 
-@dataclass  # TODO: not needed?
 class DummyProvider(Provider):
     codename: ClassVar[str] = 'dummy'
+    is_external: ClassVar[bool] = False
     form: ClassVar[Form] = DummyForm
 
     _payment_url: ClassVar[str] = '/payment/{}/'

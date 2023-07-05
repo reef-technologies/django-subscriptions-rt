@@ -2,17 +2,20 @@ import logging
 import re
 from datetime import timedelta
 from django.utils.timezone import now
+from more_itertools import one
 
 import pytest
 from freezegun import freeze_time
 from dateutil.relativedelta import relativedelta
+from unittest import mock
 
 from subscriptions.exceptions import PaymentError
 from subscriptions.fields import relativedelta_to_dict
 from subscriptions.functions import use_resource
-from subscriptions.models import SubscriptionPayment, Usage
+from subscriptions.models import SubscriptionPayment, Usage, Subscription
 from subscriptions.providers import get_providers
 from subscriptions.validators import get_validators
+from subscriptions.providers.google_in_app.models import GoogleSubscriptionNotificationType, GoogleSubscriptionState
 
 from .helpers import days, datetime_to_api
 
@@ -172,11 +175,16 @@ def test_resources_expiration(user_client, subscription, resource, now, quota):
         assert response.json() == {}
 
 
-def test_recurring_plan_switch(user_client, subscription, bigger_plan, now):
+def test_recurring_plan_switch(user, user_client, subscription, payment, bigger_plan, now):
+    with freeze_time(now):
+        assert one(user.subscriptions.active()).plan == subscription.plan
+
     with freeze_time(now + days(2)):
         response = user_client.post('/api/subscribe/', {'plan': bigger_plan.id})
-        assert response.status_code == 403, response.content
-        assert response.json() == {'detail': 'Too many recurring subscriptions'}
+        assert response.status_code == 200, response.content
+
+    with freeze_time(now + days(2) + timedelta(seconds=1)):
+        assert one(user.subscriptions.active()).plan == bigger_plan
 
 
 def test_recharge_plan_subscription(client, user_client, subscription, quota, recharge_plan, recharge_quota, now, resource):
@@ -291,7 +299,7 @@ def test__api__resource_headers_mixin__exists(user, user_client, resource, subsc
             assert response.headers[f'X-Resource-{resource.codename}'] == str(available - 10)
 
 
-def test_subscriptions__cancel(user, user_client, subscription, now):
+def test_subscriptions__cancel__dummy(user, user_client, subscription, payment, now, dummy):
     subscription.start = now
     subscription.end = now + relativedelta(days=90)
     subscription.auto_prolong = True
@@ -307,9 +315,12 @@ def test_subscriptions__cancel(user, user_client, subscription, now):
         assert response.status_code == 204, response.content
 
     with freeze_time(subscription.start + timedelta(days=1, seconds=1)):
+        assert user.subscriptions.active().count() == 1
+        assert user.subscriptions.latest().end == now + relativedelta(days=90)
+        assert user.subscriptions.latest().auto_prolong is False
+
+    with freeze_time(subscription.end + timedelta(seconds=1)):
         assert user.subscriptions.active().count() == 0
-        assert user.subscriptions.last().end == subscription.start + timedelta(days=1)
-        assert user.subscriptions.last().auto_prolong is False
 
 
 def test__trial_period__only_once__subsequent(db, trial_period, dummy, plan, user, user_client):
@@ -333,8 +344,7 @@ def test__trial_period__only_once__subsequent(db, trial_period, dummy, plan, use
     # end subscription
     response = user_client.delete(f'/api/subscriptions/{subscription.uid}/')
     assert response.status_code == 204, response.content
-
-    assert user.subscriptions.active().count() == 0
+    assert user.subscriptions.latest().auto_prolong is False
 
     # create another subscription and ensure no trial period is there
     response = user_client.post('/api/subscribe/', {'plan': plan.id})
@@ -393,3 +403,77 @@ def test__trial_period__only_once__simultaneous(db, settings, trial_period, dumm
     payment = subscription.payments.latest()
     assert payment.amount == bigger_plan.charge_amount
     assert payment.subscription_start + bigger_plan.charge_period == payment.subscription_end
+
+
+def test__get_trial_period__cheating__simultaneous_payments(
+    db,
+    trial_period,
+    plan,
+    user,
+    user_client,
+    dummy,
+):
+    assert not SubscriptionPayment.objects.exists()
+
+    response = user_client.post('/api/subscribe/', {'plan': plan.id})
+    assert response.status_code == 200, response.content
+
+    response = user_client.post('/api/subscribe/', {'plan': plan.id})
+    assert response.status_code == 200, response.content
+
+    payments = SubscriptionPayment.objects.all()
+    assert len(payments) == 2
+
+    for payment in payments:
+        payment.status = SubscriptionPayment.Status.COMPLETED
+        payment.save()
+
+    assert Subscription.objects.count() == 2
+    assert payments[0].subscription.initial_charge_offset == trial_period
+    assert payments[1].subscription.initial_charge_offset == relativedelta(0)
+
+
+def test__get_trial_period__cheating__multiacc__paddle(
+    db,
+    trial_period,
+    plan,
+    user,
+    client,
+    dummy,
+):
+    assert not Subscription.objects.exists()
+    raise NotImplementedError()
+    # response = client.post('/api/subscribe/', {'plan': plan.id})
+    # assert response.status_code == 200, response.content
+
+
+def test__get_trial_period__not_cheating__multiacc(
+    db,
+    trial_period,
+    plan,
+    user,
+    client,
+    other_user,
+    dummy,
+):
+    assert not Subscription.objects.exists()
+
+    client.force_login(user)
+    response = client.post('/api/subscribe/', {'plan': plan.id})
+    assert response.status_code == 200, response.content
+
+    client.force_login(other_user)
+    response = client.post('/api/subscribe/', {'plan': plan.id})
+    assert response.status_code == 200, response.content
+
+    payments = SubscriptionPayment.objects.all()
+    assert len(payments) == 2
+    for payment in payments:
+        payment.status = SubscriptionPayment.Status.COMPLETED
+        payment.save()
+
+    assert Subscription.objects.count() == 2
+    assert payments[0].subscription.initial_charge_offset == trial_period
+    assert payments[0].subscription.user == user
+    assert payments[1].subscription.initial_charge_offset == trial_period
+    assert payments[1].subscription.user == other_user

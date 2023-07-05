@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Allow plan switching when SingleRecurringSubscription validator is enabled
+
+### Fixed
+
+- Fix subscriptions cancellation
+- Set auto_prolong flag correctly after google RTDN notification
+
 ## [1.0.4] - 2023-07-04
 
 ### Fixed
