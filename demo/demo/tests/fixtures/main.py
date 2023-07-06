@@ -1,5 +1,3 @@
-import json
-from base64 import b64encode
 from datetime import datetime, timedelta
 from datetime import timezone as tz
 from functools import wraps
@@ -7,19 +5,32 @@ from typing import Callable, List, Optional
 
 import pytest
 from constance import config
+from dateutil.relativedelta import relativedelta
 from django.contrib.auth import get_user_model
 from django.core.cache import caches
 from django.test import Client
 from djmoney.money import Money
-from dateutil.relativedelta import relativedelta
 
-from subscriptions.functions import get_remaining_amount, get_remaining_chunks, get_resource_refresh_moments
-from subscriptions.models import INFINITY, Plan, Quota, QuotaCache, Resource, Subscription, SubscriptionPayment, Usage
+from subscriptions.functions import (
+    get_remaining_amount,
+    get_remaining_chunks,
+    get_resource_refresh_moments,
+)
+from subscriptions.models import (
+    INFINITY,
+    Plan,
+    Quota,
+    QuotaCache,
+    Resource,
+    Subscription,
+    SubscriptionPayment,
+    Usage,
+)
 from subscriptions.providers import get_provider, get_providers
 from subscriptions.providers.dummy import DummyProvider
 from subscriptions.tasks import charge_recurring_subscriptions
 
-from ..helpers import usd, days
+from ..helpers import days, usd
 
 
 @pytest.fixture

@@ -15,7 +15,7 @@ def middle(period: List[timedelta]) -> timedelta:
     return (period[0] + period[1]) / 2
 
 
-def test_not_charged_beyond_schedule(subscription, payment, now, charge_expiring, charge_schedule):
+def test__tasks__charge_expiring__not_charged_beyond_schedule(subscription, payment, now, charge_expiring, charge_schedule):
     initial_end = subscription.end
 
     max_advance = charge_schedule[0]
@@ -35,7 +35,7 @@ def test_not_charged_beyond_schedule(subscription, payment, now, charge_expiring
         assert SubscriptionPayment.objects.count() == 2
 
 
-def test_not_charging_twice_in_same_period(subscription, payment, charge_expiring, charge_schedule):
+def test__tasks__charge_expiring__not_charging_twice_in_same_period(subscription, payment, charge_expiring, charge_schedule):
     assert SubscriptionPayment.objects.count() == 1
     charge_period = charge_schedule[1:3]
 
@@ -49,7 +49,7 @@ def test_not_charging_twice_in_same_period(subscription, payment, charge_expirin
 
 
 @pytest.mark.django_db(transaction=True)
-def test__charge_recurring_subscriptions__multiple_threads__not_charge_twice(
+def test__tasks__charge_expiring__multiple_threads__not_charge_twice(
     subscription,
     payment,
     charge_schedule,
@@ -67,7 +67,7 @@ def test__charge_recurring_subscriptions__multiple_threads__not_charge_twice(
     assert SubscriptionPayment.objects.count() == 2
 
 
-def test_charging_if_previous_attempt_failed(subscription, payment, now, charge_expiring, charge_schedule):
+def test__tasks__charge_expiring__previous_attempt_failed(subscription, payment, now, charge_expiring, charge_schedule):
     # make previous charge period have FAILED attempt
     charge_period = charge_schedule[-4:-2]
     with freeze_time(subscription.end + middle(charge_period)):
@@ -85,7 +85,7 @@ def test_charging_if_previous_attempt_failed(subscription, payment, now, charge_
         assert SubscriptionPayment.objects.latest() != payment
 
 
-def test_not_reacting_to_other_payments(subscription, payment, now, charge_expiring, charge_schedule):
+def test__tasks__charge_expiring__not_reacting_to_other_payments(subscription, payment, now, charge_expiring, charge_schedule):
     charge_period = charge_schedule[-3:-1]
 
     # create another payment but for other subscription
@@ -106,7 +106,7 @@ def test_not_reacting_to_other_payments(subscription, payment, now, charge_expir
         assert SubscriptionPayment.objects.latest().pk != other_subscription_payment.pk
 
 
-def test_prolongation(subscription, payment, now, charge_expiring, charge_schedule):
+def test__tasks__charge_expiring__prolongation(subscription, payment, now, charge_expiring, charge_schedule):
     charge_dates, _ = spy(subscription.iter_charge_dates(), 6)
     assert subscription.end == charge_dates[2]
 
@@ -135,7 +135,7 @@ def test_prolongation(subscription, payment, now, charge_expiring, charge_schedu
         assert subscription.end == charge_dates[4]
 
 
-def test_charge_amount(subscription, payment, now, charge_expiring, charge_schedule):
+def test__tasks__charge_expiring__amount(subscription, payment, now, charge_expiring, charge_schedule):
     with freeze_time(subscription.end + charge_schedule[-2]):
         charge_expiring()
         last_payment = subscription.payments.latest()
@@ -144,31 +144,7 @@ def test_charge_amount(subscription, payment, now, charge_expiring, charge_sched
         assert last_payment.amount == subscription.plan.charge_amount
 
 
-def test__full_charge_after_trial(dummy, plan, charge_expiring, charge_schedule, user_client, user, trial_period):
-    response = user_client.post('/api/subscribe/', {'plan': plan.id})
-    assert response.status_code == 200, response.content
-
-    assert user.subscriptions.count() == 1
-    subscription = user.subscriptions.latest()
-    payment = subscription.payments.latest()
-    payment.status = SubscriptionPayment.Status.COMPLETED
-    payment.save()
-    assert payment.amount == plan.charge_amount * 0
-    assert subscription.start + trial_period == subscription.end
-
-    old_end = subscription.end
-    with freeze_time(subscription.end - days(1)):
-        charge_expiring()
-        assert user.subscriptions.count() == 1
-        subscription = user.subscriptions.latest()
-        assert subscription.end == old_end + plan.charge_period
-
-        payment = subscription.payments.latest()
-        assert payment.subscription_end == old_end + plan.charge_period
-        assert payment.amount == plan.charge_amount
-
-
-def test__not_charging_after_cancellation(now, subscription, payment, charge_expiring, charge_schedule, user_client):
+def test__tasks__charge_expiring__not_charging_after_cancellation(now, subscription, payment, charge_expiring, charge_schedule, user_client):
     assert subscription.end > now + days(3)
 
     with freeze_time(now+days(3)):

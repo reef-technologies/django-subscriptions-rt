@@ -1,5 +1,6 @@
 import json
 from datetime import timedelta
+from more_itertools import one
 
 import pytest
 from dateutil.relativedelta import relativedelta
@@ -18,6 +19,8 @@ from subscriptions.utils import fromisoformat
 
 
 def test__paddle__payment_flow__regular(paddle, user_client, plan, card_number):
+    assert not Subscription.objects.exists()
+
     response = user_client.post('/api/subscribe/', {'plan': plan.id})
     assert response.status_code == 200, response.content
 
@@ -70,6 +73,7 @@ def test__paddle__payment_flow__regular(paddle, user_client, plan, card_number):
                 raise TryAgain()
 
     payment = SubscriptionPayment.objects.get(pk=payment.pk)
+    subscription = one(Subscription.objects.all())
 
     assert result == {
         'id': payment.id,
@@ -82,11 +86,11 @@ def test__paddle__payment_flow__regular(paddle, user_client, plan, card_number):
         'paid_to': payment.subscription_end.isoformat().replace('+00:00', 'Z'),
         'created': payment.created.isoformat().replace('+00:00', 'Z'),
         'subscription': {
-            'id': payment.subscription.id,
+            'id': subscription.id,
             'quantity': 1,
-            'start': payment.subscription.start.isoformat().replace('+00:00', 'Z'),
-            'end': payment.subscription.end.isoformat().replace('+00:00', 'Z'),
-            'next_charge_date': next(payment.subscription.iter_charge_dates(since=now())).isoformat().replace('+00:00', 'Z'),
+            'start': subscription.start.isoformat().replace('+00:00', 'Z'),
+            'end': subscription.end.isoformat().replace('+00:00', 'Z'),
+            'next_charge_date': next(subscription.iter_charge_dates(since=now())).isoformat().replace('+00:00', 'Z'),
             'plan': {
                 'charge_amount': 100,
                 'charge_amount_currency': 'USD',
@@ -101,14 +105,22 @@ def test__paddle__payment_flow__regular(paddle, user_client, plan, card_number):
         },
     }
 
+    initial_subscription_start = subscription.start
+    assert now() - timedelta(minutes=1) < initial_subscription_start < now()
+    assert subscription.end == initial_subscription_start + plan.charge_period
+
     # ---- test_check_unfinished_payments ----
     payment = SubscriptionPayment.objects.latest()
     payment.status = SubscriptionPayment.Status.PENDING
     payment.save()
 
     check_unfinished_payments(within=timedelta(hours=1))
-    payment = SubscriptionPayment.objects.latest()
+    payment = SubscriptionPayment.objects.get(pk=payment.pk)
     assert payment.status == SubscriptionPayment.Status.COMPLETED
+
+    subscription = one(Subscription.objects.all())
+    assert subscription.start == initial_subscription_start
+    assert subscription.end == initial_subscription_start + plan.charge_period
 
     # ---- test_charge_offline ----
     assert 'subscription_id' in payment.metadata
@@ -116,7 +128,9 @@ def test__paddle__payment_flow__regular(paddle, user_client, plan, card_number):
     assert SubscriptionPayment.objects.count() == 2
 
     last_payment = SubscriptionPayment.objects.latest()
-    subscription = last_payment.subscription
+    subscription = one(Subscription.objects.all())
+    assert subscription.start == initial_subscription_start
+    assert subscription.end == initial_subscription_start + 2 * plan.charge_period
 
     assert last_payment.provider_codename == payment.provider_codename
     provider = get_provider(last_payment.provider_codename)
@@ -131,6 +145,9 @@ def test__paddle__payment_flow__regular(paddle, user_client, plan, card_number):
 
     # check subsequent offline charge
     payment.subscription.charge_offline()
+    subscription = one(Subscription.objects.all())
+    assert subscription.start == initial_subscription_start
+    assert subscription.end == initial_subscription_start + 3 * plan.charge_period
 
 
 def test__paddle__payment_flow__trial_period(trial_period, paddle, user, user_client, plan, card_number):

@@ -1,7 +1,12 @@
+from typing import List
+
 import pytest
 
-from subscriptions.models import Subscription, SubscriptionPayment, SubscriptionPaymentRefund
-from typing import List
+from subscriptions.models import (
+    Subscription,
+    SubscriptionPayment,
+    SubscriptionPaymentRefund,
+)
 
 from ..helpers import days, usd
 

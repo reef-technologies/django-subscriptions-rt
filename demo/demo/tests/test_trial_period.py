@@ -1,10 +1,14 @@
 from datetime import timedelta
 
+from dateutil.relativedelta import relativedelta
+from freezegun import freeze_time
+
 from subscriptions.api.views import SubscriptionSelectView
-from subscriptions.models import INFINITY, SubscriptionPayment, Subscription
+from subscriptions.models import INFINITY, Subscription, SubscriptionPayment
 from subscriptions.tasks import check_unfinished_payments
 from subscriptions.validators import get_validators
-from dateutil.relativedelta import relativedelta
+
+from .helpers import days
 
 
 def test__get_trial_period__disabled(db, plan, user):
@@ -90,7 +94,6 @@ def test__get_trial_period__cheating__multiacc__paddle(
     assert payment.amount == plan.charge_amount * 0
     assert payment.subscription.start + trial_period == payment.subscription.end
     assert payment.subscription.start == payment.subscription_start
-
 
 
 def test__trial_period__only_once__subsequent(db, trial_period, dummy, plan, user, user_client):
@@ -233,3 +236,27 @@ def test__get_trial_period__not_cheating__multiacc(
     assert payments[0].subscription.user == user
     assert payments[1].subscription.initial_charge_offset == trial_period
     assert payments[1].subscription.user == other_user
+
+
+def test__trial_period__full_charge_after_trial(dummy, plan, charge_expiring, charge_schedule, user_client, user, trial_period):
+    response = user_client.post('/api/subscribe/', {'plan': plan.id})
+    assert response.status_code == 200, response.content
+
+    assert user.subscriptions.count() == 1
+    subscription = user.subscriptions.latest()
+    payment = subscription.payments.latest()
+    payment.status = SubscriptionPayment.Status.COMPLETED
+    payment.save()
+    assert payment.amount == plan.charge_amount * 0
+    assert subscription.start + trial_period == subscription.end
+
+    old_end = subscription.end
+    with freeze_time(subscription.end - days(1)):
+        charge_expiring()
+        assert user.subscriptions.count() == 1
+        subscription = user.subscriptions.latest()
+        assert subscription.end == old_end + plan.charge_period
+
+        payment = subscription.payments.latest()
+        assert payment.subscription_end == old_end + plan.charge_period
+        assert payment.amount == plan.charge_amount
