@@ -20,7 +20,7 @@ from ...exceptions import BadReferencePayment, PaymentError
 from ...models import Plan, Subscription, SubscriptionPayment
 from .. import Provider
 from .api import Paddle
-from .models import Passthrough, Alert
+from .schemas import Passthrough, Alert
 
 log = getLogger(__name__)
 
@@ -157,8 +157,8 @@ class PaddleProvider(Provider):
         try:
             subscription_id = reference_payment.metadata['subscription_id']
         except KeyError as exc:
-            log.warning('Reference payment (%s) metadata has no "subscription_id" field', reference_payment)
-            raise BadReferencePayment('Reference payment metadata has no "subscription_id" field') from exc
+            log.error('Reference payment (%s) metadata has no "subscription_id" field', reference_payment)
+            raise BadReferencePayment(f'Reference payment {reference_payment.uid} metadata has no "subscription_id" field') from exc
 
         # paddle doesn't allow one-off charges with different currencies
         if reference_payment.subscription.plan.charge_amount.currency != plan.charge_amount.currency:

@@ -7,7 +7,7 @@ from django.utils.timezone import now
 from freezegun import freeze_time
 from more_itertools import one
 from subscriptions.models import Plan, Subscription, SubscriptionPayment
-from subscriptions.providers.google_in_app.models import GoogleAcknowledgementState, GoogleSubscription, GoogleSubscriptionNotificationType, GoogleSubscriptionState, GoogleSubscriptionPurchaseV2
+from subscriptions.providers.google_in_app.schemas import GoogleAcknowledgementState, GoogleSubscription, GoogleSubscriptionNotificationType, GoogleSubscriptionState, GoogleSubscriptionPurchaseV2
 from subscriptions.utils import fromisoformat
 
 from .helpers import days

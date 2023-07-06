@@ -1,5 +1,9 @@
+from datetime import timedelta
+
 from subscriptions.api.views import SubscriptionSelectView
 from subscriptions.models import INFINITY, SubscriptionPayment, Subscription
+from subscriptions.tasks import check_unfinished_payments
+from subscriptions.validators import get_validators
 from dateutil.relativedelta import relativedelta
 
 
@@ -39,3 +43,192 @@ def test__get_trial_period__had_no_recurring(db, trial_period, plan, user):
 
     Subscription.objects.create(plan=plan, user=user)
     assert SubscriptionSelectView.get_trial_period(plan, user) == relativedelta()
+
+
+def test__get_trial_period__cheating__multiacc__paddle(
+    db,
+    trial_period,
+    plan,
+    user,
+    other_user,
+    client,
+    paddle,
+    card_number,
+):
+    assert not Subscription.objects.exists()
+
+    # ---- pay as "user" ----
+    client.force_login(user)
+    response = client.post('/api/subscribe/', {'plan': plan.id})
+    assert response.status_code == 200, response.content
+
+    result = response.json()
+    redirect_url = result.pop('redirect_url')
+    input(f'Enter card {card_number} here: {redirect_url}\nThen press Enter')
+
+    check_unfinished_payments(within=timedelta(hours=1))
+    payment = SubscriptionPayment.objects.latest()
+    assert payment.status == SubscriptionPayment.Status.COMPLETED
+    assert payment.amount == plan.charge_amount * 0
+    assert payment.subscription.start + trial_period == payment.subscription.end
+    assert payment.subscription.start == payment.subscription_start
+
+    # ---- pay as "other_user" with same credit card ----
+    client.force_login(other_user)
+    response = client.post('/api/subscribe/', {'plan': plan.id})
+    assert response.status_code == 200, response.content
+
+    result = response.json()
+    redirect_url = result.pop('redirect_url')
+    input(f'Enter SAME CARD DETAILS here: {redirect_url}\nThen press Enter')
+
+    check_unfinished_payments(within=timedelta(hours=1))
+    payment = SubscriptionPayment.objects.latest()
+    assert payment.status == SubscriptionPayment.Status.COMPLETED
+    assert payment.amount == plan.charge_amount * 0
+    assert payment.subscription.start + trial_period == payment.subscription.end
+    assert payment.subscription.start == payment.subscription_start
+
+    raise NotImplementedError()  # TODO
+
+
+def test__trial_period__only_once__subsequent(db, trial_period, dummy, plan, user, user_client):
+    assert user.subscriptions.active().count() == 0
+
+    # create new subscription
+    response = user_client.post('/api/subscribe/', {'plan': plan.id})
+    assert response.status_code == 200, response.content
+    response = user_client.post('/api/webhook/dummy/', {
+        'transaction_id': SubscriptionPayment.objects.latest().provider_transaction_id,
+    })
+    assert response.status_code == 200, response.content
+    assert user.subscriptions.active().count() == 1
+
+    subscription = user.subscriptions.latest()
+    assert subscription.payments.count() == 1
+    payment = subscription.payments.first()
+    assert payment.amount == plan.charge_amount * 0
+    assert payment.subscription_start + trial_period == payment.subscription_end
+
+    # end subscription
+    response = user_client.delete(f'/api/subscriptions/{subscription.uid}/')
+    assert response.status_code == 204, response.content
+    assert user.subscriptions.latest().auto_prolong is False
+
+    # create another subscription and ensure no trial period is there
+    response = user_client.post('/api/subscribe/', {'plan': plan.id})
+    assert response.status_code == 200, response.content
+    assert user.subscriptions.active().count() == 1
+
+    subscription = user.subscriptions.latest()
+    assert subscription.payments.count() == 1
+    payment = subscription.payments.latest()
+    assert payment.amount == plan.charge_amount
+    assert payment.subscription_start + plan.charge_period == payment.subscription_end
+
+
+def test__trial_period__only_once__simultaneous(db, settings, trial_period, dummy, plan, bigger_plan, recharge_plan, user, user_client):
+    get_validators.cache_clear()
+    settings.SUBSCRIPTIONS_VALIDATORS = [
+        'subscriptions.validators.OnlyEnabledPlans',
+        'subscriptions.validators.AtLeastOneRecurringSubscription',
+    ]
+
+    assert user.subscriptions.active().count() == 0
+
+    # create new subscription
+    response = user_client.post('/api/subscribe/', {'plan': plan.id})
+    assert response.status_code == 200, response.content
+    response = user_client.post('/api/webhook/dummy/', {
+        'transaction_id': SubscriptionPayment.objects.latest().provider_transaction_id,
+    })
+    assert response.status_code == 200, response.content
+    assert user.subscriptions.active().count() == 1
+
+    subscription = user.subscriptions.latest()
+    assert subscription.payments.count() == 1
+    payment = subscription.payments.latest()
+    assert payment.amount == plan.charge_amount * 0
+    assert payment.subscription_start + trial_period == payment.subscription_end
+
+    # add resources and ensure no trial period is there
+    response = user_client.post('/api/subscribe/', {'plan': recharge_plan.id})
+    assert response.status_code == 200, response.content
+    assert user.subscriptions.active().count() == 2
+
+    subscription = user.subscriptions.latest()
+    assert subscription.payments.count() == 1
+    payment = subscription.payments.latest()
+    assert payment.amount == recharge_plan.charge_amount
+    assert payment.subscription_start + recharge_plan.max_duration == payment.subscription_end
+
+    # create another subscription and ensure no trial period is there
+    response = user_client.post('/api/subscribe/', {'plan': bigger_plan.id})
+    assert response.status_code == 200, response.content
+    assert user.subscriptions.active().count() == 3
+
+    subscription = user.subscriptions.latest()
+    assert subscription.payments.count() == 1
+    payment = subscription.payments.latest()
+    assert payment.amount == bigger_plan.charge_amount
+    assert payment.subscription_start + bigger_plan.charge_period == payment.subscription_end
+
+
+def test__get_trial_period__cheating__simultaneous_payments(
+    db,
+    trial_period,
+    plan,
+    user,
+    user_client,
+    dummy,
+):
+    assert not SubscriptionPayment.objects.exists()
+
+    response = user_client.post('/api/subscribe/', {'plan': plan.id})
+    assert response.status_code == 200, response.content
+
+    response = user_client.post('/api/subscribe/', {'plan': plan.id})
+    assert response.status_code == 200, response.content
+
+    payments = SubscriptionPayment.objects.all()
+    assert len(payments) == 2
+
+    for payment in payments:
+        payment.status = SubscriptionPayment.Status.COMPLETED
+        payment.save()
+
+    assert Subscription.objects.count() == 2
+    assert payments[0].subscription.initial_charge_offset == trial_period
+    assert payments[1].subscription.initial_charge_offset == relativedelta(0)
+
+
+def test__get_trial_period__not_cheating__multiacc(
+    db,
+    trial_period,
+    plan,
+    user,
+    client,
+    other_user,
+    dummy,
+):
+    assert not Subscription.objects.exists()
+
+    client.force_login(user)
+    response = client.post('/api/subscribe/', {'plan': plan.id})
+    assert response.status_code == 200, response.content
+
+    client.force_login(other_user)
+    response = client.post('/api/subscribe/', {'plan': plan.id})
+    assert response.status_code == 200, response.content
+
+    payments = SubscriptionPayment.objects.all()
+    assert len(payments) == 2
+    for payment in payments:
+        payment.status = SubscriptionPayment.Status.COMPLETED
+        payment.save()
+
+    assert Subscription.objects.count() == 2
+    assert payments[0].subscription.initial_charge_offset == trial_period
+    assert payments[0].subscription.user == user
+    assert payments[1].subscription.initial_charge_offset == trial_period
+    assert payments[1].subscription.user == other_user

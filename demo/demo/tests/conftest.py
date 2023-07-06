@@ -19,7 +19,7 @@ from subscriptions.providers import get_provider, get_providers
 from subscriptions.providers.apple_in_app import AppleInAppProvider
 from subscriptions.providers.dummy import DummyProvider
 from subscriptions.providers.google_in_app import GoogleInAppProvider
-from subscriptions.providers.google_in_app.models import GoogleAcknowledgementState, GoogleAutoRenewingPlan, GoogleOfferDetails, GoogleSubscription, GoogleSubscriptionNotificationType, GoogleSubscriptionPurchaseLineItem, GoogleSubscriptionPurchaseV2, GoogleSubscriptionState
+from subscriptions.providers.google_in_app.schemas import GoogleAcknowledgementState, GoogleAutoRenewingPlan, GoogleOfferDetails, GoogleSubscription, GoogleSubscriptionNotificationType, GoogleSubscriptionPurchaseLineItem, GoogleSubscriptionPurchaseV2, GoogleSubscriptionState
 from subscriptions.providers.paddle import PaddleProvider
 from subscriptions.tasks import charge_recurring_subscriptions
 

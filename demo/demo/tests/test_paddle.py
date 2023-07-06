@@ -17,7 +17,7 @@ from subscriptions.tasks import check_unfinished_payments
 from subscriptions.utils import fromisoformat
 
 
-def test__payment_flow__regular(paddle, user_client, plan, card_number):
+def test__paddle__payment_flow__regular(paddle, user_client, plan, card_number):
     response = user_client.post('/api/subscribe/', {'plan': plan.id})
     assert response.status_code == 200, response.content
 
@@ -133,7 +133,7 @@ def test__payment_flow__regular(paddle, user_client, plan, card_number):
     payment.subscription.charge_offline()
 
 
-def test__payment_flow__trial_period(trial_period, paddle, user, user_client, plan, card_number):
+def test__paddle__payment_flow__trial_period(trial_period, paddle, user, user_client, plan, card_number):
     assert not user.subscriptions.exists()
 
     response = user_client.post('/api/subscribe/', {'plan': plan.id})
@@ -200,7 +200,7 @@ def test__payment_flow__trial_period(trial_period, paddle, user, user_client, pl
     payment.subscription.charge_offline()
 
 
-def test_webhook(paddle, client, user_client, paddle_unconfirmed_payment, paddle_webhook_payload):
+def test__paddle__webhook(paddle, client, user_client, paddle_unconfirmed_payment, paddle_webhook_payload):
     response = user_client.get('/api/subscriptions/')
     assert response.status_code == 200, response.content
     assert len(response.json()) == 0
@@ -226,7 +226,7 @@ def test_webhook(paddle, client, user_client, paddle_unconfirmed_payment, paddle
         assert start + paddle_unconfirmed_payment.plan.charge_period == end
 
 
-def test_webhook_idempotence(paddle, client, paddle_unconfirmed_payment, paddle_webhook_payload):
+def test__paddle__webhook_idempotence(paddle, client, paddle_unconfirmed_payment, paddle_webhook_payload):
     assert not Subscription.objects.all().exists()
 
     response = client.post('/api/webhook/paddle/', paddle_webhook_payload)
@@ -241,7 +241,7 @@ def test_webhook_idempotence(paddle, client, paddle_unconfirmed_payment, paddle_
     assert end_old == end_new
 
 
-def test_webhook_payload_as_form_data(paddle, client, paddle_unconfirmed_payment, paddle_webhook_payload):
+def test__paddle__webhook_payload_as_form_data(paddle, client, paddle_unconfirmed_payment, paddle_webhook_payload):
     assert not Subscription.objects.all().exists()
 
     response = client.post('/api/webhook/paddle/', paddle_webhook_payload, content_type=MULTIPART_CONTENT)
@@ -251,7 +251,7 @@ def test_webhook_payload_as_form_data(paddle, client, paddle_unconfirmed_payment
     assert not isinstance(payment.metadata['subscription_id'], list)
 
 
-def test_webhook_non_existing_payment(paddle, client, paddle_unconfirmed_payment, paddle_webhook_payload, settings):
+def test__paddle__webhook_non_existing_payment(paddle, client, paddle_unconfirmed_payment, paddle_webhook_payload, settings):
     paddle_webhook_payload['passthrough'] = json.dumps({
         "subscription_payment_id": "84e9a5a1-cbca-4af5-a7b7-719f8f2fb772",
     })
@@ -260,7 +260,7 @@ def test_webhook_non_existing_payment(paddle, client, paddle_unconfirmed_payment
     assert response.status_code == 200, response.content
 
 
-def test_subscription_charge_online_avoid_duplicates(paddle, user_client, plan):
+def test__paddle__subscription_charge_online_avoid_duplicates(paddle, user_client, plan):
     assert not SubscriptionPayment.objects.all().exists()
 
     response = user_client.post('/api/subscribe/', {'plan': plan.id})
@@ -275,7 +275,7 @@ def test_subscription_charge_online_avoid_duplicates(paddle, user_client, plan):
     assert SubscriptionPayment.objects.last().metadata['payment_url'] == payment_url  # url hasn't changed
 
 
-def test_subscription_charge_online_new_payment_after_duplicate_lookup_time(paddle, user_client, plan):
+def test__paddle__subscription_charge_online_new_payment_after_duplicate_lookup_time(paddle, user_client, plan):
     assert not SubscriptionPayment.objects.all().exists()
 
     response = user_client.post('/api/subscribe/', {'plan': plan.id})
@@ -291,7 +291,7 @@ def test_subscription_charge_online_new_payment_after_duplicate_lookup_time(padd
     assert SubscriptionPayment.objects.count() == 2
 
 
-def test_subscription_charge_online_new_payment_if_no_pending(paddle, user_client, plan):
+def test__paddle__subscription_charge_online_new_payment_if_no_pending(paddle, user_client, plan):
     assert not SubscriptionPayment.objects.all().exists()
 
     response = user_client.post('/api/subscribe/', {'plan': plan.id})
@@ -307,7 +307,7 @@ def test_subscription_charge_online_new_payment_if_no_pending(paddle, user_clien
     assert SubscriptionPayment.objects.count() == 2
 
 
-def test_subscription_charge_online_new_payment_if_no_payment_url(paddle, user_client, plan):
+def test__paddle__subscription_charge_online_new_payment_if_no_payment_url(paddle, user_client, plan):
     assert not SubscriptionPayment.objects.all().exists()
 
     response = user_client.post('/api/subscribe/', {'plan': plan.id})
@@ -323,7 +323,7 @@ def test_subscription_charge_online_new_payment_if_no_payment_url(paddle, user_c
     assert SubscriptionPayment.objects.count() == 2
 
 
-def test_reference_payment_non_matching_currency(paddle, user_client, paddle_unconfirmed_payment):
+def test__paddle__reference_payment_non_matching_currency(paddle, user_client, paddle_unconfirmed_payment):
     paddle_unconfirmed_payment.status = SubscriptionPayment.Status.COMPLETED
     paddle_unconfirmed_payment.save()
 
@@ -342,7 +342,7 @@ def test_reference_payment_non_matching_currency(paddle, user_client, paddle_unc
         )
 
 
-def test_subscription_charge_offline_zero_amount(paddle, user_client, paddle_unconfirmed_payment):
+def test__paddle__subscription_charge_offline_zero_amount(paddle, user_client, paddle_unconfirmed_payment):
     paddle_unconfirmed_payment.status = SubscriptionPayment.Status.COMPLETED
     paddle_unconfirmed_payment.save()
 
