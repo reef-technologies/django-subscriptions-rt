@@ -19,8 +19,8 @@ from rest_framework.status import HTTP_200_OK
 from ...exceptions import BadReferencePayment, PaymentError
 from ...models import Plan, Subscription, SubscriptionPayment
 from .. import Provider
-from .api import Paddle
-from .schemas import Passthrough, Alert
+from .api import Paddle, PaddleError
+from .schemas import Alert, Passthrough
 
 log = getLogger(__name__)
 
@@ -164,11 +164,18 @@ class PaddleProvider(Provider):
         if reference_payment.subscription.plan.charge_amount.currency != plan.charge_amount.currency:
             raise BadReferencePayment('Reference payment has different currency than current plan')
 
-        metadata = self._api.one_off_charge(
-            subscription_id=subscription_id,
-            amount=amount.amount * quantity,
-            name=plan.name,
-        )
+        try:
+            metadata = self._api.one_off_charge(
+                subscription_id=subscription_id,
+                amount=amount.amount * quantity,
+                name=plan.name,
+            )
+        except PaddleError as exc:
+            raise PaymentError('Failed to offline-charge Paddle', debug_info={
+                'exc': str(exc),
+                'user': user,
+                'subscription': subscription,
+            }) from exc
 
         status_mapping = {
             'success': SubscriptionPayment.Status.COMPLETED,

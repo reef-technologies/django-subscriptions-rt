@@ -503,8 +503,7 @@ class SubscriptionPayment(AbstractTransaction):
 
                 else:
                     # prolong existing subscription and set payment's (start, end)
-                    subscription.end = subscription.prolong()  # TODO: what if this fails?
-                    self.subscription_end = subscription.end
+                    self.subscription_end = subscription.end = subscription.prolong()  # TODO: what if this fails?
 
                 subscription.save()
 

@@ -43,7 +43,7 @@ class PlanSubscriptionView(LoginRequiredMixin, PlanView):
             try:
                 return self.payment_provider.process_subscription_request(request=request)
             except PaymentError as exc:
-                self.form.add_error(None, ValidationError(exc.user_message, code=exc.code))
+                self.form.add_error(None, ValidationError(exc.user_message))
 
         return super().get(request, *args, **kwargs)
 

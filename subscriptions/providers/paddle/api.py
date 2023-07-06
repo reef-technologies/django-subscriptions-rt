@@ -15,6 +15,12 @@ from requests.auth import AuthBase
 log = getLogger(__name__)
 
 
+class PaddleError(Exception):
+    def __init__(self, message, code: int):
+        super().__init__(message)
+        self.code = code
+
+
 @dataclass
 class PaddleAuth(AuthBase):
     vendor_id: str
@@ -42,7 +48,7 @@ def paddle_result(fn: Callable) -> Callable:
     def wrapper(*args, **kwargs):
         result = fn(*args, **kwargs)
         if not result['success']:
-            raise ValueError(result)
+            raise PaddleError(result['error']['message'], code=result['error']['code'])
         return result['response']
 
     return wrapper

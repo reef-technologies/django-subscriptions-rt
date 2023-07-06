@@ -7,7 +7,7 @@ from subscriptions.exceptions import (
 
 class AppleInvalidOperation(SubscriptionError):
     def __init__(self):
-        super().__init__(f'Apple subscription provider doesn\'t support this operation.')
+        super().__init__('Apple subscription provider doesn\'t support this operation.')
 
 
 class AppleSubscriptionNotCompletedError(SubscriptionError):
@@ -18,8 +18,10 @@ class AppleSubscriptionNotCompletedError(SubscriptionError):
 
 class AppleReceiptValidationError(PaymentError):
     def __init__(self):
-        self.code = 'invalid_receipt'
-        self.user_message = 'Provided transaction receipt was either malformed or invalid.'
+        super().__init__(
+            'Apple receipt validation failed',
+            user_message='Provided transaction receipt was either malformed or invalid',
+        )
 
 
 class InvalidAppleReceiptError(InvalidOperation):
