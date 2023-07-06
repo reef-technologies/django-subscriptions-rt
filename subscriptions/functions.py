@@ -316,6 +316,7 @@ def add_default_plan_to_users():
         Subscription.objects.create(
             user=user,
             plan=default_plan,
+            auto_prolong=False,
             start=start,
             end=start+INFINITY,
         )
