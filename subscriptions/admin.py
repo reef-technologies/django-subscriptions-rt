@@ -45,9 +45,9 @@ class SubscriptionPaymentInline(admin.StackedInline):
 
 @admin.register(Subscription)
 class SubscriptionAdmin(admin.ModelAdmin):
-    list_display = 'user', 'plan', 'start', 'end',
+    list_display = 'user', 'plan', 'auto_prolong', 'start', 'end',
     autocomplete_fields = 'user',
-    list_filter = 'plan', 'start', 'end',
+    list_filter = 'plan', 'auto_prolong', 'start', 'end',
     search_fields = 'user__email', 'user__first_name', 'user__last_name',
     inlines = [
         SubscriptionPaymentInline,
