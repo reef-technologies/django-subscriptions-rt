@@ -194,7 +194,7 @@ class Subscription(models.Model):
     plan = models.ForeignKey(Plan, on_delete=models.PROTECT, related_name='subscriptions')
     auto_prolong = models.BooleanField(default=True)
     quantity = models.PositiveIntegerField(default=1)
-    initial_charge_offset = RelativeDurationField(default=default_initial_charge)
+    initial_charge_offset = RelativeDurationField(blank=True, default=default_initial_charge)
     start = models.DateTimeField(blank=True)
     end = models.DateTimeField(blank=True)
 
