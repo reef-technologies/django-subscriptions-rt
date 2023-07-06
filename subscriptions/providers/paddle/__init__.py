@@ -1,3 +1,4 @@
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal
@@ -147,6 +148,10 @@ class PaddleProvider(Provider):
                 metadata={},
             )
 
+        if not reference_payment and subscription:
+            with suppress(SubscriptionPayment.DoesNotExist):
+                reference_payment = subscription.payments.filter(status=SubscriptionPayment.Status.COMPLETED).latest()
+
         if not reference_payment:
             reference_payment = SubscriptionPayment.get_last_successful(user)
 
@@ -157,6 +162,7 @@ class PaddleProvider(Provider):
         try:
             subscription_id = reference_payment.metadata['subscription_id']
         except KeyError as exc:
+            # TODO: better iterate over reference payments
             log.error('Reference payment (%s) metadata has no "subscription_id" field', reference_payment)
             raise BadReferencePayment(f'Reference payment {reference_payment.uid} metadata has no "subscription_id" field') from exc
 
