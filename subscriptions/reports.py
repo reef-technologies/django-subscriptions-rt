@@ -44,10 +44,11 @@ class SubscriptionsReport(IterPeriodsMixin):
 
     since: datetime
     until: datetime = field(default_factory=now)
+    include_until: bool = False
 
     @property
     def overlapping(self) -> QuerySet:
-        return Subscription.objects.overlap(self.since, self.until)
+        return Subscription.objects.overlap(self.since, self.until, include_until=self.include_until)
 
     @property
     def new(self) -> QuerySet:
