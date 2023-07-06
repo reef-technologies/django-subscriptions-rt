@@ -3,7 +3,7 @@ import pytest
 from subscriptions.models import Subscription, SubscriptionPayment, SubscriptionPaymentRefund
 from typing import List
 
-from .helpers import days, usd
+from ..helpers import days, usd
 
 
 @pytest.fixture

@@ -529,7 +529,7 @@ def test__get_default_features(db, django_assert_num_queries, cache_backend):
         assert get_default_features() == {default_feature_many_tiers}
 
 
-def test__cache(db, django_assert_num_queries, cache_backend):
+def test__get_tiers__cache(db, django_assert_num_queries, cache_backend):
     Tier.objects.bulk_create([
         Tier(codename='zero', is_default=True),
         Tier(codename='one'),

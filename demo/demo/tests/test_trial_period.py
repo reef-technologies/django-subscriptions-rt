@@ -55,6 +55,8 @@ def test__get_trial_period__cheating__multiacc__paddle(
     paddle,
     card_number,
 ):
+    raise NotImplementedError()  # TODO
+
     assert not Subscription.objects.exists()
 
     # ---- pay as "user" ----
@@ -89,7 +91,6 @@ def test__get_trial_period__cheating__multiacc__paddle(
     assert payment.subscription.start + trial_period == payment.subscription.end
     assert payment.subscription.start == payment.subscription_start
 
-    raise NotImplementedError()  # TODO
 
 
 def test__trial_period__only_once__subsequent(db, trial_period, dummy, plan, user, user_client):
