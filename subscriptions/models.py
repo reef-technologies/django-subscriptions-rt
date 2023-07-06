@@ -192,7 +192,7 @@ class Subscription(models.Model):
     uid = models.UUIDField(primary_key=True, default=uuid4)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='subscriptions')
     plan = models.ForeignKey(Plan, on_delete=models.PROTECT, related_name='subscriptions')
-    auto_prolong = models.BooleanField(default=True)
+    auto_prolong = models.BooleanField()
     quantity = models.PositiveIntegerField(default=1)
     initial_charge_offset = RelativeDurationField(blank=True, default=default_initial_charge)
     start = models.DateTimeField(blank=True)
@@ -222,6 +222,8 @@ class Subscription(models.Model):
     def save(self, *args, **kwargs):
         self.start = self.start or now()
         self.end = self.end or min(self.start + self.plan.charge_period, self.max_end)
+        if self.auto_prolong is None:
+            self.auto_prolong = self.plan.is_recurring()
         super().save(*args, **kwargs)
         self.adjust_default_subscription()
 

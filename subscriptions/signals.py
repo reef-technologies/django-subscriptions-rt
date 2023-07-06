@@ -21,7 +21,7 @@ def create_default_subscription_for_new_user(sender, instance, created, **kwargs
             Subscription.objects.create(
                 user=instance,
                 plan=default_plan,
-                auto_prolong=False,
+                auto_prolong=False,  # ignore default plan's `auto_prolong` value
                 start=(now_ := now()),
                 end=now_+INFINITY,
             )
@@ -72,7 +72,6 @@ with suppress(ImportError):
         # old default plan until now, new default plan since now
         current_subscriptions = Subscription.objects.filter(
             plan_id=old_value,
-            auto_prolong=False,
             start__lte=now_,
             end__gt=now_,
         )
