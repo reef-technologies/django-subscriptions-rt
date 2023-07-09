@@ -18,7 +18,18 @@ from more_itertools import spy
 
 from .defaults import DEFAULT_SUBSCRIPTIONS_CACHE_NAME
 from .exceptions import InconsistentQuotaCache, QuotaLimitExceeded
-from .models import INFINITY, Feature, Plan, Quota, QuotaCache, QuotaChunk, Resource, Subscription, Tier, Usage
+from .models import (
+    MAX_DATETIME,
+    Feature,
+    Plan,
+    Quota,
+    QuotaCache,
+    QuotaChunk,
+    Resource,
+    Subscription,
+    Tier,
+    Usage,
+)
 from .utils import merge_iter
 
 log = getLogger(__name__)
@@ -318,7 +329,7 @@ def add_default_plan_to_users():
             plan=default_plan,
             auto_prolong=False,  # ignore default plan's `auto_prolong` value
             start=start,
-            end=start+INFINITY,
+            end=MAX_DATETIME,
         )
 
 

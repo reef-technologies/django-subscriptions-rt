@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
-from datetime import timezone as tz
 from functools import wraps
 from typing import Callable, List, Optional
+from django.utils.timezone import now
 
 import pytest
 from constance import config
@@ -31,11 +31,6 @@ from subscriptions.providers.dummy import DummyProvider
 from subscriptions.tasks import charge_recurring_subscriptions
 
 from ..helpers import days, usd
-
-
-@pytest.fixture
-def now() -> datetime:
-    return datetime(2022, 1, 1, 12, 00, 00, tzinfo=tz.utc)
 
 
 @pytest.fixture
@@ -128,11 +123,10 @@ def recharge_quota(db, recharge_plan, resource) -> Quota:
 
 
 @pytest.fixture
-def subscription(db, now, user, plan) -> Subscription:
+def subscription(db, user, plan) -> Subscription:
     return Subscription.objects.create(
         user=user,
         plan=plan,
-        start=now,
         quantity=2,  # so limit = 50 * 2 = 100 in total
     )
 
@@ -176,7 +170,7 @@ def get_cache(remaining_chunks) -> Callable:
 
 
 @pytest.fixture
-def two_subscriptions(user, now, resource) -> List[Subscription]:
+def two_subscriptions(user, resource) -> List[Subscription]:
     """
                          Subscription 1
     --------------[========================]------------> time
@@ -200,15 +194,16 @@ def two_subscriptions(user, now, resource) -> List[Subscription]:
 
     -----------------|------------|-----------------|----------------
     usage:           50          200               50
-
     """
+
+    now_ = now()
 
     plan1 = Plan.objects.create(codename='plan1', name='Plan 1')
     subscription1 = Subscription.objects.create(
         user=user,
         plan=plan1,
-        start=now,
-        end=now + days(10),
+        start=now_,
+        end=now_ + days(10),
     )
     Quota.objects.create(
         plan=plan1,
@@ -222,8 +217,8 @@ def two_subscriptions(user, now, resource) -> List[Subscription]:
     subscription2 = Subscription.objects.create(
         user=user,
         plan=plan2,
-        start=now + days(4),
-        end=now + days(14),
+        start=now_ + days(4),
+        end=now_ + days(14),
     )
     Quota.objects.create(
         plan=plan2,
@@ -234,16 +229,16 @@ def two_subscriptions(user, now, resource) -> List[Subscription]:
     )
 
     Usage.objects.bulk_create([
-        Usage(user=user, resource=resource, amount=50, datetime=now + days(1)),
-        Usage(user=user, resource=resource, amount=200, datetime=now + days(6)),
-        Usage(user=user, resource=resource, amount=50, datetime=now + days(12)),
+        Usage(user=user, resource=resource, amount=50, datetime=now_ + days(1)),
+        Usage(user=user, resource=resource, amount=200, datetime=now_ + days(6)),
+        Usage(user=user, resource=resource, amount=50, datetime=now_ + days(12)),
     ])
 
     return [subscription1, subscription2]
 
 
 @pytest.fixture
-def five_subscriptions(db, plan, user, now) -> List[Subscription]:
+def five_subscriptions(db, plan, user) -> List[Subscription]:
     """
     Subscriptions:                    |now
     ----------------------------------[====sub0=====]-----> overlaps with "now"
@@ -253,7 +248,9 @@ def five_subscriptions(db, plan, user, now) -> List[Subscription]:
     ----[=sub4=]------------------------------------------> does not overlap with anything
     """
 
-    sub0 = Subscription.objects.create(user=user, plan=plan, start=now - days(5), end=now + days(2))
+    now_ = now()
+
+    sub0 = Subscription.objects.create(user=user, plan=plan, start=now_ - days(5), end=now_ + days(2))
     sub1 = Subscription.objects.create(user=user, plan=plan, start=sub0.start - days(5), end=sub0.start + days(2))
     sub2 = Subscription.objects.create(user=user, plan=plan, start=sub1.start - days(5), end=sub1.start)
     sub3 = Subscription.objects.create(user=user, plan=plan, start=sub1.start + days(1), end=sub0.start - days(1))

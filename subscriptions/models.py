@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from contextlib import suppress
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from itertools import count, islice
 from logging import getLogger
 from operator import attrgetter
@@ -15,13 +15,26 @@ from django.conf import settings
 from django.contrib.auth.models import AbstractBaseUser
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import models
-from django.db.models import F, Q, DateTimeField, ExpressionWrapper, Index, QuerySet, UniqueConstraint
+from django.db.models import (
+    DateTimeField,
+    ExpressionWrapper,
+    F,
+    Index,
+    Q,
+    QuerySet,
+    UniqueConstraint,
+)
 from django.db.models.functions import Least
 from django.urls import reverse
 from django.utils.timezone import now
 from pydantic import BaseModel
 
-from .exceptions import InconsistentQuotaCache, PaymentError, ProlongationImpossible, ProviderNotFound
+from .exceptions import (
+    InconsistentQuotaCache,
+    PaymentError,
+    ProlongationImpossible,
+    ProviderNotFound,
+)
 from .fields import MoneyField, RelativeDurationField
 from .utils import merge_iter
 
@@ -31,6 +44,7 @@ if TYPE_CHECKING:
     from .providers import Provider
 
 INFINITY = relativedelta(days=365 * 1000)
+MAX_DATETIME = datetime.max.replace(tzinfo=timezone.utc)
 
 
 class Resource(models.Model):
@@ -312,7 +326,7 @@ class Subscription(models.Model):
 
             yield charge_date
 
-    def charge_offline(self):
+    def charge_offline(self) -> SubscriptionPayment:
         from .providers import get_provider
 
         try:
@@ -326,7 +340,7 @@ class Subscription(models.Model):
         except ProviderNotFound as exc:
             raise PaymentError(f'Could not retrieve provider "{provider_codename}"') from exc
 
-        provider.charge_offline(
+        return provider.charge_offline(
             user=self.user,
             plan=self.plan,
             subscription=self,
@@ -337,6 +351,7 @@ class Subscription(models.Model):
     def adjust_default_subscription(self):
         # this subscription pushes out every default subscription out of its (start,end) period;
         # IMPORTANT: this does not "fill in" gaps with default sub if current subscription is shrinked
+        # TODO: --^
 
         from .functions import get_default_plan
 
@@ -355,17 +370,20 @@ class Subscription(models.Model):
         )
 
         for default_subscription in default_subscriptions:
-            if default_subscription.start < self.start:  # split default subscription into two parts
+            if default_subscription.start >= self.start:
+                # just shift default subscription to end of current subscription
+                default_subscription.start = self.end
+                default_subscription.save()
+
+            elif default_subscription.end != self.start:  # default_subscription.start < self.start
+                # split default subscription into two parts
                 default_subscription.end = self.start
                 default_subscription.save()
 
                 default_subscription.pk = None
+                default_subscription._state.adding = True
                 default_subscription.start = self.end
-                default_subscription.end = self.end + INFINITY
-                default_subscription.save()
-
-            else:  # just shift default subscription to end of current subscription
-                default_subscription.start = self.end
+                default_subscription.end = datetime.max
                 default_subscription.save()
 
 

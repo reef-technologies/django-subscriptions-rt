@@ -1,10 +1,9 @@
 from typing import Callable, Dict, Iterable, Iterator, TypeVar
-from datetime import datetime
+from datetime import datetime, timezone
 from django.conf import settings
 from djmoney.money import Money
 
 from .defaults import DEFAULT_SUBSCRIPTIONS_CURRENCY
-
 
 T = TypeVar('T')
 
