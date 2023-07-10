@@ -334,6 +334,115 @@ def test__default_plan__subscription_payment__num_subscriptions(user, default_pl
     assert user.subscriptions.count() == 3
 
 
+def test__default_plan__subscription__shrink__before_default(user, default_plan, subscription, plan):
+    """
+    Before:
+    --[==default plan==][=======subscription=======][======default plan======]->
+
+    After:
+    --[==default plan==][==subscription==][===========default plan===========]->
+
+    """
+
+    subscriptions_before = list(user.subscriptions.order_by('end'))
+    assert len(subscriptions_before) == 3
+    assert subscriptions_before[0].plan == subscriptions_before[2].plan == default_plan
+    assert subscriptions_before[1].plan == plan
+    assert subscriptions_before[0].end == subscriptions_before[1].start
+    assert subscriptions_before[1].end == subscriptions_before[2].start
+
+    subscription.end -= days(3)
+    subscription.save()
+
+    subscriptions_after = list(user.subscriptions.order_by('end'))
+    assert len(subscriptions_after) == 3
+    assert subscriptions_after[0].plan == subscriptions_after[2].plan == default_plan
+    assert subscriptions_after[1].plan == plan
+    assert subscriptions_after[1].start == subscriptions_before[1].start
+    assert subscriptions_after[1].end == subscriptions_before[1].end - days(3)
+    assert subscriptions_after[0].end == subscriptions_after[1].start
+    assert subscriptions_after[1].end == subscriptions_after[2].start
+
+
+def test__default_plan__subscription__shrink__before_other_subscription(user, subscription, default_plan, plan):
+    """
+    Before:
+    --[=======subscription=======][=======subscription=======][======default plan======]->
+
+    After:
+    --[=subscription=][=default==][=======subscription=======][======default plan======]->
+    """
+
+    # add second subscription to match the "before" image
+    Subscription.objects.create(
+        user=user,
+        plan=plan,
+        start=subscription.end,
+    )
+
+    # check initial configuration
+    subscriptions_before = list(user.subscriptions.order_by('end'))
+    assert len(subscriptions_before) == 3
+    assert subscriptions_before[0].plan == subscriptions_before[1].plan == plan
+    assert subscriptions_before[2].plan == default_plan
+    assert subscriptions_before[0].end == subscriptions_before[1].start
+    assert subscriptions_before[1].end == subscriptions_before[2].start
+
+    # shrink subscription
+    subscription.end -= days(3)
+    subscription.save()
+
+    # check after configuration
+    subscriptions_after = list(user.subscriptions.order_by('end'))
+    assert len(subscriptions_after) == 4
+    assert subscriptions_after[0].plan == subscriptions_after[2].plan == plan
+    assert subscriptions_after[1].plan == subscriptions_after[3].plan == default_plan
+    assert subscriptions_after[0].end == subscriptions_after[1].start == subscriptions_before[0].end - days(3)
+    assert subscriptions_after[1].end == subscriptions_after[2].start
+    assert subscriptions_after[2].end == subscriptions_after[3].start
+
+
+def test__default_plan__subscription__eaten(user, subscription, default_plan, plan):
+    """
+    Before:
+    --[==subscription1==][==default plan==][==subscription2==][====default plan====]>
+
+    After:
+    --[==subscription1==========================================]------------------->
+    ---------------------------------------[==subscription2==]--[===default plan===]>
+
+    """
+
+    # add second subscription to match the "before" image
+    subscription2 = Subscription.objects.create(
+        user=user,
+        plan=plan,
+        start=subscription.end + days(10),
+    )
+
+    # check initial configuration
+    subscriptions_before = list(user.subscriptions.order_by('end'))
+    assert len(subscriptions_before) == 4
+    assert subscriptions_before[0].plan == subscriptions_before[2].plan == plan
+    assert subscriptions_before[1].plan == subscriptions_before[3].plan == default_plan
+    assert subscriptions_before[0].end == subscriptions_before[1].start
+    assert subscriptions_before[1].end == subscriptions_before[2].start
+    assert subscriptions_before[2].end == subscriptions_before[3].start
+
+    # shrink subscription
+    subscription.end = subscription2.end + days(1)
+    subscription.save()
+
+    # check after configuration
+    subscriptions_after = list(user.subscriptions.order_by('start'))
+    assert len(subscriptions_after) == 3
+    assert subscriptions_after[0].plan == subscriptions_after[1].plan == plan
+    assert subscriptions_after[2].plan == default_plan
+    assert subscriptions_after[0].end == subscriptions_after[1].end + days(1)
+    assert subscriptions_after[0].end == subscriptions_after[1].end + days(1)
+    assert subscriptions_after[2].start == subscriptions_after[0].end
+
+
 def test__default_plan__subscription_renewal(user, default_plan, subscription, payment, plan):
     """
     Before renewal:

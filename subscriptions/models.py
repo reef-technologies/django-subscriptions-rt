@@ -354,32 +354,39 @@ class Subscription(models.Model):
 
     def adjust_default_subscription(self):
         # this subscription pushes out every default subscription out of its (start,end) period;
-        # IMPORTANT: this does not "fill in" gaps with default sub if current subscription is shrinked
-        # TODO: --^
+        # if this subscription is shrink, then it fills the gap with default subscription
 
         from .functions import get_default_plan
 
         try:
             default_plan = get_default_plan()
+            if not default_plan:
+                return
         except Plan.DoesNotExist:
             return
 
         if self.plan == default_plan or not self.plan.is_recurring():
             return
 
+        # adjust overlapping default subscriptions
         default_subscriptions = (
-            Subscription.objects
+            self.user.subscriptions
             .overlap(self.start, self.end, include_until=True)
-            .filter(user=self.user, plan=default_plan)
+            .filter(plan=default_plan)
         )
 
         for default_subscription in default_subscriptions:
             if default_subscription.start >= self.start:
-                # just shift default subscription to end of current subscription
-                default_subscription.start = self.end
-                default_subscription.save()
+                if default_subscription.end <= self.end:
+                    # if default subscription is fully covered with current subscription -> delete default
+                    default_subscription.delete()
+                else:
+                    # otherwise just shift default subscription to end of current subscription
+                    default_subscription.start = self.end
+                    default_subscription.save()
 
-            elif default_subscription.end != self.start:  # default_subscription.start < self.start
+            # here default_subscription.start < self.start
+            elif default_subscription.end != self.start:
                 # split default subscription into two parts
                 default_subscription.end = self.start
                 default_subscription.save()
@@ -389,6 +396,22 @@ class Subscription(models.Model):
                 default_subscription.start = self.end
                 default_subscription.end = datetime.max
                 default_subscription.save()
+
+        # create a default subscription if there is none afterwards;
+        # note that this will not create a default subscription if ANY
+        # afterward subscription exists (either recurring or not)
+        if not self.user.subscriptions.active(at=self.end).exclude(end=self.end).exists():
+            next_subscription = self.user.subscriptions.filter(start__gt=self.end).order_by('start').first()
+            if next_subscription and next_subscription.plan == default_plan:
+                next_subscription.start = self.end
+                next_subscription.save()
+            else:
+                Subscription.objects.create(
+                    user=self.user,
+                    plan=default_plan,
+                    start=self.end,
+                    end=next_subscription.start if next_subscription else MAX_DATETIME,
+                )
 
 
 class Quota(models.Model):
