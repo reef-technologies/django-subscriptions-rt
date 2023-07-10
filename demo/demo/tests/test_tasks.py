@@ -1,6 +1,7 @@
+from __future__ import annotations
+
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
-from typing import List
 
 from freezegun import freeze_time
 from more_itertools import spy
@@ -11,7 +12,7 @@ from subscriptions.tasks import charge_recurring_subscriptions
 from .helpers import days
 
 
-def middle(period: List[timedelta]) -> timedelta:
+def middle(period: list[timedelta]) -> timedelta:
     return (period[0] + period[1]) / 2
 
 

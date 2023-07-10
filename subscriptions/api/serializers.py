@@ -1,10 +1,20 @@
+from __future__ import annotations
+
 from contextlib import suppress
 from datetime import datetime
 from decimal import Decimal
-from typing import Optional
-from django.utils.timezone import now
 
-from rest_framework.serializers import BooleanField, CharField, DateTimeField, IntegerField, ModelSerializer, PrimaryKeyRelatedField, Serializer, SerializerMethodField
+from django.utils.timezone import now
+from rest_framework.serializers import (
+    BooleanField,
+    CharField,
+    DateTimeField,
+    IntegerField,
+    ModelSerializer,
+    PrimaryKeyRelatedField,
+    Serializer,
+    SerializerMethodField,
+)
 
 from ..fields import relativedelta_to_dict
 from ..models import Plan, Subscription, SubscriptionPayment
@@ -19,7 +29,7 @@ class PlanSerializer(ModelSerializer):
         model = Plan
         fields = 'id', 'codename', 'name', 'charge_amount', 'charge_amount_currency', 'charge_period', 'max_duration', 'is_recurring', 'metadata',
 
-    def get_charge_amount(self, obj) -> Optional[Decimal]:
+    def get_charge_amount(self, obj) -> Decimal | None:
         if obj.charge_amount is not None:
             return obj.charge_amount.amount
 
@@ -38,7 +48,7 @@ class SubscriptionSerializer(ModelSerializer):
         model = Subscription
         fields = 'id', 'plan', 'quantity', 'start', 'end', 'next_charge_date',
 
-    def get_next_charge_date(self, obj) -> Optional[datetime]:
+    def get_next_charge_date(self, obj) -> datetime | None:
         with suppress(StopIteration):
             return next(obj.iter_charge_dates(since=now()))
 
@@ -83,14 +93,14 @@ class SubscriptionPaymentSerializer(ModelSerializer):
     def get_status(self, obj) -> str:
         return obj.get_status_display().lower()
 
-    def get_amount(self, obj) -> Optional[Decimal]:
+    def get_amount(self, obj) -> Decimal | None:
         if obj.amount is not None:
             return obj.amount.amount
 
-    def get_currency(self, obj) -> Optional[str]:
+    def get_currency(self, obj) -> str | None:
         if obj.amount is not None:
             return str(obj.amount.currency)
 
-    def get_total(self, obj) -> Optional[Decimal]:
+    def get_total(self, obj) -> Decimal | None:
         if obj.amount is not None:
             return obj.amount.amount * obj.quantity

@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 from unittest import mock
 
 import pytest
@@ -19,7 +21,7 @@ def test__google__iter_subscriptions(google_in_app):
 
 @dataclass
 class Executable:
-    result: Optional[Any] = None
+    result: Any | None = None
 
     def execute(self) -> Any:
         return self.result

@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 from datetime import datetime
-from typing import ClassVar, Iterable, Optional, Tuple
+from typing import ClassVar, Iterable
 
 from django.contrib.auth.models import AbstractBaseUser
 from django.forms import Form
@@ -26,12 +28,12 @@ class DummyProvider(Provider):
         self,
         user: AbstractBaseUser,
         plan: Plan,
-        subscription: Optional[Subscription] = None,
-        amount: Optional[Money] = None,
+        subscription: Subscription | None = None,
+        amount: Money | None = None,
         quantity: int = 1,
-        subscription_start: Optional[datetime] = None,
-        subscription_end: Optional[datetime] = None,
-    ) -> Tuple[SubscriptionPayment, str]:
+        subscription_start: datetime | None = None,
+        subscription_end: datetime | None = None,
+    ) -> tuple[SubscriptionPayment, str]:
 
         transaction_id = get_random_string(8)
         if amount is None:
@@ -53,10 +55,11 @@ class DummyProvider(Provider):
     def charge_offline(
         self,
         user: AbstractBaseUser,
-        plan: Plan, subscription: Optional[Subscription] = None,
-        amount: Optional[Money] = None,
+        plan: Plan,
+        subscription: Subscription | None = None,
+        amount: Money | None = None,
         quantity: int = 1,
-        reference_payment: Optional[SubscriptionPayment] = None,
+        reference_payment: SubscriptionPayment | None = None,
     ) -> SubscriptionPayment:
 
         if not user.payments.filter(

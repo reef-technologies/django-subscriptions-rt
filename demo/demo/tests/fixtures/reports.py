@@ -1,4 +1,5 @@
-from typing import List
+from __future__ import annotations
+
 from django.utils.timezone import now
 
 import pytest
@@ -13,7 +14,7 @@ from ..helpers import days, usd
 
 
 @pytest.fixture
-def reports_subscriptions(db, user, other_user, plan, bigger_plan, recharge_plan) -> List[Subscription]:
+def reports_subscriptions(db, user, other_user, plan, bigger_plan, recharge_plan) -> list[Subscription]:
     """
     plan (no prolongation)
     -------[============================]x------------------------------->
@@ -39,7 +40,7 @@ def reports_subscriptions(db, user, other_user, plan, bigger_plan, recharge_plan
 
 
 @pytest.fixture
-def reports_payments(db, user, other_user, plan, bigger_plan, paddle) -> List[SubscriptionPayment]:
+def reports_payments(db, user, other_user, plan, bigger_plan, paddle) -> list[SubscriptionPayment]:
     """
     x2 plan $100, $90, $80, $70, user, COMPLETED
     -------x----------x----------x----------x---------->

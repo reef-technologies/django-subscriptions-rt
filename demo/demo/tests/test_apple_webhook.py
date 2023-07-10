@@ -1,5 +1,6 @@
+from __future__ import annotations
+
 import datetime
-from typing import Optional
 from unittest import mock
 
 import pytest
@@ -115,7 +116,7 @@ def patched_notification():
 def make_notification_data(product_id: str,
                            bundle_id: str,
                            notification_type: AppStoreNotificationTypeV2 = AppStoreNotificationTypeV2.DID_RENEW,
-                           subtype: Optional[AppStoreNotificationTypeV2Subtype] = None,
+                           subtype: AppStoreNotificationTypeV2Subtype | None = None,
                            transaction_id: str = 'test-transaction-id',
                            original_transaction_id: str = 'test-original-transaction-id') -> AppStoreNotification:
     result = AppStoreNotification.parse_obj(

@@ -1,5 +1,7 @@
-from typing import Callable, Dict, Iterable, Iterator, TypeVar
-from datetime import datetime, timezone
+from __future__ import annotations
+
+from typing import Callable, Iterable, Iterator, TypeVar
+from datetime import datetime
 from django.conf import settings
 from djmoney.money import Money
 
@@ -13,7 +15,7 @@ class NonMonothonicSequence(Exception):
 
 
 def merge_iter(*iterables: Iterable[T], key: Callable = lambda x: x) -> Iterator[T]:
-    values: Dict[Iterable[T], T] = {}
+    values: dict[Iterable[T], T] = {}
 
     # accumulate first value from each iterable
     for iterable in iterables:

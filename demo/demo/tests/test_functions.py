@@ -1,8 +1,9 @@
+from __future__ import annotations
+
 from datetime import datetime, timedelta
 from itertools import count, product
 from operator import attrgetter
 from time import sleep
-from typing import List
 from django.utils.timezone import now
 
 import pytest
@@ -548,7 +549,7 @@ def test__get_tiers__cache(db, django_assert_num_queries, cache_backend):
     ])
 
     @cache(key='test-cache', cache_name=get_cache_name(), timeout=timedelta(seconds=5))
-    def get_tiers() -> List[Tier]:
+    def get_tiers() -> list[Tier]:
         return list(Tier.objects.all())
 
     with django_assert_num_queries(1):

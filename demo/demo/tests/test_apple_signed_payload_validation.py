@@ -1,16 +1,12 @@
+from __future__ import annotations
+
 import base64
-import pathlib
 import unittest.mock
-from typing import (
-    NamedTuple,
-    Optional,
-)
-from unittest import mock
+from typing import NamedTuple
 
 import jwt.utils
 import pytest
 from OpenSSL import crypto
-from django.test import override_settings
 
 from subscriptions.providers.apple_in_app import AppleInAppProvider
 from subscriptions.providers.apple_in_app.app_store import (
@@ -34,7 +30,7 @@ class CertificateGroup(NamedTuple):
 def make_cert_group(serial: int,
                     is_ca: bool = False,
                     is_leaf: bool = False,
-                    issuer_group: Optional[CertificateGroup] = None) -> CertificateGroup:
+                    issuer_group: CertificateGroup | None = None) -> CertificateGroup:
     # Procedure taken from
     # https://stackoverflow.com/questions/45873832/how-do-i-create-and-sign-certificates-with-pythons-pyopenssl
     # and cleaned up.

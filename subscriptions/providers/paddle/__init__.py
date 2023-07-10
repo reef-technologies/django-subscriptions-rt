@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -5,7 +7,7 @@ from decimal import Decimal
 from functools import cached_property
 from logging import getLogger
 from operator import itemgetter
-from typing import ClassVar, Iterable, Optional, Tuple
+from typing import ClassVar, Iterable
 
 from django.conf import settings
 from django.contrib.auth.models import AbstractBaseUser
@@ -60,7 +62,7 @@ class PaddleProvider(Provider):
             f'There should be exactly one subscription plan, but there are {num_plans}: {plans}'
         return plans[0]
 
-    def get_amount(self, user: AbstractBaseUser, plan: Plan) -> Optional[Money]:
+    def get_amount(self, user: AbstractBaseUser, plan: Plan) -> Money | None:
         if self.STAFF_DISCOUNT and user.is_staff:
             return Money(
                 amount=Decimal('1.0') + Decimal('0.01') * plan.id,
@@ -73,12 +75,12 @@ class PaddleProvider(Provider):
         self,
         user: AbstractBaseUser,
         plan: Plan,
-        subscription: Optional[Subscription] = None,
-        amount: Optional[Money] = None,
+        subscription: Subscription | None = None,
+        amount: Money | None = None,
         quantity: int = 1,
-        subscription_start: Optional[datetime] = None,
-        subscription_end: Optional[datetime] = None,
-    ) -> Tuple[SubscriptionPayment, str]:
+        subscription_start: datetime | None = None,
+        subscription_end: datetime | None = None,
+    ) -> tuple[SubscriptionPayment, str]:
 
         if amount is None:
             amount = self.get_amount(user=user, plan=plan)
@@ -124,10 +126,10 @@ class PaddleProvider(Provider):
         self,
         user: AbstractBaseUser,
         plan: Plan,
-        subscription: Optional[Subscription] = None,
-        amount: Optional[Money] = None,
+        subscription: Subscription | None = None,
+        amount: Money | None = None,
         quantity: int = 1,
-        reference_payment: Optional[SubscriptionPayment] = None,
+        reference_payment: SubscriptionPayment | None = None,
     ) -> SubscriptionPayment:
 
         assert quantity > 0
@@ -215,7 +217,7 @@ class PaddleProvider(Provider):
         'subscription_payment_failed': SubscriptionPayment.Status.ERROR,
     }
 
-    def webhook(self, request: Optional[Request], payload: dict) -> Response:
+    def webhook(self, request: Request | None, payload: dict) -> Response:
         alert = Alert.parse_obj(payload)
 
         try:

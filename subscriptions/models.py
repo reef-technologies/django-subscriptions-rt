@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from itertools import count, islice
 from logging import getLogger
 from operator import attrgetter
-from typing import TYPE_CHECKING, Callable, Iterable, Iterator, List, Optional
+from typing import TYPE_CHECKING, Callable, Iterable, Iterator
 from uuid import uuid4
 
 from dateutil.relativedelta import relativedelta
@@ -139,7 +139,7 @@ class QuotaChunk:
 @dataclass
 class QuotaCache:
     datetime: datetime
-    chunks: List[QuotaChunk]
+    chunks: list[QuotaChunk]
 
     def apply(self, target_chunks: Iterable[QuotaChunk]) -> Iterator[QuotaChunk]:
         """
@@ -172,11 +172,11 @@ class SubscriptionQuerySet(models.QuerySet):
             'start__lte' if include_until else 'start__lt': until,
         })
 
-    def active(self, at: Optional[datetime] = None) -> QuerySet:
+    def active(self, at: datetime | None = None) -> QuerySet:
         at = at or now()
         return self.overlap(at, at, include_until=True)
 
-    def expiring(self, within: datetime, since: Optional[datetime] = None) -> QuerySet:
+    def expiring(self, within: datetime, since: datetime | None = None) -> QuerySet:
         since = since or now()
         return self.filter(end__gte=since, end__lte=since + within)
 
@@ -184,7 +184,7 @@ class SubscriptionQuerySet(models.QuerySet):
         subscriptions = self.select_related('plan')
         return subscriptions.exclude(plan__charge_period=INFINITY) if predicate else subscriptions.filter(plan__charge_period=INFINITY)
 
-    def with_ages(self, at: Optional[datetime] = None) -> QuerySet:
+    def with_ages(self, at: datetime | None = None) -> QuerySet:
         return self.annotate(
             age=ExpressionWrapper(Least(at or now(), F('end')) - F('start'), output_field=DateTimeField()),
         )
@@ -218,11 +218,11 @@ class Subscription(models.Model):
         get_latest_by = 'start'
 
     @property
-    def id(self) -> Optional[str]:
+    def id(self) -> str | None:
         return self.uid and str(self.uid)
 
     @property
-    def short_id(self) -> Optional[str]:
+    def short_id(self) -> str | None:
         with suppress(TypeError):
             return self.id[:8]
 
@@ -268,8 +268,8 @@ class Subscription(models.Model):
 
     def iter_quota_chunks(
         self,
-        since: Optional[datetime] = None,
-        until: Optional[datetime] = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
         sort_by: Callable = attrgetter('start'),
     ) -> Iterator[QuotaChunk]:
 
@@ -279,7 +279,11 @@ class Subscription(models.Model):
             key=sort_by,
         )
 
-    def _iter_single_quota_chunks(self, quota: 'Quota', since: Optional[datetime] = None, until: Optional[datetime] = None):
+    def _iter_single_quota_chunks(
+        self, quota: 'Quota',
+        since: datetime | None = None,
+        until: datetime | None = None,
+    ):
 
         epsilon = timedelta(milliseconds=1)  # we use epsilon to exclude chunks which start right at `since - quota.burns_in`
         min_start_time = max(since - quota.burns_in + epsilon, self.start) if since else self.start  # quota chunks starting after this are OK
@@ -462,11 +466,11 @@ class AbstractTransaction(models.Model):
         return super().save(*args, **kwargs)
 
     @property
-    def id(self) -> Optional[str]:
+    def id(self) -> str | None:
         return self.uid and str(self.uid)
 
     @property
-    def short_id(self) -> Optional[str]:
+    def short_id(self) -> str | None:
         with suppress(TypeError):
             return self.id[:8]
 
@@ -546,7 +550,7 @@ class SubscriptionPayment(AbstractTransaction):
         return super().save(*args, **kwargs)
 
     @classmethod
-    def get_last_successful(cls, user: AbstractBaseUser) -> Optional[SubscriptionPayment]:
+    def get_last_successful(cls, user: AbstractBaseUser) -> SubscriptionPayment | None:
         with suppress(cls.DoesNotExist):
             return cls.objects.filter(
                 user=user,

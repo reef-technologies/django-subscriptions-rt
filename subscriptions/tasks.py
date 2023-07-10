@@ -1,13 +1,14 @@
+from __future__ import annotations
+
 from concurrent.futures import ThreadPoolExecutor, wait
 from datetime import datetime, timedelta
 from functools import partial
 from logging import getLogger
-from operator import or_
-from typing import Iterable, Optional
+from typing import Iterable
 
 from django.conf import settings
 from django.db import transaction
-from django.db.models import Q, QuerySet
+from django.db.models import QuerySet
 from django.utils.timezone import now
 from more_itertools import first, pairwise
 
@@ -119,9 +120,9 @@ def _charge_recurring_subscription(
 
 
 def charge_recurring_subscriptions(
-    subscriptions: Optional[QuerySet] = None,
+    subscriptions: QuerySet | None = None,
     schedule: Iterable[timedelta] = DEFAULT_CHARGE_ATTEMPTS_SCHEDULE,
-    num_threads: Optional[int] = None,
+    num_threads: int | None = None,
     lock: bool = True,
     # TODO: dry-run
 ):

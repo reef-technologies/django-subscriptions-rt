@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 import json
 import logging
 from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import ClassVar, Iterable, List, Optional, Tuple
+from typing import ClassVar, Iterable
 
 import httplib2
 from dateutil.relativedelta import relativedelta
@@ -59,7 +61,7 @@ class GoogleInAppProvider(Provider):
         default_factory=lambda: json.loads(settings.GOOGLE_PLAY_SERVICE_ACCOUNT),
     )
 
-    subscriptions_api: Optional[Resource] = None
+    subscriptions_api: Resource | None = None
 
     def __post_init__(self):
         credentials = service_account.ServiceAccountCredentials.from_json_keyfile_dict(
@@ -94,10 +96,10 @@ class GoogleInAppProvider(Provider):
         # don't try to prolong the subscription on our side
         raise InvalidOperation(f'Offline charge not supported for {self.codename}')
 
-    def charge_online(self, *args, **kwargs) -> Tuple[SubscriptionPayment, str]:
+    def charge_online(self, *args, **kwargs) -> tuple[SubscriptionPayment, str]:
         raise InvalidOperation(f'Online charge not supported for {self.codename}')
 
-    def iter_subscriptions(self) -> List[GoogleSubscription]:
+    def iter_subscriptions(self) -> list[GoogleSubscription]:
         """ Yield all Google in-app products available for users. """
 
         # https://developers.google.com/android-publisher/api-ref/rest/v3/monetization.subscriptions
@@ -129,9 +131,9 @@ class GoogleInAppProvider(Provider):
 
     def sync_plan(
         self,
-        plan: Optional[Plan],
-        plan_subscription: Optional[GoogleSubscription],
-        google_subscription: Optional[GoogleSubscription],
+        plan: Plan | None,
+        plan_subscription: GoogleSubscription | None,
+        google_subscription: GoogleSubscription | None,
     ):
         """
         Sync Plans with Google.
@@ -278,7 +280,7 @@ class GoogleInAppProvider(Provider):
                 subscription.end = now_
                 subscription.save()
 
-    def get_user_by_token(self, token: str) -> Optional[AbstractBaseUser]:
+    def get_user_by_token(self, token: str) -> AbstractBaseUser | None:
         with suppress(SubscriptionPayment.DoesNotExist):
             return self.get_last_payment(token).user
 
@@ -312,7 +314,7 @@ class GoogleInAppProvider(Provider):
         return GoogleSubscriptionPurchaseV2.parse_obj(subscription_purchase_dict)
 
     # TODO: rate limit this. Maybe make this a CBV and use Throttle and IsAuthenticated classes?
-    def handle_app_notification(self, notification: AppNotification, user: Optional[AbstractBaseUser]) -> Response:
+    def handle_app_notification(self, notification: AppNotification, user: AbstractBaseUser | None) -> Response:
         """
         Handle notification from the app. It is expected that app sends a notification
         on initial purchase at least once, so that user <--> purchase token mapping is saved.
@@ -368,8 +370,8 @@ class GoogleInAppProvider(Provider):
         self,
         purchase_token: str,
         event: GoogleSubscriptionNotificationType,
-        user: Optional[AbstractBaseUser] = None,
-    ) -> Optional[SubscriptionPayment]:
+        user: AbstractBaseUser | None = None,
+    ) -> SubscriptionPayment | None:
         """
         This method gets purchase token from notification and uses it to query for purchase
         info from Google. Subscription and SubscriptionPayments are updated if needed.

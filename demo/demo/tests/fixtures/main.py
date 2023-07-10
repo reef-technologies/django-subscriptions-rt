@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 from datetime import datetime, timedelta
 from functools import wraps
-from typing import Callable, List, Optional
+from typing import Callable
 from django.utils.timezone import now
 
 import pytest
@@ -152,7 +154,7 @@ def remains(user, resource) -> Callable:
 @pytest.fixture
 def refreshes(user, resource) -> Callable:
     @wraps(get_resource_refresh_moments)
-    def wrapped(**kwargs) -> Optional[datetime]:
+    def wrapped(**kwargs) -> datetime | None:
         return get_resource_refresh_moments(user=user, **kwargs).get(resource, None)
     return wrapped
 
@@ -170,7 +172,7 @@ def get_cache(remaining_chunks) -> Callable:
 
 
 @pytest.fixture
-def two_subscriptions(user, resource) -> List[Subscription]:
+def two_subscriptions(user, resource) -> list[Subscription]:
     """
                          Subscription 1
     --------------[========================]------------> time
@@ -238,7 +240,7 @@ def two_subscriptions(user, resource) -> List[Subscription]:
 
 
 @pytest.fixture
-def five_subscriptions(db, plan, user) -> List[Subscription]:
+def five_subscriptions(db, plan, user) -> list[Subscription]:
     """
     Subscriptions:                    |now
     ----------------------------------[====sub0=====]-----> overlaps with "now"
@@ -301,7 +303,7 @@ def card_number() -> str:
 
 
 @pytest.fixture
-def charge_schedule() -> List[timedelta]:
+def charge_schedule() -> list[timedelta]:
     return [
         timedelta(days=-7),
         timedelta(days=-3),

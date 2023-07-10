@@ -9,9 +9,9 @@ https://docs.djangoproject.com/en/4.0/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/4.0/ref/settings/
 """
+from __future__ import annotations
 
 from pathlib import Path
-from typing import List
 from os import environ
 from constance import config
 
@@ -28,7 +28,7 @@ SECRET_KEY = 'django-insecure-05xv#t=!60$9mkn39hn2-)_mexac&gttcesbk%xqi(xtkamns7
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS: List[str] = ['*']
+ALLOWED_HOSTS: list[str] = ['*']
 
 
 # Application definition

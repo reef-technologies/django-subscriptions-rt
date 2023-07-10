@@ -1,10 +1,12 @@
+from __future__ import annotations
+
 from contextlib import contextmanager, suppress
 from datetime import datetime, timedelta, timezone
 from functools import cached_property
 from itertools import chain
 from logging import getLogger
 from operator import attrgetter
-from typing import Callable, Dict, Iterable, Iterator, List, Optional, Set
+from typing import Callable, Iterable, Iterator
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -78,9 +80,9 @@ def iter_subscriptions_quota_chunks(
 
 def get_remaining_chunks(
     user: AbstractUser,
-    at: Optional[datetime] = None,
-    quota_cache: Optional[QuotaCache] = None,
-) -> List[QuotaChunk]:
+    at: datetime | None = None,
+    quota_cache: QuotaCache | None = None,
+) -> list[QuotaChunk]:
 
     at = at or now()
     subscriptions_involved = iter_subscriptions_involved(user=user, at=at)
@@ -175,7 +177,7 @@ def get_cache_name() -> str:
     return getattr(settings, 'SUBSCRIPTIONS_CACHE_NAME', DEFAULT_SUBSCRIPTIONS_CACHE_NAME)
 
 
-def get_cache_or_none(cache_name: str) -> Optional[BaseCache]:
+def get_cache_or_none(cache_name: str) -> BaseCache | None:
     try:
         return caches[cache_name]
     except InvalidCacheBackendError:
@@ -184,8 +186,8 @@ def get_cache_or_none(cache_name: str) -> Optional[BaseCache]:
 
 def get_remaining_amount(
     user: AbstractUser,
-    at: Optional[datetime] = None,
-) -> Dict[Resource, int]:
+    at: datetime | None = None,
+) -> dict[Resource, int]:
     at = at or now()
 
     cache = get_cache_or_none(get_cache_name())
@@ -228,7 +230,7 @@ def use_resource(user: AbstractUser, resource: Resource, amount: int = 1, raises
         yield remains
 
 
-def merge_feature_sets(*feature_sets: Iterable[Feature]) -> Set[Feature]:
+def merge_feature_sets(*feature_sets: Iterable[Feature]) -> set[Feature]:
     """
     Merge features from different subscriptions in human-meaningful way.
     Positive feature stays if it appears in at least one subscription,
@@ -249,7 +251,13 @@ def merge_feature_sets(*feature_sets: Iterable[Feature]) -> Set[Feature]:
 
 class cache:
 
-    def __init__(self, key: str, cache_name: str = 'default', timeout: Optional[timedelta] = None, version: Optional[int] = None):
+    def __init__(
+        self,
+        key: str,
+        cache_name: str = 'default',
+        timeout: timedelta | None = None,
+        version: int | None = None,
+    ):
         self.cache_name = cache_name
         self.key = key
         self.timeout = timeout
@@ -289,18 +297,18 @@ class cache:
         return Wrapper(fn)
 
 
-def get_default_features() -> Set[Feature]:
+def get_default_features() -> set[Feature]:
     default_tiers = Tier.objects.filter(is_default=True).prefetch_related('features')
     return merge_feature_sets(*(tier.features.all() for tier in default_tiers))
 
 
-def get_default_plan_id() -> Optional[int]:
+def get_default_plan_id() -> int | None:
     with suppress(AttributeError, ImportError):
         from constance import config
         return config.SUBSCRIPTIONS_DEFAULT_PLAN_ID
 
 
-def get_default_plan() -> Optional[Plan]:
+def get_default_plan() -> Plan | None:
     from .models import Plan
 
     if not (default_plan_id := get_default_plan_id()):
@@ -335,7 +343,7 @@ def add_default_plan_to_users():
 
 def get_resource_refresh_moments(
     user: AbstractUser,
-    at: Optional[datetime] = None,
+    at: datetime | None = None,
     assume_subscription_refresh: bool = True,
 ) -> dict[Resource, datetime]:
     """

@@ -1,13 +1,12 @@
+from __future__ import annotations
+
 import base64
 import datetime
 import enum
 import functools
 import logging
 import pathlib
-from typing import (
-    Any,
-    Optional,
-)
+from typing import Any, Optional
 
 import jwt
 from OpenSSL import crypto

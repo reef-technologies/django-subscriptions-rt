@@ -4,10 +4,7 @@ Content of this test is based of off https://www.caktusgroup.com/blog/2016/02/02
 import datetime
 import uuid
 from decimal import Decimal
-from typing import (
-    Any,
-    Callable,
-)
+from typing import Any, Callable
 
 import pytest
 from dateutil.relativedelta import relativedelta

@@ -1,16 +1,24 @@
+from __future__ import annotations
+
 import json
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from functools import partialmethod, wraps
 from logging import getLogger
-from typing import Callable, ClassVar, Iterator, List, Optional
+from typing import Callable, ClassVar, Iterator
 from urllib.parse import urlencode
-from tenacity import retry, retry_base, wait_incrementing, stop_after_attempt, retry_if_result
 
 import requests
 from djmoney.money import Money
 from requests.auth import AuthBase
+from tenacity import (
+    retry,
+    retry_base,
+    retry_if_result,
+    stop_after_attempt,
+    wait_incrementing,
+)
 
 log = getLogger(__name__)
 
@@ -92,7 +100,7 @@ class Paddle:
     post = partialmethod(request, 'post')
 
     @paddle_result
-    def list_subscription_plans(self) -> List[dict]:
+    def list_subscription_plans(self) -> list[dict]:
         response = self.get('/subscription/plans')
         response.raise_for_status()
         return response.json()
@@ -101,10 +109,10 @@ class Paddle:
     def generate_payment_link(
         self,
         product_id: int,
-        prices: List[Money],
+        prices: list[Money],
         email: str,
         message: str = '',
-        metadata: Optional[dict] = None,
+        metadata: dict | None = None,
     ) -> str:
         metadata_str = json.dumps(metadata or {})
         if len(metadata_str) > 1000:
@@ -142,13 +150,13 @@ class Paddle:
     @paddle_result
     def get_payments(
         self,
-        subscription_id: Optional[int] = None,
-        plans: List[int] = None,
-        is_paid: Optional[bool] = None,
-        from_: Optional[date] = None,
-        to: Optional[date] = None,
-        is_one_off_charge: Optional[bool] = None,
-    ) -> List[dict]:
+        subscription_id: int | None = None,
+        plans: list[int] = None,
+        is_paid: bool | None = None,
+        from_: date | None = None,
+        to: date | None = None,
+        is_one_off_charge: bool | None = None,
+    ) -> list[dict]:
         params = {}
 
         if subscription_id is not None:
@@ -176,10 +184,10 @@ class Paddle:
     @paddle_result
     def get_webhook_history(
         self,
-        page: Optional[int] = None,
-        alerts_per_page: Optional[int] = None,
-        start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None,
+        page: int | None = None,
+        alerts_per_page: int | None = None,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
     ) -> dict:
         params = {}
 
@@ -203,8 +211,8 @@ class Paddle:
 
     def iter_webhook_history(
         self,
-        start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
         max_pages: int = 100,
     ) -> Iterator[dict]:
 
