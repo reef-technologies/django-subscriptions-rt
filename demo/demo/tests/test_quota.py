@@ -1,21 +1,23 @@
 from datetime import timedelta
 
+from django.utils.timezone import now
+
 from subscriptions.models import INFINITY, Quota
 
 from .helpers import days
 
 
-def test_quota_without_subscription(db, plan, resource, remains, now):
+def test__quota__without_subscription(db, plan, resource, remains):
     Quota.objects.create(
         plan=plan,
         resource=resource,
         limit=100,
     )
 
-    assert remains(at=now) == 0
+    assert remains(at=now()) == 0
 
 
-def test_quota_without_usage(db, subscription, resource, remains):
+def test__quota__without_usage(db, subscription, resource, remains):
     """
                      Subscription
     --------------[================]------------> time
@@ -37,7 +39,7 @@ def test_quota_without_usage(db, subscription, resource, remains):
     assert remains(at=subscription.end + timedelta(seconds=1)) == 0
 
 
-def test_quota_recharge(db, subscription, resource, remains):
+def test__quota__recharge(db, subscription, resource, remains):
     """
                    Subscription
     ----------[=========================]-------------> time
@@ -63,7 +65,7 @@ def test_quota_recharge(db, subscription, resource, remains):
     assert remains(at=subscription.end) == 0
 
 
-def test_quota_burn(db, subscription, resource, remains):
+def test__quota__burn(db, subscription, resource, remains):
     """
                    Subscription
     ----------[=========================]-------------> time

@@ -259,7 +259,8 @@ def five_subscriptions(db, plan, user) -> List[Subscription]:
 
 
 @pytest.fixture
-def user_client(client, user) -> Client:
+def user_client(settings, client, user) -> Client:
+    settings.SESSION_COOKIE_AGE = timedelta(days=365).total_seconds()
     client.force_login(user)
     return client
 

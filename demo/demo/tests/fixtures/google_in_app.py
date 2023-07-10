@@ -1,6 +1,7 @@
 import json
 from base64 import b64encode
 from typing import Callable
+from django.utils.timezone import now
 
 import pytest
 
@@ -39,17 +40,18 @@ def google_plan_id() -> str:
 
 
 @pytest.fixture
-def google_subscription_purchase(now, google_plan_id) -> GoogleSubscriptionPurchaseV2:
+def google_subscription_purchase(google_plan_id) -> GoogleSubscriptionPurchaseV2:
+    now_ = now()
     return GoogleSubscriptionPurchaseV2(
         lineItems=[GoogleSubscriptionPurchaseLineItem(
             productId=google_plan_id,
-            expiryTime=(now + days(5)).isoformat().replace('+00:00', 'Z'),
+            expiryTime=(now_ + days(5)).isoformat().replace('+00:00', 'Z'),
             autoRenewingPlan=GoogleAutoRenewingPlan(autoRenewEnabled=True),
             offerDetails=GoogleOfferDetails(
                 basePlanId=google_plan_id,
             ),
         )],
-        startTime=now.isoformat().replace('+00:00', 'Z'),
+        startTime=now_.isoformat().replace('+00:00', 'Z'),
         subscriptionState=GoogleSubscriptionState.ACTIVE,
         linkedPurchaseToken=None,
         acknowledgementState=GoogleAcknowledgementState.ACKNOWLEDGED,
@@ -118,16 +120,17 @@ def google_test_notification() -> dict:
 
 
 @pytest.fixture
-def google_in_app_payment(google_in_app, purchase_token, plan_with_google, user, now) -> Subscription:
+def google_in_app_payment(google_in_app, purchase_token, plan_with_google, user) -> Subscription:
+    now_ = now()
     return SubscriptionPayment.objects.create(
         provider_codename=google_in_app.codename,
         provider_transaction_id=purchase_token,
         status=SubscriptionPayment.Status.COMPLETED,
         user=user,
         plan=plan_with_google,
-        subscription_start=now,
-        subscription_end=now + days(7),
-        created=now,
+        subscription_start=now_,
+        subscription_end=now_ + days(7),
+        created=now_,
     )
 
 

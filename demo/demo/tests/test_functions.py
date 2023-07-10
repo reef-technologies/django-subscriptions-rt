@@ -3,6 +3,7 @@ from itertools import count, product
 from operator import attrgetter
 from time import sleep
 from typing import List
+from django.utils.timezone import now
 
 import pytest
 from dateutil.parser import parse
@@ -18,77 +19,82 @@ from subscriptions.models import Feature, INFINITY, Plan, Quota, QuotaCache, Quo
 from .helpers import days
 
 
-def test_subscriptions_involved(five_subscriptions, user, plan, now):
-    subscriptions_involved = iter_subscriptions_involved(user=user, at=now)
+def test__functions__subscriptions_involved__correctness(five_subscriptions, user, plan):
+    subscriptions_involved = iter_subscriptions_involved(user=user, at=five_subscriptions[0].start)
     assert sorted(subscriptions_involved, key=attrgetter('start')) == [
         five_subscriptions[1], five_subscriptions[3], five_subscriptions[0],
     ]
 
 
-def test_subscriptions_involved_performance(five_subscriptions, django_assert_max_num_queries, user, now, plan):
+def test__functions__subscriptions_involved_performance(five_subscriptions, django_assert_max_num_queries, user, plan):
     with django_assert_max_num_queries(2):
-        list(iter_subscriptions_involved(user=user, at=now))
+        list(iter_subscriptions_involved(user=user, at=five_subscriptions[0].start))
 
 
-def test_cache_apply(resource, now):
+def test__functions__cache__apply(resource):
+    now_ = now()
+
     chunks = [
-        QuotaChunk(resource=resource, start=now + days(2), end=now + days(3), amount=100, remains=100),
-        QuotaChunk(resource=resource, start=now, end=now + days(1), amount=100, remains=100),
-        QuotaChunk(resource=resource, start=now + days(1), end=now + days(2), amount=100, remains=100),
+        QuotaChunk(resource=resource, start=now_ + days(2), end=now_ + days(3), amount=100, remains=100),
+        QuotaChunk(resource=resource, start=now_, end=now_ + days(1), amount=100, remains=100),
+        QuotaChunk(resource=resource, start=now_ + days(1), end=now_ + days(2), amount=100, remains=100),
     ]
 
     # check that order doesn't matter
     cache = QuotaCache(
-        datetime=now + days(2),
+        datetime=now_ + days(2),
         chunks=chunks[::-1],
     )
     assert list(cache.apply(chunks)) == chunks
 
     cache = QuotaCache(
-        datetime=now + days(1),
+        datetime=now_ + days(1),
         chunks=[
-            QuotaChunk(resource=resource, start=now, end=now + days(1), amount=100, remains=22),
-            QuotaChunk(resource=resource, start=now + days(1), end=now + days(2), amount=100, remains=33),
-            QuotaChunk(resource=resource, start=now + days(2), end=now + days(3), amount=100, remains=44),
+            QuotaChunk(resource=resource, start=now_, end=now_ + days(1), amount=100, remains=22),
+            QuotaChunk(resource=resource, start=now_ + days(1), end=now_ + days(2), amount=100, remains=33),
+            QuotaChunk(resource=resource, start=now_ + days(2), end=now_ + days(3), amount=100, remains=44),
         ],
     )
 
     assert list(cache.apply(chunks)) == [
-        QuotaChunk(resource=resource, start=now + days(2), end=now + days(3), amount=100, remains=44),
-        QuotaChunk(resource=resource, start=now, end=now + days(1), amount=100, remains=22),
-        QuotaChunk(resource=resource, start=now + days(1), end=now + days(2), amount=100, remains=33),
+        QuotaChunk(resource=resource, start=now_ + days(2), end=now_ + days(3), amount=100, remains=44),
+        QuotaChunk(resource=resource, start=now_, end=now_ + days(1), amount=100, remains=22),
+        QuotaChunk(resource=resource, start=now_ + days(1), end=now_ + days(2), amount=100, remains=33),
     ]
 
 
-def test_cache_inconsistencies(resource, now):
+def test__functions__cache__inconsistencies(resource):
+    now_ = now()
+
     chunks = [
-        QuotaChunk(resource=resource, start=now, end=now + days(1), amount=100, remains=100),
-        QuotaChunk(resource=resource, start=now + days(1), end=now + days(2), amount=100, remains=100),
-        QuotaChunk(resource=resource, start=now + days(2), end=now + days(3), amount=100, remains=100),
+        QuotaChunk(resource=resource, start=now_, end=now_ + days(1), amount=100, remains=100),
+        QuotaChunk(resource=resource, start=now_ + days(1), end=now_ + days(2), amount=100, remains=100),
+        QuotaChunk(resource=resource, start=now_ + days(2), end=now_ + days(3), amount=100, remains=100),
     ]
 
     cache = QuotaCache(
         datetime=None,
         chunks=chunks + [
-            QuotaChunk(resource=resource, start=now, end=now + days(1), amount=100, remains=100),
+            QuotaChunk(resource=resource, start=now_, end=now_ + days(1), amount=100, remains=100),
         ],
     )
     with pytest.raises(InconsistentQuotaCache):
         list(cache.apply(chunks))
 
 
-def test_remaining_chunks_performance(db, two_subscriptions, now, remaining_chunks, django_assert_max_num_queries, get_cache):
+def test__functions__remaining_chunks__performance(db, two_subscriptions, remaining_chunks, django_assert_max_num_queries, get_cache):
+    now_ = two_subscriptions[0].start
     cache_day, test_day = 8, 10
 
     with django_assert_max_num_queries(3):
-        remaining_chunks(at=now + days(test_day))
+        remaining_chunks(at=now_ + days(test_day))
 
-    cache = get_cache(at=now + days(cache_day))
+    cache = get_cache(at=now_ + days(cache_day))
     with django_assert_max_num_queries(3):
-        remaining_chunks(at=now + days(test_day), quota_cache=cache)
+        remaining_chunks(at=now_ + days(test_day), quota_cache=cache)
 
 
-def test_usage_with_simple_quota(db, subscription, resource, remains):
+def test__functions__remains__with_simple_quota(db, subscription, resource, remains):
     """
                      Subscription
     --------------[================]------------> time
@@ -118,7 +124,7 @@ def test_usage_with_simple_quota(db, subscription, resource, remains):
     assert remains(at=subscription.start + days(10)) == 0
 
 
-def test_usage_with_recharging_quota(db, subscription, resource, remains):
+def test__functions__remains__with_recharging_quota(db, subscription, resource, remains):
     """
                          Subscription
     --------------[========================]------------> time
@@ -162,7 +168,7 @@ def test_usage_with_recharging_quota(db, subscription, resource, remains):
     assert remains(at=subscription.start + days(9)) == 70
 
 
-def test_subtraction_priority(db, subscription, resource, remains):
+def test__functions__remains__subtraction_priority(db, subscription, resource, remains):
     """
                          Subscription
     --------------[========================]------------> time
@@ -200,24 +206,26 @@ def test_subtraction_priority(db, subscription, resource, remains):
     assert remains(at=subscription.start + days(10)) == 0
 
 
-def test_multiple_subscriptions(db, two_subscriptions, user, resource, now, remains):
+def test__functions__remains__multiple_subscriptions(db, two_subscriptions, user, resource, remains):
+    now_ = two_subscriptions[0].start
 
-    assert remains(at=now - days(1)) == 0
-    assert remains(at=now + days(0)) == 100
-    assert remains(at=now + days(1)) == 50
-    assert remains(at=now + days(2)) == 50
-    assert remains(at=now + days(4)) == 150
-    assert remains(at=now + days(5)) == 250
-    assert remains(at=now + days(6)) == 50
-    assert remains(at=now + days(7)) == 50
-    assert remains(at=now + days(9)) == 150
-    assert remains(at=now + days(10)) == 150
-    assert remains(at=now + days(11)) == 100
-    assert remains(at=now + days(12)) == 50
-    assert remains(at=now + days(16)) == 0
+    assert remains(at=now_ - days(1)) == 0
+    assert remains(at=now_ + days(0)) == 100
+    assert remains(at=now_ + days(1)) == 50
+    assert remains(at=now_ + days(2)) == 50
+    assert remains(at=now_ + days(4)) == 150
+    assert remains(at=now_ + days(5)) == 250
+    assert remains(at=now_ + days(6)) == 50
+    assert remains(at=now_ + days(7)) == 50
+    assert remains(at=now_ + days(9)) == 150
+    assert remains(at=now_ + days(10)) == 150
+    assert remains(at=now_ + days(11)) == 100
+    assert remains(at=now_ + days(12)) == 50
+    assert remains(at=now_ + days(16)) == 0
 
 
-def test_multiple_subscriptions_refreshes(db, two_subscriptions, user, resource, now, refreshes):
+def test__functions__multiple_subscriptions__refreshes(db, two_subscriptions, user, resource, refreshes):
+    now_ = two_subscriptions[0].start
     pairs = [
         (sub.start, Quota.objects.get(plan=sub.plan).recharge_period, sub.end)
         for sub in two_subscriptions
@@ -245,41 +253,42 @@ def test_multiple_subscriptions_refreshes(db, two_subscriptions, user, resource,
 
         assert refreshes(at=at, assume_subscription_refresh=False) == expected_result, output
 
-    assert_expected(at=now - days(1))
-    assert_expected(at=now + days(0))
-    assert_expected(at=now + days(1))
-    assert_expected(at=now + days(2))
-    assert_expected(at=now + days(4))
-    assert_expected(at=now + days(5))
-    assert_expected(at=now + days(6))
-    assert_expected(at=now + days(7))
-    assert_expected(at=now + days(9))
-    assert_expected(at=now + days(10))
-    assert_expected(at=now + days(11))
-    assert_expected(at=now + days(12))
-    assert_expected(at=now + days(16))
+    assert_expected(at=now_ - days(1))
+    assert_expected(at=now_ + days(0))
+    assert_expected(at=now_ + days(1))
+    assert_expected(at=now_ + days(2))
+    assert_expected(at=now_ + days(4))
+    assert_expected(at=now_ + days(5))
+    assert_expected(at=now_ + days(6))
+    assert_expected(at=now_ + days(7))
+    assert_expected(at=now_ + days(9))
+    assert_expected(at=now_ + days(10))
+    assert_expected(at=now_ + days(11))
+    assert_expected(at=now_ + days(12))
+    assert_expected(at=now_ + days(16))
 
 
-def test_cache(db, two_subscriptions, now, remaining_chunks, get_cache):
+def test__functions__cache(db, two_subscriptions, remaining_chunks, get_cache):
+    now_ = two_subscriptions[0].start
 
     for cache_day, test_day in product(range(13), range(13)):
         assert remaining_chunks(
-            at=now + days(test_day / 2),
-            quota_cache=get_cache(at=now + days(cache_day / 2)),
+            at=now_ + days(test_day / 2),
+            quota_cache=get_cache(at=now_ + days(cache_day / 2)),
         ) == remaining_chunks(
-            at=now + days(test_day / 2),
+            at=now_ + days(test_day / 2),
         )  # "middle" cases
 
         assert remaining_chunks(
-            at=now + days(test_day),
-            quota_cache=get_cache(at=now + days(cache_day)),
+            at=now_ + days(test_day),
+            quota_cache=get_cache(at=now_ + days(cache_day)),
         ) == remaining_chunks(
-            at=now + days(test_day),
+            at=now_ + days(test_day),
         )  # corner cases
 
 
-def test_use_resource(db, user, subscription, quota, resource, remains, now):
-    with freeze_time(now):
+def test__function__use_resource(db, user, subscription, quota, resource, remains):
+    with freeze_time(subscription.start):
         assert remains() == 100
         with use_resource(user, resource, 10) as left:
             assert left == 90
@@ -287,7 +296,7 @@ def test_use_resource(db, user, subscription, quota, resource, remains, now):
 
         assert remains() == 90
 
-    with freeze_time(now + days(1)):
+    with freeze_time(subscription.start + days(1)):
         try:
             with use_resource(user, resource, 10) as left:
                 assert remains() == left == 80
@@ -296,99 +305,101 @@ def test_use_resource(db, user, subscription, quota, resource, remains, now):
             pass
         assert remains() == 90
 
-    with freeze_time(now + days(2)):
+    with freeze_time(subscription.start + days(2)):
         with pytest.raises(QuotaLimitExceeded):
             with use_resource(user, resource, 100):
                 pass
 
-    with freeze_time(now + days(2)):
+    with freeze_time(subscription.start + days(2)):
         with use_resource(user, resource, 100, raises=False):
             pass
 
 
-def test_cache_backend_correctness(cache_backend, db, user, two_subscriptions, remains, now, resource):
+def test__functions__cache_backend_correctness(cache_backend, db, user, two_subscriptions, remains, resource):
+    now_ = two_subscriptions[0].start
     cache = caches['subscriptions']
 
-    assert cache.get(user.pk) is None
+    with freeze_time(now_ + days(90)):
+        assert cache.get(user.pk) is None
 
-    assert remains(at=now - days(1)) == 0
-    assert cache.get(user.pk) == QuotaCache(
-        datetime=now - days(1),
-        chunks=[],
-    )
+        assert remains(at=now_ - days(1)) == 0
+        assert cache.get(user.pk) == QuotaCache(
+            datetime=now_ - days(1),
+            chunks=[],
+        )
 
-    assert remains(at=now) == 100
-    assert cache.get(user.pk) == QuotaCache(
-        datetime=now,
-        chunks=[
-            QuotaChunk(
-                resource=resource,
-                start=now,
-                end=now + days(7),
-                amount=100,
-                remains=100,
-            ),
-        ],
-    )
+        assert remains(at=now_) == 100
+        assert cache.get(user.pk) == QuotaCache(
+            datetime=now_,
+            chunks=[
+                QuotaChunk(
+                    resource=resource,
+                    start=now_,
+                    end=now_ + days(7),
+                    amount=100,
+                    remains=100,
+                ),
+            ],
+        )
 
-    # corrupt cache
-    cache.set(user.pk, QuotaCache(
-        datetime=now,
-        chunks=[
-            QuotaChunk(
-                resource=resource,
-                start=now,
-                end=now + days(4),
-                amount=900,
-                remains=900,
-            ),
-        ],
-    ))
+        # corrupt cache
+        cache.set(user.pk, QuotaCache(
+            datetime=now_,
+            chunks=[
+                QuotaChunk(
+                    resource=resource,
+                    start=now_,
+                    end=now_ + days(4),
+                    amount=900,
+                    remains=900,
+                ),
+            ],
+        ))
 
-    assert remains(at=now + days(1)) == 50
-    assert cache.get(user.pk) == QuotaCache(
-        datetime=now + days(1),
-        chunks=[
-            QuotaChunk(
-                resource=resource,
-                start=now,
-                end=now + days(7),
-                amount=100,
-                remains=50,
-            ),
-        ],
-    )
+        assert remains(at=now_ + days(1)) == 50
+        assert cache.get(user.pk) == QuotaCache(
+            datetime=now_ + days(1),
+            chunks=[
+                QuotaChunk(
+                    resource=resource,
+                    start=now_,
+                    end=now_ + days(7),
+                    amount=100,
+                    remains=50,
+                ),
+            ],
+        )
 
-    assert remains(at=now + days(6)) == 50
-    assert cache.get(user.pk) == QuotaCache(
-        datetime=now + days(6),
-        chunks=[
-            QuotaChunk(
-                resource=resource,
-                start=now,
-                end=now + days(7),
-                amount=100,
-                remains=0,
-            ),
-            QuotaChunk(
-                resource=resource,
-                start=now + days(4),
-                end=now + days(4) + days(7),
-                amount=100,
-                remains=50,
-            ),
-            QuotaChunk(
-                resource=resource,
-                start=now + days(5),
-                end=now + days(10),
-                amount=100,
-                remains=0,
-            ),
-        ],
-    )
+        assert remains(at=now_ + days(6)) == 50
+        assert cache.get(user.pk) == QuotaCache(
+            datetime=now_ + days(6),
+            chunks=[
+                QuotaChunk(
+                    resource=resource,
+                    start=now_,
+                    end=now_ + days(7),
+                    amount=100,
+                    remains=0,
+                ),
+                QuotaChunk(
+                    resource=resource,
+                    start=now_ + days(4),
+                    end=now_ + days(4) + days(7),
+                    amount=100,
+                    remains=50,
+                ),
+                QuotaChunk(
+                    resource=resource,
+                    start=now_ + days(5),
+                    end=now_ + days(10),
+                    amount=100,
+                    remains=0,
+                ),
+            ],
+        )
 
 
-def test_cache_recalculation_real_case(cache_backend, db, user, resource, remains):
+def test__functions__cache_recalculation_real_case(cache_backend, db, user, resource, remains):
     plan_pro = Plan.objects.create(
         codename='11-pro-quarterly',
         name='Pro',

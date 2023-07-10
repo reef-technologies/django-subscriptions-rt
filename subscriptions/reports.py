@@ -27,6 +27,8 @@ class IterPeriodsMixin:
 
         For frequency, use `subscriptions.reports.[YEARLY|MONTHLY|WEEKLY|DAILY|HOURLY|MINUTELY|SECONDLY]`.
         """
+        assert since.microsecond == until.microsecond == 0, \
+            "iter_periods would truncate microseconds, use .replace(microsecond=0) for `since` and `until`"
         points_in_time = rrule(frequency, dtstart=since, until=until)
         end = since
         for start, end in pairwise(points_in_time):

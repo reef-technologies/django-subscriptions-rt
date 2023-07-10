@@ -12,4 +12,4 @@ def days(n: int):
 
 
 def datetime_to_api(dt: datetime) -> str:
-    return dt.replace(microsecond=0).isoformat().replace('+00:00', 'Z')
+    return dt.isoformat().replace('+00:00', 'Z')  # .replace(microsecond=0)

@@ -120,7 +120,7 @@ def get_signed_payload_with_certificates(payload: dict,
     )
 
 
-def test__proper_signature(root_certificate_group: CertificateGroup):
+def test__apple__proper_signature(root_certificate_group: CertificateGroup):
     intermediate_cert_group = make_cert_group(serial=2, is_ca=True, issuer_group=root_certificate_group)
     final_cert_group = make_cert_group(serial=3, is_leaf=True, issuer_group=intermediate_cert_group)
 
@@ -134,7 +134,7 @@ def test__proper_signature(root_certificate_group: CertificateGroup):
     assert received_payload == TEST_PAYLOAD
 
 
-def test__no_certificates_in_the_header(root_certificate_group: CertificateGroup):
+def test__apple__no_certificates_in_the_header(root_certificate_group: CertificateGroup):
     signed_payload = get_signed_payload_with_certificates(
         TEST_PAYLOAD,
         [],  # No certs here.
@@ -144,7 +144,7 @@ def test__no_certificates_in_the_header(root_certificate_group: CertificateGroup
         validate_and_fetch_apple_signed_payload(signed_payload)
 
 
-def test__root_certificate_from_jwt_doesnt_match_apple_root(root_certificate_group: CertificateGroup):
+def test__apple__root_certificate_from_jwt_doesnt_match_apple_root(root_certificate_group: CertificateGroup):
     fake_root_cert_group = make_cert_group(serial=5, is_ca=True)
     intermediate_cert_group = make_cert_group(serial=2, is_ca=True, issuer_group=fake_root_cert_group)
     final_cert_group = make_cert_group(serial=3, is_leaf=True, issuer_group=intermediate_cert_group)
@@ -159,7 +159,7 @@ def test__root_certificate_from_jwt_doesnt_match_apple_root(root_certificate_gro
         validate_and_fetch_apple_signed_payload(signed_payload)
 
 
-def test__invalid_leaf_certificate_from_jwt(root_certificate_group: CertificateGroup):
+def test__apple__invalid_leaf_certificate_from_jwt(root_certificate_group: CertificateGroup):
     intermediate_cert_group = make_cert_group(serial=2, is_ca=True, issuer_group=root_certificate_group)
 
     fake_root_cert_group = make_cert_group(serial=5, is_ca=True)
@@ -175,7 +175,7 @@ def test__invalid_leaf_certificate_from_jwt(root_certificate_group: CertificateG
         validate_and_fetch_apple_signed_payload(signed_payload)
 
 
-def test__invalid_signature_of_the_jwt(root_certificate_group: CertificateGroup):
+def test__apple__invalid_signature_of_the_jwt(root_certificate_group: CertificateGroup):
     intermediate_cert_group = make_cert_group(serial=2, is_ca=True, issuer_group=root_certificate_group)
     final_cert_group = make_cert_group(serial=3, is_leaf=True, issuer_group=intermediate_cert_group)
 
