@@ -1,6 +1,6 @@
 import json
 from datetime import timedelta
-from more_itertools import one
+from unittest import mock
 
 import pytest
 from dateutil.relativedelta import relativedelta
@@ -8,9 +8,11 @@ from django.test.client import MULTIPART_CONTENT
 from django.utils.timezone import now
 from djmoney.money import Money
 from freezegun import freeze_time
+from more_itertools import one
+from requests import Response
 from tenacity import Retrying, TryAgain, stop_after_attempt, wait_incrementing
 
-from subscriptions.exceptions import BadReferencePayment
+from subscriptions.exceptions import BadReferencePayment, PaymentError
 from subscriptions.models import Plan, Subscription, SubscriptionPayment
 from subscriptions.providers import get_provider
 from subscriptions.providers.paddle import PaddleProvider
@@ -340,10 +342,7 @@ def test__paddle__subscription_charge_online_new_payment_if_no_payment_url(paddl
     assert SubscriptionPayment.objects.count() == 2
 
 
-def test__paddle__reference_payment_non_matching_currency(paddle, user_client, paddle_unconfirmed_payment):
-    paddle_unconfirmed_payment.status = SubscriptionPayment.Status.COMPLETED
-    paddle_unconfirmed_payment.save()
-
+def test__paddle__reference_payment_non_matching_currency(paddle, user_client, paddle_payment):
     other_currency_plan = Plan.objects.create(
         codename='other',
         name='Other',
@@ -354,15 +353,12 @@ def test__paddle__reference_payment_non_matching_currency(paddle, user_client, p
     provider = get_provider()
     with pytest.raises(BadReferencePayment):
         provider.charge_offline(
-            user=paddle_unconfirmed_payment.user,
+            user=paddle_payment.user,
             plan=other_currency_plan,
         )
 
 
-def test__paddle__subscription_charge_offline_zero_amount(paddle, user_client, paddle_unconfirmed_payment):
-    paddle_unconfirmed_payment.status = SubscriptionPayment.Status.COMPLETED
-    paddle_unconfirmed_payment.save()
-
+def test__paddle__subscription_charge_offline__zero_amount(paddle, user_client, paddle_payment):
     assert SubscriptionPayment.objects.count() == 1
 
     free_plan = Plan.objects.create(
@@ -374,10 +370,31 @@ def test__paddle__subscription_charge_offline_zero_amount(paddle, user_client, p
 
     provider = get_provider()
     provider.charge_offline(
-        user=paddle_unconfirmed_payment.user,
+        user=paddle_payment.user,
         plan=free_plan,
     )
     assert SubscriptionPayment.objects.count() == 2
     last_payment = SubscriptionPayment.objects.order_by('subscription_end').last()
     assert last_payment.plan == free_plan
     assert last_payment.amount is None
+
+
+def test__paddle__subscription_charge_offline__error(paddle, user, paddle_payment, charge_expiring):
+
+    subscription = paddle_payment.subscription
+    assert subscription.auto_prolong is True
+
+    response = Response()
+    response.status_code = 400
+    response.json = lambda *args, **kwargs: {
+        'success': False,
+        'error': {
+            'code': 188,
+            'message': 'Transaction failed.',
+        },
+    }
+    # or {'success': False, 'error': {'code': 119, 'message': 'Unable to find requested subscription'}}
+
+    with mock.patch.object(paddle._api, 'request', lambda *args, **kwargs: response):
+        with pytest.raises(PaymentError):
+            subscription.charge_offline()

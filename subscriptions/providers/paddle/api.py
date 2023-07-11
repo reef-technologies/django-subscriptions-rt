@@ -54,9 +54,17 @@ class PaddleAuth(AuthBase):
 def paddle_result(fn: Callable) -> Callable:
     @wraps(fn)
     def wrapper(*args, **kwargs):
-        result = fn(*args, **kwargs)
+        response = fn(*args, **kwargs)
+
+        try:
+            result = response.json()
+        except requests.JSONDecodeError:
+            assert not response.ok
+            response.raise_for_status()
+
         if not result['success']:
             raise PaddleError(result['error']['message'], code=result['error']['code'])
+
         return result['response']
 
     return wrapper
@@ -101,9 +109,7 @@ class Paddle:
 
     @paddle_result
     def list_subscription_plans(self) -> list[dict]:
-        response = self.get('/subscription/plans')
-        response.raise_for_status()
-        return response.json()
+        return self.get('/subscription/plans')
 
     @paddle_result
     def generate_payment_link(
@@ -119,15 +125,13 @@ class Paddle:
             log.warning(f'Metadata string exceeds the limit of 1000 chars: {metadata_str}')
             metadata_str = metadata_str[:1000]
 
-        response = self.post('/product/generate_pay_link', json={
+        return self.post('/product/generate_pay_link', json={
             'product_id': product_id,
             'prices': [f'{price.currency}:{price.amount}' for price in prices],
             'custom_message': message,
             'customer_email': email,
             'passthrough': metadata_str,
         })
-        response.raise_for_status()
-        return response.json()
 
     @paddle_result
     def one_off_charge(
@@ -140,12 +144,10 @@ class Paddle:
             log.warning(f'Name exceeds the limit of 50 chars: {name}')
             name = name[:50]
 
-        response = self.post(f'/subscription/{subscription_id}/charge', json={
+        return self.post(f'/subscription/{subscription_id}/charge', json={
             'amount': str(amount),
             'charge_name': name,
         })
-        response.raise_for_status()
-        return response.json()
 
     @paddle_result
     def get_payments(
@@ -177,9 +179,7 @@ class Paddle:
         if is_one_off_charge is not None:
             params['is_one_off_charge'] = int(is_one_off_charge)
 
-        response = self.post('/subscription/payments', json=params)
-        response.raise_for_status()
-        return response.json()
+        return self.post('/subscription/payments', json=params)
 
     @paddle_result
     def get_webhook_history(
@@ -205,9 +205,7 @@ class Paddle:
         if end_date:
             params['query_head'] = end_date.astimezone(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
 
-        response = self.post('/alert/webhooks', json=params)
-        response.raise_for_status()
-        return response.json()
+        return self.post('/alert/webhooks', json=params)
 
     def iter_webhook_history(
         self,

@@ -105,6 +105,7 @@ def _charge_recurring_subscription(
         # won't try charging and sending email again within same charge_period
         SubscriptionPayment.objects.create(
             provider_codename='',
+            user=subscription.user,
             status=SubscriptionPayment.Status.ERROR,
             plan=subscription.plan,
             subscription=subscription,

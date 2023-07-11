@@ -2,10 +2,13 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
+from unittest import mock
 
+import pytest
 from freezegun import freeze_time
 from more_itertools import spy
-import pytest
+
+from subscriptions.exceptions import PaymentError
 from subscriptions.models import Subscription, SubscriptionPayment
 from subscriptions.tasks import charge_recurring_subscriptions
 
@@ -194,3 +197,25 @@ def test__tasks__charge_expiring__not_charging_after_cancellation(
     with freeze_time(subscription.end - days(4)):
         charge_expiring()
         assert subscription.payments.count() == old_num_payments
+
+
+def test__tasks__charge_expiring__payment_failure(
+    subscription,
+    payment,
+    charge_schedule,
+    dummy,
+):
+    assert SubscriptionPayment.objects.count() == 1
+
+    def raise_payment_error(*args, **kwargs):
+        raise PaymentError('Something went wrong')
+
+    with freeze_time(subscription.end + charge_schedule[-2], tick=True):
+        with mock.patch.object(dummy, 'charge_offline', raise_payment_error):
+            charge_recurring_subscriptions(schedule=charge_schedule, num_threads=1)
+
+            assert SubscriptionPayment.objects.count() == 2
+            assert SubscriptionPayment.objects.order_by('created').last().status == SubscriptionPayment.Status.ERROR
+
+            charge_recurring_subscriptions(schedule=charge_schedule, num_threads=1)
+            assert SubscriptionPayment.objects.count() == 2

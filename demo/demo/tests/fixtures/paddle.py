@@ -28,7 +28,15 @@ def paddle_unconfirmed_payment(db, paddle, plan, user) -> SubscriptionPayment:
         provider_codename=paddle.codename,
         provider_transaction_id='12345',
         amount=usd(100),
+        metadata={'subscription_id': '888999'},
     )
+
+
+@pytest.fixture
+def paddle_payment(paddle_unconfirmed_payment) -> SubscriptionPayment:
+    paddle_unconfirmed_payment.status = SubscriptionPayment.Status.COMPLETED
+    paddle_unconfirmed_payment.save()
+    return paddle_unconfirmed_payment
 
 
 @pytest.fixture
