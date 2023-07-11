@@ -20,7 +20,7 @@ def fix_default_subscriptions(apps, schema_editor):
         return
 
     for user in User.objects.all():
-        subscriptions = user.subscriptions.filter(plan=default_plan).order_by('start', 'end')
+        subscriptions = user.subscriptions.filter(plan=default_plan.pk).order_by('start', 'end')
         for sub1, sub2 in pairwise(subscriptions):
 
             # # swallow
