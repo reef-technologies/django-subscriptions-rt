@@ -20,7 +20,7 @@ from subscriptions.tasks import check_unfinished_payments
 from subscriptions.utils import fromisoformat
 
 
-def test__paddle__payment_flow__regular(paddle, user_client, plan, card_number):
+def test__paddle__payment_flow__regular(paddle, user, user_client, plan, card_number, recharge_plan):
     assert not Subscription.objects.exists()
 
     response = user_client.post('/api/subscribe/', {'plan': plan.id})
@@ -93,6 +93,7 @@ def test__paddle__payment_flow__regular(paddle, user_client, plan, card_number):
             'start': subscription.start.isoformat().replace('+00:00', 'Z'),
             'end': subscription.end.isoformat().replace('+00:00', 'Z'),
             'next_charge_date': next(subscription.iter_charge_dates(since=now())).isoformat().replace('+00:00', 'Z'),
+            'payment_provider_class': 'PaddleProvider',
             'plan': {
                 'charge_amount': 100,
                 'charge_amount_currency': 'USD',
@@ -150,6 +151,14 @@ def test__paddle__payment_flow__regular(paddle, user_client, plan, card_number):
     subscription = one(Subscription.objects.all())
     assert subscription.start == initial_subscription_start
     assert subscription.end == initial_subscription_start + 3 * plan.charge_period
+
+    # check non-subscription offline charge (taking reference payment from other subscription)
+    payment = paddle.charge_offline(
+        user=user,
+        plan=recharge_plan,
+    )
+    assert payment.subscription != subscription
+    assert Subscription.objects.count() == 2
 
 
 def test__paddle__payment_flow__trial_period(trial_period, paddle, user, user_client, plan, card_number):

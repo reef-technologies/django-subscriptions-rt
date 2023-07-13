@@ -575,14 +575,6 @@ class SubscriptionPayment(AbstractTransaction):
 
         return super().save(*args, **kwargs)
 
-    @classmethod
-    def get_last_successful(cls, user: AbstractBaseUser) -> SubscriptionPayment | None:
-        with suppress(cls.DoesNotExist):
-            return cls.objects.filter(
-                user=user,
-                status=SubscriptionPayment.Status.COMPLETED,
-            ).latest()
-
     @property
     def meta(self) -> BaseModel:
         from .providers import get_provider

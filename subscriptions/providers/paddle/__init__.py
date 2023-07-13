@@ -155,6 +155,18 @@ class PaddleProvider(Provider):
                 reference_payment = subscription.get_reference_payment()
 
         if not reference_payment:
+            # this happens when user had a subscription and wants a new one,
+            # so this new subscription doesn't have a reference payment yet;
+            # however we could take payment credentials from some other
+            # successful payment by same provider
+            with suppress(SubscriptionPayment.DoesNotExist):
+                reference_payment = SubscriptionPayment.objects.filter(
+                    user=user,
+                    provider_codename=self.codename,
+                    status=SubscriptionPayment.Status.COMPLETED,
+                ).latest()
+
+        if not reference_payment:
             raise PaymentError('No reference payment to take credentials from')
 
         assert reference_payment.status == SubscriptionPayment.Status.COMPLETED
