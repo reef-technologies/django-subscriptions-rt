@@ -16,8 +16,10 @@ from rest_framework.serializers import (
     SerializerMethodField,
 )
 
+from ..exceptions import ProviderNotFound
 from ..fields import relativedelta_to_dict
 from ..models import Plan, Subscription, SubscriptionPayment
+from ..providers import get_provider
 
 
 class PlanSerializer(ModelSerializer):
@@ -43,14 +45,21 @@ class PlanSerializer(ModelSerializer):
 class SubscriptionSerializer(ModelSerializer):
     plan = PlanSerializer()
     next_charge_date = SerializerMethodField()
+    payment_provider_class = SerializerMethodField()
 
     class Meta:
         model = Subscription
-        fields = 'id', 'plan', 'quantity', 'start', 'end', 'next_charge_date',
+        fields = 'id', 'plan', 'quantity', 'start', 'end', 'next_charge_date', 'payment_provider_class'
 
     def get_next_charge_date(self, obj) -> datetime | None:
         with suppress(StopIteration):
             return next(obj.iter_charge_dates(since=now()))
+
+    def get_payment_provider_class(self, obj) -> str | None:
+        with suppress(SubscriptionPayment.DoesNotExist, ProviderNotFound):
+            reference_payment = obj.get_reference_payment()
+            provider = get_provider(reference_payment.provider_codename)
+            return provider.__class__.__name__
 
 
 class PaymentProviderSerializer(Serializer):

@@ -330,15 +330,18 @@ class Subscription(models.Model):
 
             yield charge_date
 
+    def get_reference_payment(self) -> SubscriptionPayment:
+        return self.payments.filter(status=SubscriptionPayment.Status.COMPLETED).latest()
+
     def charge_offline(self) -> SubscriptionPayment:
         from .providers import get_provider
 
         try:
-            last_payment = self.payments.filter(status=SubscriptionPayment.Status.COMPLETED).latest()
+            reference_payment = self.get_reference_payment()
         except SubscriptionPayment.DoesNotExist:
             raise PaymentError('There is no previous successful payment to take credentials from')
 
-        provider_codename = last_payment.provider_codename
+        provider_codename = reference_payment.provider_codename
         try:
             provider = get_provider(provider_codename)
         except ProviderNotFound as exc:
@@ -349,7 +352,7 @@ class Subscription(models.Model):
             plan=self.plan,
             subscription=self,
             quantity=self.quantity,
-            reference_payment=last_payment,
+            reference_payment=reference_payment,
         )
 
     def adjust_default_subscription(self):

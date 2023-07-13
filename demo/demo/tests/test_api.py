@@ -62,6 +62,7 @@ def test__api__subscriptions__authorized(user_client, two_subscriptions):
         'end': datetime_to_api(subscription.end),
         'quantity': 1,
         'next_charge_date': None,
+        'payment_provider_class': None,
         'plan': {
             'id': subscription.plan.id,
             'codename': subscription.plan.codename,
@@ -258,6 +259,7 @@ def test__api__payment(user_client, payment):
             "start": datetime_to_api(payment.subscription.start),
             "end": datetime_to_api(payment.subscription.end),
             "next_charge_date": datetime_to_api(next(payment.subscription.iter_charge_dates(since=now()))),
+            "payment_provider_class": "DummyProvider",
         },
         "quantity": 2,
         "amount": 100.0,
