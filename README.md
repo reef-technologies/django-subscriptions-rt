@@ -1,5 +1,7 @@
 # Django-subscriptions-rt: subscriptions and payments for your Django app
 
+> Warning: current version only supports Postgres database (PG_ADVISORY_LOCK is used), however MySQL support may be added by supporting MySQL in HardDBLock context manager.
+
 # Features
 
 TODO
