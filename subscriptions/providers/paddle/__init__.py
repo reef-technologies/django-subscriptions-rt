@@ -152,10 +152,7 @@ class PaddleProvider(Provider):
 
         if not reference_payment and subscription:
             with suppress(SubscriptionPayment.DoesNotExist):
-                reference_payment = subscription.payments.filter(status=SubscriptionPayment.Status.COMPLETED).latest()
-
-        if not reference_payment:
-            reference_payment = SubscriptionPayment.get_last_successful(user)
+                reference_payment = subscription.get_reference_payment()
 
         if not reference_payment:
             raise PaymentError('No reference payment to take credentials from')
