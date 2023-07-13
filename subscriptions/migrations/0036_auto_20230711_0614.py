@@ -11,42 +11,54 @@ log = logging.getLogger(__name__)
 
 
 def fix_default_subscriptions(apps, schema_editor):
-    from subscriptions.functions import get_default_plan
     from subscriptions.models import MAX_DATETIME
 
+    db_alias = schema_editor.connection.alias
     User = apps.get_model(*settings.AUTH_USER_MODEL.rsplit('.', maxsplit=1))
+    Plan = apps.get_model('subscriptions', 'Plan')
 
-    if not (default_plan := get_default_plan()):
+    try:
+        from constance import config
+    except ImportError:
         return
 
-    for user in User.objects.all():
-        subscriptions = user.subscriptions.filter(plan=default_plan.pk).order_by('start', 'end')
-        for sub1, sub2 in pairwise(subscriptions):
+    default_plan_id = config.SUBSCRIPTIONS_DEFAULT_PLAN_ID
+    default_plan = Plan.objects.using(db_alias).filter(id=default_plan_id).first()
+    if not default_plan:
+        return
 
-            # # swallow
-            if sub2.start <= sub1.start and sub1.end <= sub2.end:
+    for user in User.objects.using(db_alias).all():
+        subscriptions = user.subscriptions.filter(plan_id=default_plan_id).order_by('start', 'end')
+        for sub1, sub2 in pairwise(subscriptions):
+            assert sub1.start <= sub2.start  # by query definition
+
+            # swallow
+            if sub2.end <= sub1.end:
                 log.debug('Swallowed:\n%s\n%s', sub1, sub2)
 
-                payments = sub1.payments.all()
-                for payment in payments:
-                    assert payment.amount.amount == 0, f'Non-zero payment: {payment}'
-                payments.delete()
-                sub1.delete()
-
-            # merge
-            elif sub1.end >= sub2.start:
-                log.debug('Merging:\n%s\n%s', sub1, sub2)
-                sub2.start = sub1.start
-                sub2.save()
-
                 try:
-                    payments = sub1.payments.all()
+                    payments = sub2.payments.all()
                     for payment in payments:
                         assert payment.amount.amount == 0, f'Non-zero payment: {payment}'
                     payments.delete()
-                    sub1.delete()
+                    sub2.delete()
                 except AssertionError:
-                    log.exception('Could not delete %s', sub1)
+                    log.exception('Could not delete %s', sub2)
+
+            # merge
+            elif sub2.start <= sub1.end:
+                log.debug('Merging:\n%s\n%s', sub1, sub2)
+                sub1.end = sub2.end
+                sub1.save()
+
+                try:
+                    payments = sub2.payments.all()
+                    for payment in payments:
+                        assert payment.amount.amount == 0, f'Non-zero payment: {payment}'
+                    payments.delete()
+                    sub2.delete()
+                except AssertionError:
+                    log.exception('Could not delete %s', sub2)
 
         # extend last subscription
         last_subscription = subscriptions.last()
