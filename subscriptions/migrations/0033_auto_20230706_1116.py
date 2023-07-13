@@ -4,15 +4,21 @@ from django.db import migrations
 
 
 def disable_default_plan_auto_prolong(apps, schema_editor):
-    from subscriptions.functions import get_default_plan
+    db_alias = schema_editor.connection.alias
+    Plan = apps.get_model('subscriptions', 'Plan')
+    Subscription = apps.get_model('subscriptions', 'Subscription')
 
-    default_plan = get_default_plan()
+    try:
+        from constance import config
+    except ImportError:
+        return
+
+    default_plan_id = config.SUBSCRIPTIONS_DEFAULT_PLAN_ID
+    default_plan = Plan.objects.using(db_alias).filter(id=default_plan_id).first()
     if not default_plan:
         return
 
-    db_alias = schema_editor.connection.alias
-    Subscription = apps.get_model("subscriptions", "Subscription")
-    Subscription.objects.using(db_alias).filter(plan=default_plan.id, auto_prolong=True).update(auto_prolong=False)
+    Subscription.objects.using(db_alias).filter(plan_id=default_plan_id, auto_prolong=True).update(auto_prolong=False)
 
 
 class Migration(migrations.Migration):
