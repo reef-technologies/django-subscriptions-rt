@@ -317,13 +317,6 @@ Start database (in another terminal with the same variables) with
 docker-compose -f demo/docker-compose.yml up
 ```
 
-Prepare everything by running
-```bash
-cd demo
-python manage.py migrate
-python manage.py runserver
-```
-
 Run tests with
 ```bash
 nox -s test
