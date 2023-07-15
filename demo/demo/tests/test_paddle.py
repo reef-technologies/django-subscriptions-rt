@@ -156,24 +156,6 @@ def automate_payment(url, card):
 
 
 def test__payment_flow__regular(paddle, user_client, plan, card_number):
-
-    """
-    Notes to self:
-
-    Redirect url is a simple 302
-    maybe request to locale (can be skipped?)
-    PATCH to customer-info
-    this get a token spreedly_environment_key
-    PATCH payment method with card
-    POST https://core.spreedly.com/v1/payment_methods.json?environment_key=<spreedly_environment_key>
-        obtain code
-    POST pay-card with token
-    GET /redirect
-    POST /3ds1-complete
-    POST pay-card/3ds-finished
-
-    send
-    """
     response = user_client.post('/api/subscribe/', {'plan': plan.id})
     assert response.status_code == 200, response.content
 
