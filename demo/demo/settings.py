@@ -105,6 +105,9 @@ DATABASES = {
     }
 }
 
+# paddle test email.
+PADDLE_TEST_EMAIL = environ.get('PADDLE_TEST_EMAIL', '')
+
 CONSTANCE_BACKEND = 'constance.backends.database.DatabaseBackend'
 CONSTANCE_CONFIG = {
     'SUBSCRIPTIONS_DEFAULT_PLAN_ID': (0, 'Default plan ID', int),
