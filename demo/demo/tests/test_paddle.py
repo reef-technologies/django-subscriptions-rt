@@ -152,7 +152,7 @@ def automate_payment(url, card):
     finalize_three_d_s_url = three_d_s.text.split('href="')[-1].split('"')[0]
     assert 'spreedly' in finalize_three_d_s_url
     session.get(finalize_three_d_s_url)
-    session.post(parse.urljoin(checkout_api_url, '/pay-card/3ds-finished'))
+    session.post(parse.urljoin(checkout_api_url, 'pay-card/3ds-finished'))
 
 
 def test__payment_flow__regular(paddle, user_client, plan, card_number):
