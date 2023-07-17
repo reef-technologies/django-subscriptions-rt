@@ -72,11 +72,15 @@ def fix_default_subscriptions(apps, schema_editor):
             last_subscription.save()
 
 
+def noop(apps, schema_editor):
+    pass
+
+
 class Migration(migrations.Migration):
     dependencies = [
         ("subscriptions", "0035_alter_subscription_auto_prolong"),
     ]
 
     operations = [
-        migrations.RunPython(fix_default_subscriptions),
+        migrations.RunPython(fix_default_subscriptions, noop),
     ]
