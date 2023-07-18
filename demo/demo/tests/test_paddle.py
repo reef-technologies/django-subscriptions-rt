@@ -69,7 +69,7 @@ def automate_payment(url: str, card: str):
             }
         }
     )
-    assert customer_info.status_code == 201, 'Issue while sending the costumer info'
+    customer_info.raise_for_status()
     customer_info_data = customer_info.json()
 
     payment_methods = customer_info_data['data']['available_payment_methods']
@@ -93,7 +93,7 @@ def automate_payment(url: str, card: str):
             }
         }
     )
-    assert set_payment_method_response.status_code == 200, 'Unexpected issue while setting the payment method.'
+    set_payment_method_response.raise_for_status()
 
     # Send the card details to spreedly adn fetch the transaction token
     spreedly_url = parse.urljoin(
@@ -124,7 +124,7 @@ def automate_payment(url: str, card: str):
             }
         }
     )
-    assert payment_response.status_code == 201, 'Unexpected response status.'
+    payment_response.raise_for_status()
     transaction_token = payment_response.json()['transaction']['payment_method']['token']
     assert transaction_token, 'Unexpected response from spreedly'
 
@@ -145,16 +145,12 @@ def automate_payment(url: str, card: str):
             "token": transaction_token
         }
     })
-    assert make_payment_response.status_code == 200, 'Make payment response status is unexpected'
-
-    # not sure if we need it, but I will still replicate the client behaviour
-    ld_proxy = session.get(parse.urljoin(ld_proxy_domain, f'/sdk/evalx/{browser_info}'))
-    assert ld_proxy.status_code == 200, 'Issue while processing the payment.'
+    make_payment_response.raise_for_status()
 
     # # 3D Secure - assuming it is needed
     three_d_s_url = make_payment_response.json()['data']['three_d_s']['spreedly']['checkout_url']
     three_d_s = session.get(three_d_s_url)
-    assert three_d_s.status_code == 200, 'Error while initializing 3D-Secure'
+    three_d_s.raise_for_status()
 
     three_d_s_redirect_regex_match = re.search(r'href="(.+spreedly.+)"', three_d_s.text)
     assert three_d_s_redirect_regex_match, 'unexpected response while processing 3D-Secure'
@@ -162,8 +158,7 @@ def automate_payment(url: str, card: str):
     # This page contains (your payment is successful, click here to return to the merchant)
     # in general this step might be necessary to finalize the transaction.
     final_three_d_s = session.get(finalize_three_d_s_url)
-    assert final_three_d_s.status_code == 200, 'Error while finalizing 3D-Secure'
-
+    final_three_d_s.raise_for_status()
 
 
 def test__payment_flow__regular(paddle, user_client, plan, card_number):
