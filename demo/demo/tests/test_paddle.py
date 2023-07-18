@@ -7,6 +7,7 @@ from more_itertools import one
 import pytest
 import requests
 from dateutil.relativedelta import relativedelta
+from django.conf import settings
 from django.test.client import MULTIPART_CONTENT
 from django.utils.timezone import now
 from djmoney.money import Money
@@ -247,13 +248,10 @@ def test__payment_flow__regular(paddle, user_client, plan, card_number, paddle_t
     payment.status = SubscriptionPayment.Status.PENDING
     payment.save()
 
-    # Retry a few times to give paddle the time to update the tranaction status
-    for attempt in Retrying(wait=wait_incrementing(start=2, increment=2), stop=stop_after_attempt(10)):
-        with attempt:
-            check_unfinished_payments(within=timedelta(hours=1))
-            payment = SubscriptionPayment.objects.latest()
-            if payment.status != SubscriptionPayment.Status.COMPLETED:
-                raise TryAgain()
+    check_unfinished_payments(within=timedelta(hours=1))
+
+    payment = SubscriptionPayment.objects.latest()
+    assert payment.status == SubscriptionPayment.Status.COMPLETED
 
     # ---- test_charge_offline ----
     assert 'subscription_id' in payment.metadata
@@ -304,8 +302,7 @@ def test__payment_flow__trial_period(trial_period, paddle, user, user_client, pl
     subscription = user.subscriptions.first()
     assert subscription.start == subscription.end
     assert subscription.initial_charge_offset == trial_period
-    assert subscription.initial_charge_offset == trial_period
-
+    # input(f'Use card {card_number} to pay here: {redirect_url}\nThen press Enter')
     automate_payment(redirect_url, card_number, paddle_test_email)
 
     # ensure that status didn't change because webhook didn't go through
@@ -316,11 +313,14 @@ def test__payment_flow__trial_period(trial_period, paddle, user, user_client, pl
     payment.status = SubscriptionPayment.Status.PENDING
     payment.save()
 
-    check_unfinished_payments(within=timedelta(hours=1))
+    # Retry a few times to give paddle the time to update the tranaction status
+    for attempt in Retrying(wait=wait_incrementing(start=2, increment=2), stop=stop_after_attempt(20)):
+        with attempt:
+            check_unfinished_payments(within=timedelta(hours=1))
+            payment = SubscriptionPayment.objects.latest()
+            if payment.status != SubscriptionPayment.Status.COMPLETED:
+                raise TryAgain()
 
-    payment = SubscriptionPayment.objects.latest()
-
-    assert payment.status == SubscriptionPayment.Status.COMPLETED, payment.status
     assert payment.amount == plan.charge_amount * 0
     assert payment.subscription.start + trial_period == payment.subscription.end
     assert payment.subscription.start == payment.subscription_start
