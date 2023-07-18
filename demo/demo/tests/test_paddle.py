@@ -304,7 +304,8 @@ def test__payment_flow__trial_period(trial_period, paddle, user, user_client, pl
     subscription = user.subscriptions.first()
     assert subscription.start == subscription.end
     assert subscription.initial_charge_offset == trial_period
-    # input(f'Use card {card_number} to pay here: {redirect_url}\nThen press Enter')
+    assert subscription.initial_charge_offset == trial_period
+
     automate_payment(redirect_url, card_number, paddle_test_email)
 
     # ensure that status didn't change because webhook didn't go through
