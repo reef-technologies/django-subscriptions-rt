@@ -315,7 +315,6 @@ def test__payment_flow__trial_period(trial_period, paddle, user, user_client, pl
     payment = SubscriptionPayment.objects.latest()
     payment.status = SubscriptionPayment.Status.PENDING
     payment.save()
-    import time; time.sleep(30)
 
     check_unfinished_payments(within=timedelta(hours=1))
 
