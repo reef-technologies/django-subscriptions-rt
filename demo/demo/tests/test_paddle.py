@@ -7,7 +7,6 @@ from more_itertools import one
 import pytest
 import requests
 from dateutil.relativedelta import relativedelta
-from django.conf import settings
 from django.test.client import MULTIPART_CONTENT
 from django.utils.timezone import now
 from djmoney.money import Money
@@ -22,11 +21,10 @@ from subscriptions.tasks import check_unfinished_payments
 from subscriptions.utils import fromisoformat
 
 
-def automate_payment(url: str, card: str):
+def automate_payment(url: str, card: str, email: str):
     """
     This function replicates all the steps that are done at client level in the paddle payment page.
     """
-    email = settings.PADDLE_TEST_EMAIL
     assert email, 'Please configure the `PADDLE_TEST_EMAIL` environment variable.'
     # get the browser info token, which will be used later on.
     browser_info = url.strip('/').split('/')[-1]
@@ -161,7 +159,7 @@ def automate_payment(url: str, card: str):
     final_three_d_s.raise_for_status()
 
 
-def test__payment_flow__regular(paddle, user_client, plan, card_number):
+def test__payment_flow__regular(paddle, user_client, plan, card_number, paddle_test_email):
 
     response = user_client.post('/api/subscribe/', {'plan': plan.id})
     assert response.status_code == 200, response.content
@@ -181,7 +179,7 @@ def test__payment_flow__regular(paddle, user_client, plan, card_number):
 
     assert 'payment_url' in payment.metadata
 
-    automate_payment(redirect_url, card_number)
+    automate_payment(redirect_url, card_number, paddle_test_email)
 
     # ensure that status didn't change because webhook didn't go through
     assert payment.status == SubscriptionPayment.Status.PENDING
@@ -249,9 +247,13 @@ def test__payment_flow__regular(paddle, user_client, plan, card_number):
     payment.status = SubscriptionPayment.Status.PENDING
     payment.save()
 
-    check_unfinished_payments(within=timedelta(hours=1))
-    payment = SubscriptionPayment.objects.latest()
-    assert payment.status == SubscriptionPayment.Status.COMPLETED
+    # Retry a few times to give paddle the time to update the tranaction status
+    for attempt in Retrying(wait=wait_incrementing(start=2, increment=2), stop=stop_after_attempt(10)):
+        with attempt:
+            check_unfinished_payments(within=timedelta(hours=1))
+            payment = SubscriptionPayment.objects.latest()
+            if payment.status != SubscriptionPayment.Status.COMPLETED:
+                raise TryAgain()
 
     # ---- test_charge_offline ----
     assert 'subscription_id' in payment.metadata
@@ -277,7 +279,7 @@ def test__payment_flow__regular(paddle, user_client, plan, card_number):
     payment.subscription.charge_offline()
 
 
-def test__payment_flow__trial_period(trial_period, paddle, user, user_client, plan, card_number):
+def test__payment_flow__trial_period(trial_period, paddle, user, user_client, plan, card_number, paddle_test_email):
     assert not user.subscriptions.exists()
 
     response = user_client.post('/api/subscribe/', {'plan': plan.id})
@@ -302,8 +304,8 @@ def test__payment_flow__trial_period(trial_period, paddle, user, user_client, pl
     subscription = user.subscriptions.first()
     assert subscription.start == subscription.end
     assert subscription.initial_charge_offset == trial_period
-
-    automate_payment(redirect_url, card_number)
+    # input(f'Use card {card_number} to pay here: {redirect_url}\nThen press Enter')
+    automate_payment(redirect_url, card_number, paddle_test_email)
 
     # ensure that status didn't change because webhook didn't go through
     assert payment.status == SubscriptionPayment.Status.PENDING
@@ -312,10 +314,13 @@ def test__payment_flow__trial_period(trial_period, paddle, user, user_client, pl
     payment = SubscriptionPayment.objects.latest()
     payment.status = SubscriptionPayment.Status.PENDING
     payment.save()
+    import time; time.sleep(30)
 
     check_unfinished_payments(within=timedelta(hours=1))
+
     payment = SubscriptionPayment.objects.latest()
-    assert payment.status == SubscriptionPayment.Status.COMPLETED
+
+    assert payment.status == SubscriptionPayment.Status.COMPLETED, payment.status
     assert payment.amount == plan.charge_amount * 0
     assert payment.subscription.start + trial_period == payment.subscription.end
     assert payment.subscription.start == payment.subscription_start
