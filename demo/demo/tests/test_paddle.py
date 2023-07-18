@@ -28,7 +28,7 @@ def automate_payment(url: str, card: str, email: str):
     """
     assert email, 'Please configure the `PADDLE_TEST_EMAIL` environment variable.'
     # get the browser info token, which will be used later on.
-    browser_info = url.strip('/').split('/')[-1]
+    browser_info = url.removesuffix('/').rsplit('/', maxsplit=1)[-1]
     session = requests.Session()
 
     # hit the redirect url, and start the payment procedure
