@@ -285,6 +285,11 @@ def paddle(settings) -> str:
     return provider
 
 
+@pytest.fixture()
+def paddle_test_email(settings) -> str:
+    return settings.PADDLE_TEST_EMAIL
+
+
 @pytest.fixture
 def google_in_app(settings) -> str:
     settings.SUBSCRIPTIONS_PAYMENT_PROVIDERS = [
