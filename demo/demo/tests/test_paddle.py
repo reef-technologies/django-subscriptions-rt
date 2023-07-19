@@ -7,7 +7,6 @@ from more_itertools import one
 import pytest
 import requests
 from dateutil.relativedelta import relativedelta
-from django.conf import settings
 from django.test.client import MULTIPART_CONTENT
 from django.utils.timezone import now
 from djmoney.money import Money
@@ -37,7 +36,6 @@ def automate_payment(url: str, card: str, email: str):
 
     # the checkout id has been initialized.
     payment_page_query = parse.parse_qs(parse.urlsplit(payment_page.url).query)
-    assert 'checkout_id' in payment_page_query, f'Expected checkout_id in the query parameters'
     checkout_id = payment_page_query['checkout_id'][0]
 
     # parse the react configuration to get the needed urls
@@ -94,11 +92,8 @@ def automate_payment(url: str, card: str, email: str):
     )
     set_payment_method_response.raise_for_status()
 
-    # Send the card details to spreedly adn fetch the transaction token
-    spreedly_url = parse.urljoin(
-        spreedly_api_url,
-        f'payment_methods.json'
-    )
+    # Send the card details to spreedly and fetch the transaction token
+    spreedly_url = parse.urljoin(spreedly_api_url, 'payment_methods.json')
     expire_date = date.today() + timedelta(90)
     payment_response = session.post(
         spreedly_url,

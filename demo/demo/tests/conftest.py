@@ -285,7 +285,7 @@ def paddle(settings) -> str:
     return provider
 
 
-@pytest.fixture()
+@pytest.fixture
 def paddle_test_email(settings) -> str:
     return settings.PADDLE_TEST_EMAIL
 
