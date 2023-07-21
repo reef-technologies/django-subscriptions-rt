@@ -97,6 +97,24 @@ def test__api__subscriptions__next_charge_date(user_client, subscription):
         assert response.json()[0]['next_charge_date'] == datetime_to_api(subscription.start + relativedelta(days=60))
 
 
+def test__api__subscriptions__next_charge_date__not_prolong(user_client, subscription):
+    subscription.end = now() + relativedelta(days=90)
+    subscription.save()
+
+    with freeze_time(subscription.start):
+        response = user_client.get('/api/subscriptions/')
+        assert response.status_code == 200, response.content
+        assert response.json()[0]['next_charge_date'] == datetime_to_api(subscription.start)
+
+    subscription.auto_prolong = False
+    subscription.save()
+
+    with freeze_time(subscription.start):
+        response = user_client.get('/api/subscriptions/')
+        assert response.status_code == 200, response.content
+        assert response.json()[0]['next_charge_date'] is None
+
+
 def test__api__subscribe__unauthorized(client, plan):
     response = client.post('/api/subscribe/', {'plan': plan.id})
     assert response.status_code == 403

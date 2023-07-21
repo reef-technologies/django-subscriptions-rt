@@ -49,9 +49,12 @@ class SubscriptionSerializer(ModelSerializer):
 
     class Meta:
         model = Subscription
-        fields = 'id', 'plan', 'quantity', 'start', 'end', 'next_charge_date', 'payment_provider_class'
+        fields = 'id', 'plan', 'quantity', 'start', 'end', 'next_charge_date', 'payment_provider_class',
 
     def get_next_charge_date(self, obj) -> datetime | None:
+        if not obj.auto_prolong:
+            return
+
         with suppress(StopIteration):
             return next(obj.iter_charge_dates(since=now()))
 
