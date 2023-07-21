@@ -40,7 +40,7 @@ class SubscriptionPaymentInline(admin.StackedInline):
     extra = 0
     fields = 'uid', 'created', 'status', 'amount', 'quantity', 'provider_codename', 'provider_transaction_id', 'subscription_start', 'subscription_end', 'metadata',
     readonly_fields = 'created', 'metadata',
-    ordering = '-subscription_end',
+    ordering = '-created',
 
 
 @admin.register(Subscription)
