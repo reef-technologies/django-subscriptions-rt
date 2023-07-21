@@ -38,8 +38,8 @@ class PlanAdmin(admin.ModelAdmin):
 class SubscriptionPaymentInline(admin.StackedInline):
     model = SubscriptionPayment
     extra = 0
-    fields = 'uid', 'created', 'status', 'amount', 'quantity', 'provider_codename', 'provider_transaction_id', 'subscription_start', 'subscription_end',
-    readonly_fields = 'created',
+    fields = 'uid', 'created', 'status', 'amount', 'quantity', 'provider_codename', 'provider_transaction_id', 'subscription_start', 'subscription_end', 'metadata',
+    readonly_fields = 'created', 'metadata',
     ordering = '-subscription_end',
 
 
