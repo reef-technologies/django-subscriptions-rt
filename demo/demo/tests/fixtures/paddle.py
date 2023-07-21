@@ -79,3 +79,8 @@ def paddle_webhook_payload(db, paddle, paddle_unconfirmed_payment) -> dict:
         'user_id': 3,
         'p_signature': 'abracadabra',
     }
+
+
+@pytest.fixture
+def paddle_test_email(settings) -> str:
+    return settings.PADDLE_TEST_EMAIL

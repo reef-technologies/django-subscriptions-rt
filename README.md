@@ -310,6 +310,7 @@ export POSTGRES_HOST=localhost
 export POSTGRES_PORT=8432
 export POSTGRES_USER=postgres
 export POSTGRES_PASSWORD=12345
+export PADDLE_TEST_EMAIL=<your-email>
 ```
 
 Start database (in another terminal with the same variables) with

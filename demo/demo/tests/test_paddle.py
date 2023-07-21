@@ -1,8 +1,11 @@
 import json
-from datetime import timedelta
+import re
+from datetime import date, timedelta
 from unittest import mock
+from urllib import parse
 
 import pytest
+import requests
 from dateutil.relativedelta import relativedelta
 from django.test.client import MULTIPART_CONTENT
 from django.utils.timezone import now
@@ -20,7 +23,144 @@ from subscriptions.tasks import check_unfinished_payments
 from subscriptions.utils import fromisoformat
 
 
-def test__paddle__payment_flow__regular(paddle, user, user_client, plan, card_number, recharge_plan):
+def automate_payment(url: str, card: str, email: str):
+    """
+    This function replicates all the steps that are done at client level in the paddle payment page.
+    """
+    assert email, 'Please configure the `PADDLE_TEST_EMAIL` environment variable.'
+    # get the browser info token, which will be used later on.
+    browser_info = url.removesuffix('/').rsplit('/', maxsplit=1)[-1]
+    session = requests.Session()
+
+    # hit the redirect url, and start the payment procedure
+    payment_page = session.get(url, allow_redirects=True)
+    payment_page.raise_for_status()
+
+    # the checkout id has been initialized.
+    payment_page_query = parse.parse_qs(parse.urlsplit(payment_page.url).query)
+    checkout_id = payment_page_query['checkout_id'][0]
+
+    # parse the react configuration to get the needed urls
+    checkout_api_url = re.search(r"REACT_APP_CHECKOUT_API_URL: '(.+)',", payment_page.text)[1]
+    ld_proxy_domain = re.search(r"REACT_APP_LD_PROXY_URL: '(.+)',", payment_page.text)[1]
+    spreedly_api_url = re.search(r"REACT_APP_SPREEDLY_API_URL: '(.+)',", payment_page.text)[1]
+
+    # Sanity checks on the variables
+    assert 'paddle' in checkout_api_url
+    checkout_api_url += f'/checkout/{checkout_id}/'
+
+    assert 'paddle' in ld_proxy_domain
+
+    assert 'spreedly' in spreedly_api_url
+    assert spreedly_api_url.endswith('v1'), 'Unexpected version of the spreedly API, this test might not work correctly'
+    spreedly_api_url += '/'
+
+    # prepare the customer info request
+    customer_info_url = parse.urljoin(checkout_api_url, 'customer-info')
+    customer_info = requests.post(
+        customer_info_url,
+        json={
+            'data': {
+                'email': email,
+                'audience_optin': False,
+                'country_code': 'PL',
+                'postcode': 12345
+            }
+        }
+    )
+    customer_info.raise_for_status()
+    customer_info_data = customer_info.json()
+
+    payment_methods = customer_info_data['data']['available_payment_methods']
+    payment_method = one(
+        (method for method in payment_methods if method['type'] == 'CARD'),
+        too_short=AssertionError('Payment method "CARD" not found.'),
+        too_long=AssertionError('Expected just one payment method "CARD"'),
+    )
+
+    # Now we should have received the spreedly environment token.
+    spreedly_environment_key = payment_method['spreedly_options']['spreedly_environment_key']
+    assert spreedly_environment_key
+
+    # Set the payment method to CARD
+    set_payment_method_url = parse.urljoin(checkout_api_url, 'payment-method')
+    set_payment_method_response = requests.patch(
+        set_payment_method_url,
+        json={
+            'data': {
+                "payment_method_type": "CARD"
+            }
+        }
+    )
+    set_payment_method_response.raise_for_status()
+
+    # Send the card details to spreedly and fetch the transaction token
+    spreedly_url = parse.urljoin(spreedly_api_url, 'payment_methods.json')
+    expire_date = date.today() + timedelta(90)
+    payment_response = session.post(
+        spreedly_url,
+        params={
+            'environment_key': spreedly_environment_key
+        },
+        json={
+            "payment_method": {
+                "allow_blank_name": False,
+                "eligible_for_card_updater": False,
+                "credit_card": {
+                    "country": "PL",
+                    "email": email,
+                    "full_name": "Test Example",
+                    "kind": "credit_card",
+                    "month": expire_date.strftime('%m'),
+                    "number": card,
+                    "verification_value": "123",
+                    "year": expire_date.strftime('%Y'),
+                    "zip": "12345"
+                }
+            }
+        }
+    )
+    payment_response.raise_for_status()
+    transaction_token = payment_response.json()['transaction']['payment_method']['token']
+    assert transaction_token, 'Unexpected response from spreedly'
+
+    # Send the payment information to paddle
+    make_payment_url = parse.urljoin(checkout_api_url, 'pay-card')
+    make_payment_response = session.post(make_payment_url, json={
+        "data": {
+            "cardholder_name": "Test Example",
+            "first_six_digits": card[:6],
+            "last_four_digits": card[-4:],
+            "month": expire_date.strftime('%m'),
+            "year": expire_date.strftime('%Y'),
+            "card_type": "visa",
+            "three_d_s": {
+                "spreedly": {
+                    "browser_info": browser_info
+                }},
+            "token": transaction_token
+        }
+    })
+    make_payment_response.raise_for_status()
+
+    # # 3D Secure - assuming it is needed
+    three_d_s_url = make_payment_response.json()['data']['three_d_s']['spreedly']['checkout_url']
+    three_d_s = session.get(three_d_s_url)
+    three_d_s.raise_for_status()
+
+    three_d_s_redirect_regex_match = re.search(r'href="(.+spreedly.+)"', three_d_s.text)
+    assert three_d_s_redirect_regex_match, 'unexpected response while processing 3D-Secure'
+    finalize_three_d_s_url = three_d_s_redirect_regex_match[1]
+    # This page contains (your payment is successful, click here to return to the merchant)
+    # in general this step might be necessary to finalize the transaction.
+    final_three_d_s = session.get(finalize_three_d_s_url)
+    final_three_d_s.raise_for_status()
+
+
+def test__paddle__payment_flow__regular(
+    paddle, user, user_client, plan, card_number, recharge_plan, paddle_test_email,
+):
+
     assert not Subscription.objects.exists()
 
     response = user_client.post('/api/subscribe/', {'plan': plan.id})
@@ -41,8 +181,8 @@ def test__paddle__payment_flow__regular(paddle, user, user_client, plan, card_nu
 
     assert 'payment_url' in payment.metadata
 
-    # TODO: automate this
-    input(f'Use card {card_number} to pay here: {redirect_url}\nThen press Enter')
+    # input(f'Use card {card_number} to pay here: {redirect_url}\nThen press Enter')
+    automate_payment(redirect_url, card_number, paddle_test_email)
 
     # ensure that status didn't change because webhook didn't go through
     assert payment.status == SubscriptionPayment.Status.PENDING
@@ -50,7 +190,6 @@ def test__paddle__payment_flow__regular(paddle, user, user_client, plan, card_nu
     # ---- test_payment_status_endpoint_get ----
     response = user_client.get(f'/api/payments/{payment.id}/')
     assert response.status_code == 200, response.content
-
     result = response.json()
     assert result == {
         'id': payment.id,
@@ -118,7 +257,8 @@ def test__paddle__payment_flow__regular(paddle, user, user_client, plan, card_nu
     payment.save()
 
     check_unfinished_payments(within=timedelta(hours=1))
-    payment = SubscriptionPayment.objects.get(pk=payment.pk)
+
+    payment = SubscriptionPayment.objects.latest()
     assert payment.status == SubscriptionPayment.Status.COMPLETED
 
     subscription = one(Subscription.objects.all())
@@ -161,7 +301,9 @@ def test__paddle__payment_flow__regular(paddle, user, user_client, plan, card_nu
     assert Subscription.objects.count() == 2
 
 
-def test__paddle__payment_flow__trial_period(trial_period, paddle, user, user_client, plan, card_number):
+def test__paddle__payment_flow__trial_period(
+    trial_period, paddle, user, user_client, plan, card_number, paddle_test_email,
+):
     assert not user.subscriptions.exists()
 
     response = user_client.post('/api/subscribe/', {'plan': plan.id})
@@ -186,9 +328,8 @@ def test__paddle__payment_flow__trial_period(trial_period, paddle, user, user_cl
     subscription = user.subscriptions.first()
     assert subscription.start == subscription.end
     assert subscription.initial_charge_offset == trial_period
-
-    # TODO: automate this
-    input(f'Enter card {card_number} here: {redirect_url}\nThen press Enter')
+    # input(f'Use card {card_number} to pay here: {redirect_url}\nThen press Enter')
+    automate_payment(redirect_url, card_number, paddle_test_email)
 
     # ensure that status didn't change because webhook didn't go through
     assert payment.status == SubscriptionPayment.Status.PENDING
@@ -198,9 +339,14 @@ def test__paddle__payment_flow__trial_period(trial_period, paddle, user, user_cl
     payment.status = SubscriptionPayment.Status.PENDING
     payment.save()
 
-    check_unfinished_payments(within=timedelta(hours=1))
-    payment = SubscriptionPayment.objects.latest()
-    assert payment.status == SubscriptionPayment.Status.COMPLETED
+    # Retry a few times to give paddle the time to update the tranaction status
+    for attempt in Retrying(wait=wait_incrementing(start=2, increment=2), stop=stop_after_attempt(20)):
+        with attempt:
+            check_unfinished_payments(within=timedelta(hours=1))
+            payment = SubscriptionPayment.objects.latest()
+            if payment.status != SubscriptionPayment.Status.COMPLETED:
+                raise TryAgain()
+
     assert payment.amount == plan.charge_amount * 0
     assert payment.subscription.start + trial_period == payment.subscription.end
     assert payment.subscription.start == payment.subscription_start
