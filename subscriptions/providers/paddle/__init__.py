@@ -189,7 +189,8 @@ class PaddleProvider(Provider):
             )
         except PaddleError as exc:
             raise PaymentError('Failed to offline-charge Paddle', debug_info={
-                'exc': str(exc),
+                'paddle_msg': str(exc),
+                'paddle_code': exc.code,
                 'user': user,
                 'subscription': subscription,
             }) from exc

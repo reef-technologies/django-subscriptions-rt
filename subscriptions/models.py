@@ -12,8 +12,6 @@ from uuid import uuid4
 
 from dateutil.relativedelta import relativedelta
 from django.conf import settings
-from django.contrib.auth.models import AbstractBaseUser
-from django.core.serializers.json import DjangoJSONEncoder
 from django.db import models
 from django.db.models import (
     DateTimeField,
@@ -36,7 +34,7 @@ from .exceptions import (
     ProviderNotFound,
 )
 from .fields import MoneyField, RelativeDurationField
-from .utils import merge_iter
+from .utils import merge_iter, AdvancedJSONEncoder
 
 log = getLogger(__name__)
 
@@ -95,7 +93,7 @@ class Plan(models.Model):
         help_text='group of features connected to this plan',
         related_name='plans',
     )
-    metadata = models.JSONField(blank=True, default=dict, encoder=DjangoJSONEncoder)
+    metadata = models.JSONField(blank=True, default=dict, encoder=AdvancedJSONEncoder)
     is_enabled = models.BooleanField(default=True)
 
     class Meta:
@@ -473,7 +471,7 @@ class AbstractTransaction(models.Model):
     amount = MoneyField(blank=True, null=True)  # set None for services where the payment information is completely out of reach
     # source = models.ForeignKey(MoneyStorage, on_delete=models.PROTECT, related_name='transactions_out')
     # destination = models.ForeignKey(MoneyStorage, on_delete=models.PROTECT, related_name='transactions_in')
-    metadata = models.JSONField(blank=True, default=dict, encoder=DjangoJSONEncoder)
+    metadata = models.JSONField(blank=True, default=dict, encoder=AdvancedJSONEncoder)
     created = models.DateTimeField(blank=True, editable=False)
     updated = models.DateTimeField(blank=True, editable=False)
 

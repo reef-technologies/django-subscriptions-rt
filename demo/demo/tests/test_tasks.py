@@ -208,14 +208,22 @@ def test__tasks__charge_expiring__payment_failure(
     assert SubscriptionPayment.objects.count() == 1
 
     def raise_payment_error(*args, **kwargs):
-        raise PaymentError('Something went wrong')
+        raise PaymentError('Something went wrong', debug_info={
+            'subscription': subscription,
+            'foo': 'bar',
+        })
 
     with freeze_time(subscription.end + charge_schedule[-2], tick=True):
         with mock.patch.object(dummy, 'charge_offline', raise_payment_error):
             charge_recurring_subscriptions(schedule=charge_schedule, num_threads=1)
 
             assert SubscriptionPayment.objects.count() == 2
-            assert SubscriptionPayment.objects.order_by('created').last().status == SubscriptionPayment.Status.ERROR
+            last_payment = SubscriptionPayment.objects.order_by('created').last()
+            assert last_payment.status == SubscriptionPayment.Status.ERROR
+            assert last_payment.metadata == {
+                'subscription': str(subscription.pk),
+                'foo': 'bar',
+            }
 
             charge_recurring_subscriptions(schedule=charge_schedule, num_threads=1)
             assert SubscriptionPayment.objects.count() == 2

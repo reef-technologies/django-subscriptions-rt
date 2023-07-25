@@ -1,8 +1,11 @@
 from __future__ import annotations
 
-from typing import Callable, Iterable, Iterator, TypeVar
 from datetime import datetime
+from typing import Callable, Iterable, Iterator, TypeVar
+
 from django.conf import settings
+from django.core.serializers.json import DjangoJSONEncoder
+from django.db import models
 from djmoney.money import Money
 
 from .defaults import DEFAULT_SUBSCRIPTIONS_CURRENCY
@@ -41,6 +44,13 @@ def merge_iter(*iterables: Iterable[T], key: Callable = lambda x: x) -> Iterator
 
 def fromisoformat(value: str) -> datetime:
     return datetime.fromisoformat(value.replace('Z', '+00:00'))
+
+
+class AdvancedJSONEncoder(DjangoJSONEncoder):
+    def default(self, o):
+        if isinstance(o, models.Model):
+            o = o.pk
+        return super().default(o)
 
 
 default_currency = getattr(settings, 'SUBSCRIPTIONS_DEFAULT_CURRENCY', DEFAULT_SUBSCRIPTIONS_CURRENCY)

@@ -98,7 +98,7 @@ def _charge_recurring_subscription(
         log.debug('Offline-charging subscription %s', subscription)
         subscription.charge_offline()
     except PaymentError as exc:
-        log.error('Failed to offline-charge subscription %s: %s', subscription, exc)
+        log.warning('Failed to offline-charge subscription', extra=exc.debug_info)
 
         # here we create a failed SubscriptionPayment to indicate that we tried
         # to charge but something went wrong, so that subsequent task calls
@@ -110,6 +110,7 @@ def _charge_recurring_subscription(
             plan=subscription.plan,
             subscription=subscription,
             quantity=subscription.quantity,
+            metadata=exc.debug_info,
         )
         return
 
