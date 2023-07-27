@@ -1,16 +1,20 @@
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime
 from typing import Callable, Iterable, Iterator, TypeVar
 
 from django.conf import settings
 from django.core.serializers.json import DjangoJSONEncoder
-from django.db import models
+from django.db import connection, models
 from djmoney.money import Money
 
 from .defaults import DEFAULT_SUBSCRIPTIONS_CURRENCY
 
 T = TypeVar('T')
+
+# Matching raw(raw_query, params=(), translations=None, using=None) -> RawQuerySet.
+RawQueryFunction = Callable
 
 
 class NonMonothonicSequence(Exception):
@@ -55,3 +59,58 @@ class AdvancedJSONEncoder(DjangoJSONEncoder):
 
 default_currency = getattr(settings, 'SUBSCRIPTIONS_DEFAULT_CURRENCY', DEFAULT_SUBSCRIPTIONS_CURRENCY)
 NO_MONEY = Money(0, default_currency)
+
+
+class HardDBLock:
+    """
+    This class is supposed to represent a special lock made on the DB side that stops multiple operations
+    on the same entries from happening. Current implementation supports only postgresql via advisory_lock mechanism.
+
+    We don't care about clashes. These locks are to ensure that we're properly blocking operations and if we block
+    slightly too many, it's not a bad thing.
+
+    TODO: add support for different databases.
+    """
+    # Postgres supports up to 32bit numbers.
+    PSQL_MAX_LOCK_VALUE = 2 ** 32
+
+    def __init__(
+        self,
+        lock_marker: str,
+        lock_value: str,
+    ):
+        db_type = connection.vendor
+        assert db_type == 'postgresql', \
+            f'{self.__class__.__name__} works only with postgres right now, {db_type} is unsupported.'
+
+        self.lock_marker = self._pg_str_to_int(lock_marker)
+        self.lock_value = self._pg_str_to_int(lock_value)
+
+    def _pg_str_to_int(self, in_value: str) -> int:
+        # Note: transaction id could be a string representing a number. So, if it's possible to use it as a number
+        # we do, and if there's a string it's ok too. This is e.g. a case for apple transaction ID.
+        try:
+            out_value = int(in_value)
+        except ValueError:
+            out_value = int(hashlib.sha1(in_value.encode('utf-8')).hexdigest(), 16)
+        return out_value % self.PSQL_MAX_LOCK_VALUE
+
+    def __enter__(self):
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                'SELECT pg_advisory_lock(%s, %s)',
+                (self.lock_marker, self.lock_value),
+            )
+            _ = cursor.fetchone()[0]
+
+        return self
+
+    def __exit__(self, *_args, **_kwargs):
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                'SELECT pg_advisory_unlock(%s, %s)',
+                (self.lock_marker, self.lock_value),
+            )
+            _ = cursor.fetchone()[0]

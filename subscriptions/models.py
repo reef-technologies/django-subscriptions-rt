@@ -465,7 +465,13 @@ class AbstractTransaction(models.Model):
         ERROR = 4
 
     uid = models.UUIDField(primary_key=True, blank=True)
+
+    # This field should go away once we add provider-specific child models (see below)
     provider_codename = models.CharField(max_length=255)
+    # Sometimes there is no information about internal provider's transaction ID.
+    # For such cases we set `provider_transaction_id` to None and fill it in later.
+    # Also, this field is legacy and should be replaced by provider-specific child
+    # model, see https://github.com/reef-technologies/django-subscriptions-rt/issues/13
     provider_transaction_id = models.CharField(max_length=255, blank=True, null=True)
     status = models.PositiveSmallIntegerField(choices=Status.choices, default=Status.PENDING)
     amount = MoneyField(blank=True, null=True)  # set None for services where the payment information is completely out of reach

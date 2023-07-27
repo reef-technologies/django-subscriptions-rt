@@ -1,21 +1,40 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from itertools import count, product
 from operator import attrgetter
 from time import sleep
-from django.utils.timezone import now
 
 import pytest
 from dateutil.parser import parse
 from dateutil.relativedelta import relativedelta
 from django.core.cache import caches
+from django.utils.timezone import now
 from djmoney.money import Money
 from freezegun import freeze_time
 
 from subscriptions.exceptions import InconsistentQuotaCache, QuotaLimitExceeded
-from subscriptions.functions import cache, get_cache_name, get_default_features, get_remaining_amount, iter_subscriptions_involved, merge_feature_sets, use_resource
-from subscriptions.models import Feature, INFINITY, Plan, Quota, QuotaCache, QuotaChunk, Subscription, Tier, Usage
+from subscriptions.functions import (
+    cache,
+    get_cache_name,
+    get_default_features,
+    get_remaining_amount,
+    iter_subscriptions_involved,
+    merge_feature_sets,
+    use_resource,
+)
+from subscriptions.models import (
+    INFINITY,
+    Feature,
+    Plan,
+    Quota,
+    QuotaCache,
+    QuotaChunk,
+    Subscription,
+    Tier,
+    Usage,
+)
 
 from .helpers import days
 
@@ -314,6 +333,43 @@ def test__function__use_resource(db, user, subscription, quota, resource, remain
     with freeze_time(subscription.start + days(2)):
         with use_resource(user, resource, 100, raises=False):
             pass
+
+
+@pytest.mark.django_db(transaction=True)
+def test__function__use_resource__hard_db_lock(db, user, subscription, quota, resource, remains):
+
+    def _use_resource(amount: int):
+        with use_resource(user, resource, amount):
+            pass
+
+    num_parallel_threads = 8
+
+    with ThreadPoolExecutor(max_workers=num_parallel_threads) as pool:
+
+        assert remains() == 100
+
+        futures = [
+            pool.submit(_use_resource, 50)
+            for _ in range(num_parallel_threads)
+        ]
+
+        successful, exceptions = 0, 0
+        for future in as_completed(futures):
+            try:
+                future.result()
+                successful += 1
+            except QuotaLimitExceeded:
+                exceptions += 1
+
+        assert successful == 2
+        assert exceptions == 6
+        assert remains() == 0
+        usages = list(Usage.objects.all())
+        assert len(usages) == 2
+        for usage in usages:
+            assert usage.amount == 50
+            assert usage.user == user
+            assert usage.resource == resource
 
 
 def test__functions__cache_backend_correctness(cache_backend, db, user, two_subscriptions, remains, resource):

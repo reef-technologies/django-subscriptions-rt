@@ -117,10 +117,8 @@ class PaddleProvider(Provider):
                 'payment_url': payment_link,
             }
             payment.save()
-        else:
-            payment_link = payment.metadata['payment_url']
 
-        return payment, payment_link
+        return payment, payment.metadata['payment_url']
 
     def charge_offline(
         self,

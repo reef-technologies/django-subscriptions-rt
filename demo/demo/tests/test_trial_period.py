@@ -225,7 +225,7 @@ def test__get_trial_period__not_cheating__multiacc(
     response = client.post('/api/subscribe/', {'plan': plan.id})
     assert response.status_code == 200, response.content
 
-    payments = SubscriptionPayment.objects.all()
+    payments = SubscriptionPayment.objects.all().order_by('subscription__user_id')
     assert len(payments) == 2
     for payment in payments:
         payment.status = SubscriptionPayment.Status.COMPLETED

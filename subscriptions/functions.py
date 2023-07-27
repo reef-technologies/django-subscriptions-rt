@@ -32,7 +32,7 @@ from .models import (
     Tier,
     Usage,
 )
-from .utils import merge_iter
+from .utils import HardDBLock, merge_iter
 
 log = getLogger(__name__)
 
@@ -215,7 +215,10 @@ def get_remaining_amount(
 
 @contextmanager
 def use_resource(user: AbstractUser, resource: Resource, amount: int = 1, raises: bool = True) -> int:
-    with transaction.atomic():
+    with transaction.atomic(), HardDBLock('use_resource', f'{user.id}00{resource.id}'):
+        # Ensuring that all operations on the same user and resource are blocked.
+        # Lock value will be a string-integer, for user id 12 and resource id 30 it will be 120030.
+
         available = get_remaining_amount(user).get(resource, 0)
         remains = available - amount
 
