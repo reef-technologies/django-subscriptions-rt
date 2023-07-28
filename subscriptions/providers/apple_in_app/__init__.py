@@ -160,7 +160,7 @@ class AppleInAppProvider(Provider):
             provider_transaction_id=transaction_id,
         )
 
-        with HardDBLock(
+        with transaction.atomic(), HardDBLock(
             lock_marker=self.__class__.__name__,
             lock_value=transaction_id,  # Apple marks transaction_id as string, but all the values are in form of an int right now
         ):
@@ -169,7 +169,7 @@ class AppleInAppProvider(Provider):
                     defaults={
                         'status': SubscriptionPayment.Status.COMPLETED,
                         # In-app purchase doesn't report the money.
-                        # We mark it as None to indicate we don't know how much did it cost.
+                        # We mark it as None to indicate we don't know how much it costs.
                         'amount': None,
                         'user': user,
                         'plan': plan,

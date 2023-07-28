@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import datetime
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from unittest import mock
 
 import pytest
@@ -26,6 +28,7 @@ from subscriptions.providers.apple_in_app.enums import (
     AppleEnvironment,
     AppleValidationStatus,
 )
+from django.test.client import Client
 
 APPLE_API_WEBHOOK = '/api/webhook/apple_in_app/'
 RECEIPT_FETCH_FUNCTION = 'subscriptions.providers.apple_in_app.api.AppleAppStoreAPI._fetch_receipt_from_endpoint'
@@ -175,6 +178,35 @@ def assert__valid_receipt(user_client, apple_in_app, product_id, bundle_id, **re
 
 def test__apple__valid_receipt_sent(user_client, apple_in_app, apple_product_id, apple_bundle_id, user):
     assert__valid_receipt(user_client, apple_in_app, apple_product_id, apple_bundle_id)
+
+
+def test__apple__multiple_receipts(apple_in_app, apple_product_id, apple_bundle_id, user):
+    receipt_data = make_receipt_data(apple_product_id, apple_bundle_id)
+
+    num_threads = 5
+    starting_barrier = threading.Barrier(num_threads, timeout=5)
+
+    def runner():
+        user_client = Client()
+        user_client.force_login(user)
+        starting_barrier.wait()
+        with mock.patch(RECEIPT_FETCH_FUNCTION, return_value=receipt_data):
+            response = user_client.post(APPLE_API_WEBHOOK, make_receipt_query(), content_type='application/json')
+        assert response.status_code == 200
+
+    with ThreadPoolExecutor(max_workers=num_threads) as executor:
+        futures = [executor.submit(runner) for _ in range(num_threads)]
+        for future in as_completed(futures, timeout=3):
+            future.result(timeout=1)
+
+    payment = one(SubscriptionPayment.objects.all())
+    single_in_app = one(receipt_data.receipt.in_apps)
+    assert payment.plan.metadata[apple_in_app.codename] == single_in_app.product_id
+    assert payment.status == SubscriptionPayment.Status.COMPLETED
+    assert payment.provider_codename == apple_in_app.codename
+    assert payment.provider_transaction_id == single_in_app.transaction_id
+    assert payment.subscription_start == single_in_app.purchase_date
+    assert payment.subscription_end == single_in_app.expires_date
 
 
 def test__apple__receipt_with_multiple_same_entries(user_client, apple_in_app, apple_product_id, apple_bundle_id):

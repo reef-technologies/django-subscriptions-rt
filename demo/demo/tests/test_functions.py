@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from itertools import count, product
@@ -337,12 +338,14 @@ def test__function__use_resource(db, user, subscription, quota, resource, remain
 
 @pytest.mark.django_db(transaction=True)
 def test__function__use_resource__hard_db_lock(db, user, subscription, quota, resource, remains):
+    num_parallel_threads = 8
+    barrier = threading.Barrier(num_parallel_threads)
 
     def _use_resource(amount: int):
+        # Force all `use_resource` to start at the same time.
+        barrier.wait()
         with use_resource(user, resource, amount):
             pass
-
-    num_parallel_threads = 8
 
     with ThreadPoolExecutor(max_workers=num_parallel_threads) as pool:
 
