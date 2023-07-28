@@ -71,13 +71,13 @@ class HardDBLock:
 
     TODO: add support for different databases.
     """
-    # Postgres supports up to 32bit numbers.
-    PSQL_MAX_LOCK_VALUE = 2 ** 32
+    # Postgres supports up-to-32bit numbers, so the max positive value will be 2**31-1.
+    PSQL_MAX_LOCK_VALUE = 2 ** 31 - 1
 
     def __init__(
         self,
         lock_marker: str,
-        lock_value: str,
+        lock_value: str | int,
     ):
         db_type = connection.vendor
         assert db_type == 'postgresql', \
@@ -86,9 +86,9 @@ class HardDBLock:
         self.lock_marker = self._pg_str_to_int(lock_marker)
         self.lock_value = self._pg_str_to_int(lock_value)
 
-    def _pg_str_to_int(self, in_value: str) -> int:
+    def _pg_str_to_int(self, in_value: str | int) -> int:
         # Note: transaction id could be a string representing a number. So, if it's possible to use it as a number
-        # we do, and if there's a string it's ok too. This is e.g. a case for apple transaction ID.
+        # we do, and if there's a string, it's ok too. This is e.g.: a case for apple transaction ID.
         try:
             out_value = int(in_value)
         except ValueError:
