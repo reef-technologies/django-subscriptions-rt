@@ -6,7 +6,7 @@ from typing import Callable, Iterable, Iterator, TypeVar
 
 from django.conf import settings
 from django.core.serializers.json import DjangoJSONEncoder
-from django.db import connection, models
+from django.db import connection, models, transaction
 from djmoney.money import Money
 
 from .defaults import DEFAULT_SUBSCRIPTIONS_CURRENCY
@@ -78,6 +78,7 @@ class HardDBLock:
         self,
         lock_marker: str,
         lock_value: str | int,
+        durable: bool = False,
     ):
         db_type = connection.vendor
         assert db_type == 'postgresql', \
@@ -85,6 +86,8 @@ class HardDBLock:
 
         self.lock_marker = self._pg_str_to_int(lock_marker)
         self.lock_value = self._pg_str_to_int(lock_value)
+        self.durable = durable
+        self.transaction = None
 
     def _pg_str_to_int(self, in_value: str | int) -> int:
         # Note: transaction id could be a string representing a number. So, if it's possible to use it as a number
@@ -96,21 +99,19 @@ class HardDBLock:
         return out_value % self.PSQL_MAX_LOCK_VALUE
 
     def __enter__(self):
+        # Open our own transaction that will be guarded by the advisory lock.
+        self.transaction = transaction.atomic(durable=self.durable)
+        self.transaction.__enter__()
 
         with connection.cursor() as cursor:
+            # xact type of lock is automatically released when the transaction ends.
             cursor.execute(
-                'SELECT pg_advisory_lock(%s, %s)',
+                'SELECT pg_advisory_xact_lock(%s, %s)',
                 (self.lock_marker, self.lock_value),
             )
             _ = cursor.fetchone()[0]
 
         return self
 
-    def __exit__(self, *_args, **_kwargs):
-
-        with connection.cursor() as cursor:
-            cursor.execute(
-                'SELECT pg_advisory_unlock(%s, %s)',
-                (self.lock_marker, self.lock_value),
-            )
-            _ = cursor.fetchone()[0]
+    def __exit__(self, *args, **kwargs):
+        self.transaction.__exit__(*args, **kwargs)

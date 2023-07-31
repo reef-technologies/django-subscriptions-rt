@@ -215,7 +215,7 @@ def get_remaining_amount(
 
 @contextmanager
 def use_resource(user: AbstractUser, resource: Resource, amount: int = 1, raises: bool = True) -> int:
-    with transaction.atomic(), HardDBLock('use_resource', f'{user.id}00{resource.id}'):
+    with HardDBLock('use_resource', f'{user.id}00{resource.id}'):
         # Ensuring that all operations on the same user and resource are blocked.
         # Lock value will be a string-integer, for user id 12 and resource id 30 it will be 120030.
 

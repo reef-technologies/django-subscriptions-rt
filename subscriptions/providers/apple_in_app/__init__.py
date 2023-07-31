@@ -160,7 +160,7 @@ class AppleInAppProvider(Provider):
             provider_transaction_id=transaction_id,
         )
 
-        with transaction.atomic(), HardDBLock(
+        with HardDBLock(
             lock_marker=self.__class__.__name__,
             lock_value=transaction_id,  # Apple marks transaction_id as string, but all the values are in form of an int right now
         ):

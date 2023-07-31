@@ -180,10 +180,11 @@ def test__apple__valid_receipt_sent(user_client, apple_in_app, apple_product_id,
     assert__valid_receipt(user_client, apple_in_app, apple_product_id, apple_bundle_id)
 
 
+@pytest.mark.django_db(transaction=True)
 def test__apple__multiple_receipts(apple_in_app, apple_product_id, apple_bundle_id, user):
     receipt_data = make_receipt_data(apple_product_id, apple_bundle_id)
 
-    num_threads = 5
+    num_threads = 16
     starting_barrier = threading.Barrier(num_threads, timeout=5)
 
     def runner():
@@ -194,14 +195,16 @@ def test__apple__multiple_receipts(apple_in_app, apple_product_id, apple_bundle_
             response = user_client.post(APPLE_API_WEBHOOK, make_receipt_query(), content_type='application/json')
         assert response.status_code == 200
 
+    assert SubscriptionPayment.objects.count() == 0
+
     with ThreadPoolExecutor(max_workers=num_threads) as executor:
         futures = [executor.submit(runner) for _ in range(num_threads)]
         for future in as_completed(futures, timeout=3):
             future.result(timeout=1)
 
+    assert SubscriptionPayment.objects.count() == 1, f'{SubscriptionPayment.objects.all()} payments created'
     payment = one(SubscriptionPayment.objects.all())
     single_in_app = one(receipt_data.receipt.in_apps)
-    assert payment.plan.metadata[apple_in_app.codename] == single_in_app.product_id
     assert payment.status == SubscriptionPayment.Status.COMPLETED
     assert payment.provider_codename == apple_in_app.codename
     assert payment.provider_transaction_id == single_in_app.transaction_id

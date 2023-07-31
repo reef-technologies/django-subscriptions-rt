@@ -400,10 +400,10 @@ class GoogleInAppProvider(Provider):
 
         self.check_event(event, purchase)
 
-        with transaction.atomic(durable=True), \
-             HardDBLock(
+        with HardDBLock(
                 lock_marker=self.__class__.__name__,
                 lock_value=user.id,
+                durable=True,
              ):
 
             if event in {
