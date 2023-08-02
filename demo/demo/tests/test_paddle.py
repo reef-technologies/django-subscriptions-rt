@@ -205,7 +205,7 @@ def test__paddle__payment_flow__regular(
     }
 
     # ---- test_payment_status_endpoint_post ----
-    for attempt in Retrying(wait=wait_incrementing(start=2, increment=2), stop=stop_after_attempt(10)):
+    for attempt in Retrying(wait=wait_incrementing(start=2, increment=2), stop=stop_after_attempt(5)):
         with attempt:
             response = user_client.post(f'/api/payments/{payment.id}/')
             assert response.status_code == 200, response.content
@@ -340,7 +340,7 @@ def test__paddle__payment_flow__trial_period(
     payment.save()
 
     # Retry a few times to give paddle the time to update the tranaction status
-    for attempt in Retrying(wait=wait_incrementing(start=2, increment=2), stop=stop_after_attempt(20)):
+    for attempt in Retrying(wait=wait_incrementing(start=2, increment=2), stop=stop_after_attempt(5)):
         with attempt:
             check_unfinished_payments(within=timedelta(hours=1))
             payment = SubscriptionPayment.objects.latest()
