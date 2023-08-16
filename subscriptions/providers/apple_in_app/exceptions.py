@@ -3,6 +3,7 @@ from subscriptions.exceptions import (
     PaymentError,
     SubscriptionError,
 )
+from subscriptions.providers.apple_in_app.enums import AppleValidationStatus
 
 
 class AppleInvalidOperation(SubscriptionError):
@@ -17,10 +18,15 @@ class AppleSubscriptionNotCompletedError(SubscriptionError):
 
 
 class AppleReceiptValidationError(PaymentError):
-    def __init__(self):
+    def __init__(self, server_response_code: AppleValidationStatus, received_bundle_id: str, expected_bundle_id: str):
         super().__init__(
             'Apple receipt validation failed',
             user_message='Provided transaction receipt was either malformed or invalid',
+            debug_info={
+                'server_response_code': server_response_code,
+                'received_bundle_id': received_bundle_id,
+                'expected_bundle_id': expected_bundle_id,
+            }
         )
 
 

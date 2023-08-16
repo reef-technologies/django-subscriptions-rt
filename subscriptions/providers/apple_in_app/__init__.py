@@ -116,7 +116,11 @@ class AppleInAppProvider(Provider):
     @classmethod
     def _raise_if_invalid(cls, response: AppleVerifyReceiptResponse) -> None:
         if not response.is_valid or response.receipt.bundle_id != cls.bundle_id:
-            raise AppleReceiptValidationError()
+            raise AppleReceiptValidationError(
+                server_response_code=response.status,
+                received_bundle_id=response.receipt.bundle_id,
+                expected_bundle_id=cls.bundle_id,
+            )
 
     def _get_plan_for_product_id(self, product_id: str) -> Plan:
         search_kwargs = {
