@@ -463,7 +463,6 @@ class AbstractTransaction(models.Model):
         COMPLETED = 2
         CANCELLED = 3
         ERROR = 4
-        ABANDONED = 5
 
     uid = models.UUIDField(primary_key=True, blank=True)
 

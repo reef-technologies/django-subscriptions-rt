@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from unittest import mock
@@ -13,7 +14,7 @@ from subscriptions.exceptions import PaymentError
 from subscriptions.models import Subscription, SubscriptionPayment
 from subscriptions.tasks import (
     charge_recurring_subscriptions,
-    mark_stuck_pending_payments_as_abandoned,
+    notify_stuck_pending_payments,
 )
 
 from .helpers import days
@@ -88,7 +89,7 @@ def test__tasks__charge_expiring__not_charging_twice_if_pending_exists(
         charge_expiring(payment_status=SubscriptionPayment.Status.COMPLETED)
         assert SubscriptionPayment.objects.count() == 2
 
-    pending_payment.status = SubscriptionPayment.Status.ABANDONED
+    pending_payment.status = SubscriptionPayment.Status.CANCELLED
     pending_payment.save()
     with freeze_time(subscription.end + charge_period[0]):
         charge_expiring(payment_status=SubscriptionPayment.Status.COMPLETED)
@@ -262,7 +263,7 @@ def test__tasks__charge_expiring__payment_failure(
             assert SubscriptionPayment.objects.count() == 2
 
 
-def test__tasks__mark_stuck_pending_payments_as_abandoned(subscription, user):
+def test__tasks__notify_stuck_pending_payments(subscription, user, caplog):
     min_age = days(3)
 
     with freeze_time(now() - min_age - days(10)):
@@ -282,7 +283,7 @@ def test__tasks__mark_stuck_pending_payments_as_abandoned(subscription, user):
         )
 
     with freeze_time(now() - min_age + timedelta(seconds=30)):
-        almost_old_payment = SubscriptionPayment.objects.create(
+        _ = SubscriptionPayment.objects.create(
             subscription=subscription,
             plan=subscription.plan,
             user=user,
@@ -290,18 +291,15 @@ def test__tasks__mark_stuck_pending_payments_as_abandoned(subscription, user):
         )
 
     with freeze_time(now()):
-        young_payment = SubscriptionPayment.objects.create(
+        _ = SubscriptionPayment.objects.create(
             subscription=subscription,
             plan=subscription.plan,
             user=user,
             status=SubscriptionPayment.Status.PENDING,
         )
 
-    assert SubscriptionPayment.objects.filter(status=SubscriptionPayment.Status.PENDING).count() == 4
-    mark_stuck_pending_payments_as_abandoned(older_than=min_age)
-    assert SubscriptionPayment.objects.filter(status=SubscriptionPayment.Status.PENDING).count() == 2
-
-    assert SubscriptionPayment.objects.get(pk=very_old_payment.pk).status == SubscriptionPayment.Status.ABANDONED
-    assert SubscriptionPayment.objects.get(pk=slightly_old_payment.pk).status == SubscriptionPayment.Status.ABANDONED
-    assert SubscriptionPayment.objects.get(pk=almost_old_payment.pk).status == SubscriptionPayment.Status.PENDING
-    assert SubscriptionPayment.objects.get(pk=young_payment.pk).status == SubscriptionPayment.Status.PENDING
+    with caplog.at_level(logging.ERROR):
+        notify_stuck_pending_payments(older_than=min_age)
+        assert len(caplog.records) == 2
+        assert caplog.records[0].message == f'Payment stuck in pending state: {very_old_payment}'
+        assert caplog.records[1].message == f'Payment stuck in pending state: {slightly_old_payment}'

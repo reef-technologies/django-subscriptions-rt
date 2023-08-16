@@ -14,7 +14,7 @@ from django.utils.timezone import now
 from more_itertools import first, pairwise
 
 from .defaults import (
-    DEFAULT_ABANDON_PENDING_PAYMENTS_AFTER,
+    DEFAULT_NOTIFY_PENDING_PAYMENTS_AFTER,
     DEFAULT_SUBSCRIPTIONS_OFFLINE_CHARGE_ATTEMPTS_SCHEDULE,
 )
 from .exceptions import PaymentError, ProlongationImpossible
@@ -129,17 +129,13 @@ def _charge_recurring_subscription(
     # to auto-prolong subscription itself
 
 
-def mark_stuck_pending_payments_as_abandoned(older_than: timedelta = DEFAULT_ABANDON_PENDING_PAYMENTS_AFTER):
-    with transaction.atomic():
-        stuck_payments = SubscriptionPayment.objects.filter(
-            created__lte=now() - older_than,
-            status=SubscriptionPayment.Status.PENDING,
-        ).select_for_update()
-
-        for payment in stuck_payments:
-            log.error('Payment stuck in pending state, setting ABANDONED status: %s', payment)
-            payment.status = SubscriptionPayment.Status.ABANDONED
-            payment.save()
+def notify_stuck_pending_payments(older_than: timedelta = DEFAULT_NOTIFY_PENDING_PAYMENTS_AFTER):
+    stuck_payments = SubscriptionPayment.objects.filter(
+        created__lte=now() - older_than,
+        status=SubscriptionPayment.Status.PENDING,
+    )
+    for payment in stuck_payments:
+        log.error('Payment stuck in pending state: %s', payment)
 
 
 def charge_recurring_subscriptions(
