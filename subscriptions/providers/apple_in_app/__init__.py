@@ -118,7 +118,7 @@ class AppleInAppProvider(Provider):
         if not response.is_valid or response.receipt.bundle_id != cls.bundle_id:
             raise AppleReceiptValidationError(
                 server_response_code=response.status,
-                received_bundle_id=response.receipt.bundle_id,
+                received_bundle_id=response.receipt and response.receipt.bundle_id,
                 expected_bundle_id=cls.bundle_id,
             )
 
