@@ -82,3 +82,29 @@ def test__models__payment__sync_with_subscription(plan, user, dummy):
     subscription = one(Subscription.objects.all())
     assert subscription.start == initial_subscription_start
     assert subscription.end == payment.subscription_end
+
+
+def test__models__payment__no_sync_with_subscription(plan, user, dummy, subscription):
+
+    """
+    Subscription: -----[===============]------------------------>
+    Payment:      ---------------------------------------------->
+    """
+    subsciption_initial_start = subscription.start
+    subscription_initial_end = subscription.end
+
+    """
+    Subscription: -----[===============]------------------------>
+    Payment:      ----------------------[==PENDING==]----------->
+    """
+    SubscriptionPayment.objects.create(
+        user=user,
+        plan=plan,
+        subscription=subscription,
+        provider_codename=dummy.codename,
+        provider_transaction_id='12345',
+        status=SubscriptionPayment.Status.PENDING,
+    )
+    subscription = one(Subscription.objects.all())
+    assert subscription.start == subsciption_initial_start
+    assert subscription.end == subscription_initial_end
