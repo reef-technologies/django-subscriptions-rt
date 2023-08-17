@@ -93,7 +93,9 @@ DATABASES = {
     #     'ENGINE': 'django.db.backends.sqlite3',
     #     'NAME': str(BASE_DIR / 'db.sqlite3'),
     # },
-    'default': {
+    'default': {},
+    # Set to check whether everything related to routing will be properly handled.
+    'actual_db': {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': environ['POSTGRES_DB'],
         'USER': environ['POSTGRES_USER'],
@@ -103,6 +105,9 @@ DATABASES = {
         'ATOMIC_REQUESTS': False,
     }
 }
+DATABASE_ROUTERS = [
+    'demo.db_router.DBRouter',
+]
 
 CONSTANCE_BACKEND = 'constance.backends.database.DatabaseBackend'
 CONSTANCE_CONFIG = {

@@ -9,7 +9,7 @@ from subscriptions.models import SubscriptionPayment
 from subscriptions.providers.apple_in_app import AppleInAppProvider
 
 
-@pytest.mark.django_db(transaction=True)
+@pytest.mark.django_db(transaction=True, databases=['actual_db'])
 def test__apple__parallel_receipts(user, plan):
     provider = AppleInAppProvider()
     num_threads = 16

@@ -12,25 +12,29 @@ from subscriptions.validators import get_validators
 from .helpers import days
 
 
-def test__get_trial_period__disabled(db, plan, user):
+@pytest.mark.django_db(databases=['actual_db'])
+def test__get_trial_period__disabled(plan, user):
     assert SubscriptionSelectView.get_trial_period(plan, user) == relativedelta()
 
 
-def test__get_trial_period__no_charge_amount(db, trial_period, plan, user):
+@pytest.mark.django_db(databases=['actual_db'])
+def test__get_trial_period__no_charge_amount(trial_period, plan, user):
     plan.charge_amount *= 0
     plan.save()
 
     assert SubscriptionSelectView.get_trial_period(plan, user) == relativedelta()
 
 
-def test__get_trial_period__not_recurring(db, trial_period, plan, user):
+@pytest.mark.django_db(databases=['actual_db'])
+def test__get_trial_period__not_recurring(trial_period, plan, user):
     plan.charge_period = INFINITY
     plan.save()
 
     assert SubscriptionSelectView.get_trial_period(plan, user) == relativedelta()
 
 
-def test__get_trial_period__already_paid(db, trial_period, plan, user):
+@pytest.mark.django_db(databases=['actual_db'])
+def test__get_trial_period__already_paid(trial_period, plan, user):
     payment = SubscriptionPayment.objects.create(
         user=user,
         plan=plan,
@@ -43,16 +47,17 @@ def test__get_trial_period__already_paid(db, trial_period, plan, user):
     assert SubscriptionSelectView.get_trial_period(plan, user) == relativedelta()
 
 
-def test__get_trial_period__had_no_recurring(db, trial_period, plan, user):
+@pytest.mark.django_db(databases=['actual_db'])
+def test__get_trial_period__had_no_recurring(trial_period, plan, user):
     assert SubscriptionSelectView.get_trial_period(plan, user) == trial_period
 
     Subscription.objects.create(plan=plan, user=user)
     assert SubscriptionSelectView.get_trial_period(plan, user) == relativedelta()
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 @pytest.mark.skip()
 def test__get_trial_period__cheating__multiacc__paddle(
-    db,
     trial_period,
     plan,
     user,
@@ -98,7 +103,8 @@ def test__get_trial_period__cheating__multiacc__paddle(
     assert payment.subscription.start == payment.subscription_start
 
 
-def test__trial_period__only_once__subsequent(db, trial_period, dummy, plan, user, user_client):
+@pytest.mark.django_db(databases=['actual_db'])
+def test__trial_period__only_once__subsequent(trial_period, dummy, plan, user, user_client):
     assert user.subscriptions.active().count() == 0
 
     # create new subscription
@@ -133,7 +139,8 @@ def test__trial_period__only_once__subsequent(db, trial_period, dummy, plan, use
     assert payment.subscription_start + plan.charge_period == payment.subscription_end
 
 
-def test__trial_period__only_once__simultaneous(db, settings, trial_period, dummy, plan, bigger_plan, recharge_plan, user, user_client):
+@pytest.mark.django_db(databases=['actual_db'])
+def test__trial_period__only_once__simultaneous(settings, trial_period, dummy, plan, bigger_plan, recharge_plan, user, user_client):
     get_validators.cache_clear()
     settings.SUBSCRIPTIONS_VALIDATORS = [
         'subscriptions.validators.OnlyEnabledPlans',
@@ -180,8 +187,8 @@ def test__trial_period__only_once__simultaneous(db, settings, trial_period, dumm
     assert payment.subscription_start + bigger_plan.charge_period == payment.subscription_end
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__get_trial_period__cheating__simultaneous_payments(
-    db,
     trial_period,
     plan,
     user,
@@ -208,8 +215,8 @@ def test__get_trial_period__cheating__simultaneous_payments(
     assert payments[1].subscription.initial_charge_offset == relativedelta(0)
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__get_trial_period__not_cheating__multiacc(
-    db,
     trial_period,
     plan,
     user,
@@ -240,6 +247,7 @@ def test__get_trial_period__not_cheating__multiacc(
     assert payments[1].subscription.user == other_user
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__trial_period__full_charge_after_trial(dummy, plan, charge_expiring, charge_schedule, user_client, user, trial_period):
     response = user_client.post('/api/subscribe/', {'plan': plan.id})
     assert response.status_code == 200, response.content

@@ -17,6 +17,7 @@ from subscriptions.providers import get_providers
 from .helpers import datetime_to_api, days
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__api__plans(plan, client):
     response = client.get('/api/plans/')
     assert response.status_code == 200
@@ -47,11 +48,13 @@ def test__api__plans(plan, client):
 #     }
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__api__subscriptions__unauthorized(client, two_subscriptions):
     response = client.get('/api/subscriptions/')
     assert response.status_code == 403
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__api__subscriptions__authorized(user_client, two_subscriptions):
     response = user_client.get('/api/subscriptions/')
     assert response.status_code == 200, response.content
@@ -77,6 +80,7 @@ def test__api__subscriptions__authorized(user_client, two_subscriptions):
     }]
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__api__subscriptions__next_charge_date(user_client, subscription):
     subscription.end = now() + relativedelta(days=90)
     subscription.save()
@@ -97,6 +101,7 @@ def test__api__subscriptions__next_charge_date(user_client, subscription):
         assert response.json()[0]['next_charge_date'] == datetime_to_api(subscription.start + relativedelta(days=60))
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__api__subscriptions__next_charge_date__not_prolong(user_client, subscription):
     subscription.end = now() + relativedelta(days=90)
     subscription.save()
@@ -115,11 +120,13 @@ def test__api__subscriptions__next_charge_date__not_prolong(user_client, subscri
         assert response.json()[0]['next_charge_date'] is None
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__api__subscribe__unauthorized(client, plan):
     response = client.post('/api/subscribe/', {'plan': plan.id})
     assert response.status_code == 403
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__api__subscribe__authorized(client, user_client, plan, dummy):
     response = user_client.post('/api/subscribe/', {'plan': plan.id, 'quantity': 2})
     assert response.status_code == 200, response.content
@@ -152,12 +159,14 @@ def test__api__subscribe__authorized(client, user_client, plan, dummy):
     assert subscription['quantity'] == 2
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__api__webhook_logging(client, caplog):
     with caplog.at_level(logging.INFO):
         client.post('/api/webhook/dummy/', {'webhook-key': 'webhook-value'})
     assert re.search(r"INFO .+? Webhook at http://testserver/api/webhook/dummy/ received payload {'webhook-key': 'webhook-value'}", caplog.text)
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__api__resources__initial(user_client, subscription, resource, quota):
     with freeze_time(subscription.start):
         response = user_client.get('/api/resources/')
@@ -165,6 +174,7 @@ def test__api__resources__initial(user_client, subscription, resource, quota):
         assert response.json() == {resource.codename: quota.limit * subscription.quantity}
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__api__resources__usage(user, user_client, subscription, resource, quota):
     with freeze_time(subscription.start + days(1)):
         Usage.objects.create(
@@ -179,6 +189,7 @@ def test__api__resources__usage(user, user_client, subscription, resource, quota
         assert response.json() == {resource.codename: quota.limit * subscription.quantity - 20}
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__api__resources__expiration(user_client, subscription, resource, quota):
     with freeze_time(subscription.start + quota.burns_in - days(1)):
         response = user_client.get('/api/resources')
@@ -191,6 +202,7 @@ def test__api__resources__expiration(user_client, subscription, resource, quota)
         assert response.json() == {}
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__api__recurring_plan_switch(user, user_client, subscription, payment, bigger_plan):
     with freeze_time(subscription.start):
         assert one(user.subscriptions.active()).plan == subscription.plan
@@ -203,6 +215,7 @@ def test__api__recurring_plan_switch(user, user_client, subscription, payment, b
         assert one(user.subscriptions.active()).plan == bigger_plan
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__api__recharge_plan_subscription(client, user_client, subscription, quota, recharge_plan, recharge_quota, resource):
     with freeze_time(subscription.start + days(2)):
         response = user_client.post('/api/subscribe/', {'plan': recharge_plan.id})
@@ -226,6 +239,7 @@ def test__api__recharge_plan_subscription(client, user_client, subscription, quo
         }
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__background_charge(subscription):
     with freeze_time(subscription.start + days(1)):
         payment = SubscriptionPayment.objects.create(
@@ -248,6 +262,7 @@ def test__background_charge(subscription):
         subscription.charge_offline()
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__api__payment(user_client, payment):
     response = user_client.get(f'/api/payments/{payment.id}/')
     assert response.status_code == 200, response.content
@@ -289,18 +304,21 @@ def test__api__payment(user_client, payment):
     }
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__api__resource_headers_mixin__anonymous(client, resource):
     response = client.get('/api/headers_mixin/')
     assert response.status_code == 200
     assert not any(header.startswith('X-Resource-') for header in response.headers)
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__api__resource_headers_mixin__empty(user_client, resource):
     response = user_client.get('/api/headers_mixin/')
     assert response.status_code == 200
     assert f'X-Resource-{resource.codename}' not in response.headers
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__api__resource_headers_mixin__exists(user, user_client, resource, subscription, quota):
     available = quota.limit * subscription.quantity
 
@@ -316,6 +334,7 @@ def test__api__resource_headers_mixin__exists(user, user_client, resource, subsc
             assert response.headers[f'X-Resource-{resource.codename}'] == str(available - 10)
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__api__subscriptions__cancel__dummy(user, user_client, subscription, payment, dummy):
     subscription.end = subscription.start + relativedelta(days=90)
     subscription.auto_prolong = True

@@ -1,5 +1,6 @@
 from datetime import timedelta
 
+import pytest
 from django.utils.timezone import now
 from more_itertools import one
 
@@ -8,6 +9,7 @@ from subscriptions.models import Subscription, SubscriptionPayment
 from .helpers import days
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__models__payment__sync_with_subscription(plan, user, dummy):
     assert not Subscription.objects.exists()
 
@@ -84,6 +86,7 @@ def test__models__payment__sync_with_subscription(plan, user, dummy):
     assert subscription.end == payment.subscription_end
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__models__payment__no_sync_with_subscription(plan, user, dummy, subscription):
 
     """

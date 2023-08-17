@@ -11,6 +11,7 @@ import pytest
 from dateutil.parser import parse
 from dateutil.relativedelta import relativedelta
 from django.core.cache import caches
+from django.db import connections
 from django.utils.timezone import now
 from djmoney.money import Money
 from freezegun import freeze_time
@@ -40,6 +41,7 @@ from subscriptions.models import (
 from .helpers import days
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__functions__subscriptions_involved__correctness(five_subscriptions, user, plan):
     subscriptions_involved = iter_subscriptions_involved(user=user, at=five_subscriptions[0].start)
     assert sorted(subscriptions_involved, key=attrgetter('start')) == [
@@ -47,11 +49,13 @@ def test__functions__subscriptions_involved__correctness(five_subscriptions, use
     ]
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__functions__subscriptions_involved_performance(five_subscriptions, django_assert_max_num_queries, user, plan):
-    with django_assert_max_num_queries(2):
+    with django_assert_max_num_queries(2, connection=connections['actual_db']):
         list(iter_subscriptions_involved(user=user, at=five_subscriptions[0].start))
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__functions__cache__apply(resource):
     now_ = now()
 
@@ -84,6 +88,7 @@ def test__functions__cache__apply(resource):
     ]
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__functions__cache__inconsistencies(resource):
     now_ = now()
 
@@ -103,19 +108,21 @@ def test__functions__cache__inconsistencies(resource):
         list(cache.apply(chunks))
 
 
-def test__functions__remaining_chunks__performance(db, two_subscriptions, remaining_chunks, django_assert_max_num_queries, get_cache):
+@pytest.mark.django_db(databases=['actual_db'])
+def test__functions__remaining_chunks__performance(two_subscriptions, remaining_chunks, django_assert_max_num_queries, get_cache):
     now_ = two_subscriptions[0].start
     cache_day, test_day = 8, 10
 
-    with django_assert_max_num_queries(3):
+    with django_assert_max_num_queries(3, connection=connections['actual_db']):
         remaining_chunks(at=now_ + days(test_day))
 
     cache = get_cache(at=now_ + days(cache_day))
-    with django_assert_max_num_queries(3):
+    with django_assert_max_num_queries(3, connection=connections['actual_db']):
         remaining_chunks(at=now_ + days(test_day), quota_cache=cache)
 
 
-def test__functions__remains__with_simple_quota(db, subscription, resource, remains):
+@pytest.mark.django_db(databases=['actual_db'])
+def test__functions__remains__with_simple_quota(subscription, resource, remains):
     """
                      Subscription
     --------------[================]------------> time
@@ -145,7 +152,8 @@ def test__functions__remains__with_simple_quota(db, subscription, resource, rema
     assert remains(at=subscription.start + days(10)) == 0
 
 
-def test__functions__remains__with_recharging_quota(db, subscription, resource, remains):
+@pytest.mark.django_db(databases=['actual_db'])
+def test__functions__remains__with_recharging_quota(subscription, resource, remains):
     """
                          Subscription
     --------------[========================]------------> time
@@ -189,7 +197,8 @@ def test__functions__remains__with_recharging_quota(db, subscription, resource, 
     assert remains(at=subscription.start + days(9)) == 70
 
 
-def test__functions__remains__subtraction_priority(db, subscription, resource, remains):
+@pytest.mark.django_db(databases=['actual_db'])
+def test__functions__remains__subtraction_priority(subscription, resource, remains):
     """
                          Subscription
     --------------[========================]------------> time
@@ -227,7 +236,8 @@ def test__functions__remains__subtraction_priority(db, subscription, resource, r
     assert remains(at=subscription.start + days(10)) == 0
 
 
-def test__functions__remains__multiple_subscriptions(db, two_subscriptions, user, resource, remains):
+@pytest.mark.django_db(databases=['actual_db'])
+def test__functions__remains__multiple_subscriptions(two_subscriptions, user, resource, remains):
     now_ = two_subscriptions[0].start
 
     assert remains(at=now_ - days(1)) == 0
@@ -245,7 +255,8 @@ def test__functions__remains__multiple_subscriptions(db, two_subscriptions, user
     assert remains(at=now_ + days(16)) == 0
 
 
-def test__functions__multiple_subscriptions__refreshes(db, two_subscriptions, user, resource, refreshes):
+@pytest.mark.django_db(databases=['actual_db'])
+def test__functions__multiple_subscriptions__refreshes(two_subscriptions, user, resource, refreshes):
     now_ = two_subscriptions[0].start
     pairs = [
         (sub.start, Quota.objects.get(plan=sub.plan).recharge_period, sub.end)
@@ -289,7 +300,8 @@ def test__functions__multiple_subscriptions__refreshes(db, two_subscriptions, us
     assert_expected(at=now_ + days(16))
 
 
-def test__functions__cache(db, two_subscriptions, remaining_chunks, get_cache):
+@pytest.mark.django_db(databases=['actual_db'])
+def test__functions__cache(two_subscriptions, remaining_chunks, get_cache):
     now_ = two_subscriptions[0].start
 
     for cache_day, test_day in product(range(13), range(13)):
@@ -308,7 +320,8 @@ def test__functions__cache(db, two_subscriptions, remaining_chunks, get_cache):
         )  # corner cases
 
 
-def test__function__use_resource(db, user, subscription, quota, resource, remains):
+@pytest.mark.django_db(databases=['actual_db'])
+def test__function__use_resource(user, subscription, quota, resource, remains):
     with freeze_time(subscription.start):
         assert remains() == 100
         with use_resource(user, resource, 10) as left:
@@ -336,8 +349,8 @@ def test__function__use_resource(db, user, subscription, quota, resource, remain
             pass
 
 
-@pytest.mark.django_db(transaction=True)
-def test__function__use_resource__hard_db_lock(db, user, subscription, quota, resource, remains):
+@pytest.mark.django_db(transaction=True, databases=['actual_db'])
+def test__function__use_resource__hard_db_lock(user, subscription, quota, resource, remains):
     num_parallel_threads = 8
     barrier = threading.Barrier(num_parallel_threads)
 
@@ -375,7 +388,8 @@ def test__function__use_resource__hard_db_lock(db, user, subscription, quota, re
             assert usage.resource == resource
 
 
-def test__functions__cache_backend_correctness(cache_backend, db, user, two_subscriptions, remains, resource):
+@pytest.mark.django_db(databases=['actual_db'])
+def test__functions__cache_backend_correctness(cache_backend, user, two_subscriptions, remains, resource):
     now_ = two_subscriptions[0].start
     cache = caches['subscriptions']
 
@@ -459,7 +473,8 @@ def test__functions__cache_backend_correctness(cache_backend, db, user, two_subs
         )
 
 
-def test__functions__cache_recalculation_real_case(cache_backend, db, user, resource, remains):
+@pytest.mark.django_db(databases=['actual_db'])
+def test__functions__cache_recalculation_real_case(cache_backend, user, resource, remains):
     plan_pro = Plan.objects.create(
         codename='11-pro-quarterly',
         name='Pro',
@@ -548,7 +563,8 @@ def test__functions__cache_recalculation_real_case(cache_backend, db, user, reso
     assert get_remaining_amount(user=user, at=parse('2022-11-17 07:53:45 UTC')) == {resource: 0}
 
 
-def test__merge_feature_sets(db):
+@pytest.mark.django_db(databases=['actual_db'])
+def test__merge_feature_sets():
     show_ads = Feature.objects.create(codename='SHOW_ADS', is_negative=True)
     add_premium_badge = Feature.objects.create(codename='ADD_PREMIUM_BADGE')
     extra_reward = Feature.objects.create(codename='EXTRA_REWARD')
@@ -566,7 +582,8 @@ def test__merge_feature_sets(db):
     ) == {show_ads, extra_reward, add_premium_badge}
 
 
-def test__get_default_features(db, django_assert_num_queries, cache_backend):
+@pytest.mark.django_db(databases=['actual_db'])
+def test__get_default_features(django_assert_num_queries, cache_backend):
     tiers = Tier.objects.bulk_create([
         Tier(codename='zero', is_default=True),
         Tier(codename='one'),
@@ -583,24 +600,25 @@ def test__get_default_features(db, django_assert_num_queries, cache_backend):
     non_default_feature = Feature.objects.create(codename='NON_DEFAULT_FEATURE')
     tiers[1].features.add(non_default_feature)
 
-    with django_assert_num_queries(2):
+    with django_assert_num_queries(2, connection=connections['actual_db']):
         assert get_default_features() == {default_feature_many_tiers, default_feature_one_tier}
 
     new_default_feature = Feature.objects.create(codename='NEW_DEFAULT_FEATURE')
     tiers[0].features.set([new_default_feature])
     tiers[0].save()
 
-    with django_assert_num_queries(2):
+    with django_assert_num_queries(2, connection=connections['actual_db']):
         assert get_default_features() == {default_feature_many_tiers, new_default_feature}
 
     tiers[0].is_default = False
     tiers[0].save()
 
-    with django_assert_num_queries(2):
+    with django_assert_num_queries(2, connection=connections['actual_db']):
         assert get_default_features() == {default_feature_many_tiers}
 
 
-def test__get_tiers__cache(db, django_assert_num_queries, cache_backend):
+@pytest.mark.django_db(databases=['actual_db'])
+def test__get_tiers__cache(django_assert_num_queries, cache_backend):
     Tier.objects.bulk_create([
         Tier(codename='zero', is_default=True),
         Tier(codename='one'),
@@ -611,25 +629,26 @@ def test__get_tiers__cache(db, django_assert_num_queries, cache_backend):
     def get_tiers() -> list[Tier]:
         return list(Tier.objects.all())
 
-    with django_assert_num_queries(1):
+    with django_assert_num_queries(1, connection=connections['actual_db']):
         _ = get_tiers()
 
-    with django_assert_num_queries(0):
+    with django_assert_num_queries(0, connection=connections['actual_db']):
         _ = get_tiers()
 
     get_tiers.cache_clear()
-    with django_assert_num_queries(1):
+    with django_assert_num_queries(1, connection=connections['actual_db']):
         _ = get_tiers()
 
-    with django_assert_num_queries(0):
+    with django_assert_num_queries(0, connection=connections['actual_db']):
         _ = get_tiers()
 
     sleep(5)
-    with django_assert_num_queries(1):
+    with django_assert_num_queries(1, connection=connections['actual_db']):
         _ = get_tiers()
 
 
-def test_resource_refresh_moments(db, subscription, resource, remains, refreshes):
+@pytest.mark.django_db(databases=['actual_db'])
+def test_resource_refresh_moments(subscription, resource, remains, refreshes):
     subscription.end = subscription.start + days(3)
     subscription.save(update_fields=['end'])
 

@@ -4,6 +4,7 @@ from itertools import islice
 
 import pytest
 from dateutil.relativedelta import relativedelta
+from django.db import connections
 from django.utils.timezone import now
 
 from subscriptions.exceptions import PaymentError, ProlongationImpossible
@@ -12,7 +13,8 @@ from subscriptions.models import Quota, QuotaChunk, Subscription, SubscriptionPa
 from .helpers import days
 
 
-def test__subscription__limited_plan_duration(db, user, plan):
+@pytest.mark.django_db(databases=['actual_db'])
+def test__subscription__limited_plan_duration(user, plan):
     plan.max_duration = days(30)
     plan.charge_period = days(10)
     plan.save(update_fields=['max_duration', 'charge_period'])
@@ -34,7 +36,8 @@ def test__subscription__limited_plan_duration(db, user, plan):
         subscription.prolong()
 
 
-def test__subscription__unlimited_plan_duration(db, user, plan):
+@pytest.mark.django_db(databases=['actual_db'])
+def test__subscription__unlimited_plan_duration(user, plan):
     plan.max_duration = None
     plan.charge_period = days(300)
     plan.save(update_fields=['max_duration'])
@@ -51,7 +54,8 @@ def test__subscription__unlimited_plan_duration(db, user, plan):
         assert subscription.end == subscription.start + i * days(300)
 
 
-def test__subscription__iter_charge_dates__main(db, plan, subscription):
+@pytest.mark.django_db(databases=['actual_db'])
+def test__subscription__iter_charge_dates__main(plan, subscription):
     plan.charge_period = relativedelta(months=1)
     plan.save()
 
@@ -75,7 +79,8 @@ def test__subscription__iter_charge_dates__main(db, plan, subscription):
     assert list(islice(subscription.iter_charge_dates(since=subscription.start + days(60)), 3)) == expected_charge_dates[2:5]
 
 
-def test__subscription__iter_charge_dates__initial_charge_offset(db, plan, subscription):
+@pytest.mark.django_db(databases=['actual_db'])
+def test__subscription__iter_charge_dates__initial_charge_offset(plan, subscription):
     plan.charge_period = relativedelta(months=1)
     plan.save()
 
@@ -95,18 +100,21 @@ def test__subscription__iter_charge_dates__initial_charge_offset(db, plan, subsc
     assert list(islice(subscription.iter_charge_dates(), 5)) == expected_charge_dates
 
 
-def test__subscription__iter_charge_dates__performance(db, subscription, django_assert_num_queries):
-    with django_assert_num_queries(0):
+@pytest.mark.django_db(databases=['actual_db'])
+def test__subscription__iter_charge_dates__performance(subscription, django_assert_num_queries):
+    with django_assert_num_queries(0, connection=connections['actual_db']):
         list(islice(subscription.iter_charge_dates(), 10))
 
 
-def test__subscription__iter_charge_dates___no_charge_period(db, plan, subscription):
+@pytest.mark.django_db(databases=['actual_db'])
+def test__subscription__iter_charge_dates___no_charge_period(plan, subscription):
     plan.charge_period = None
     plan.save(update_fields=['charge_period'])
     assert list(subscription.iter_charge_dates()) == [subscription.start]
 
 
-def test__subscription__active_subscription_filter(db, subscription):
+@pytest.mark.django_db(databases=['actual_db'])
+def test__subscription__active_subscription_filter(subscription):
     now_ = now()
 
     subscription.start = now_ - days(2)
@@ -119,7 +127,8 @@ def test__subscription__active_subscription_filter(db, subscription):
     assert subscription in Subscription.objects.active(at=now_)
 
 
-def test__subscription__iter_quota_chunks(db, subscription, resource):
+@pytest.mark.django_db(databases=['actual_db'])
+def test__subscription__iter_quota_chunks(subscription, resource):
     """
                        Subscription
     ----------[=========================]-------------> time
@@ -156,22 +165,26 @@ def test__subscription__iter_quota_chunks(db, subscription, resource):
     assert list(subscription.iter_quota_chunks(since=subscription.end - days(1))) == chunks[1:]
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__subscription__expiring__performance(django_assert_num_queries, two_subscriptions):
-    with django_assert_num_queries(1):
+    with django_assert_num_queries(1, connection=connections['actual_db']):
         list(Subscription.objects.expiring(within=days(5)))
 
 
-def test__subscription__charge_offline__without_prev_payments(db, subscription):
+@pytest.mark.django_db(databases=['actual_db'])
+def test__subscription__charge_offline__without_prev_payments(subscription):
     with pytest.raises(PaymentError):
         subscription.charge_offline()
 
 
-def test__subscription__charge_offline__with_unconfirmed_payment(db, subscription, paddle_unconfirmed_payment):
+@pytest.mark.django_db(databases=['actual_db'])
+def test__subscription__charge_offline__with_unconfirmed_payment(subscription, paddle_unconfirmed_payment):
     with pytest.raises(PaymentError):
         subscription.charge_offline()
 
 
-def test__subscription__charge_offline(db, subscription, payment):
+@pytest.mark.django_db(databases=['actual_db'])
+def test__subscription__charge_offline(subscription, payment):
     assert SubscriptionPayment.objects.all().count() == 1
     subscription.charge_offline()
     assert SubscriptionPayment.objects.all().count() == 2
@@ -185,7 +198,8 @@ def test__subscription__charge_offline(db, subscription, payment):
     assert last_payment.plan == subscription.plan
 
 
-def test__subscription__payment_from_until_auto_set(db, plan, subscription, user, dummy):
+@pytest.mark.django_db(databases=['actual_db'])
+def test__subscription__payment_from_until_auto_set(plan, subscription, user, dummy):
     initial_subscription_start = subscription.start
     initial_subscription_end = subscription.end
 
@@ -219,7 +233,8 @@ def test__subscription__payment_from_until_auto_set(db, plan, subscription, user
     assert payment.subscription.end == payment.subscription_end
 
 
-def test__subscription__auto_creation_on_payment(db, plan, user, dummy):
+@pytest.mark.django_db(databases=['actual_db'])
+def test__subscription__auto_creation_on_payment(plan, user, dummy):
     assert not Subscription.objects.exists()
 
     payment = SubscriptionPayment.objects.create(
@@ -239,7 +254,8 @@ def test__subscription__auto_creation_on_payment(db, plan, user, dummy):
     assert payment.subscription_end == payment.subscription.end
 
 
-def test__subscription__duration_set_by_payment(db, plan, user, dummy):
+@pytest.mark.django_db(databases=['actual_db'])
+def test__subscription__duration_set_by_payment(plan, user, dummy):
     assert not Subscription.objects.exists()
 
     now_ = now()

@@ -7,7 +7,7 @@ from typing import Callable, Iterable, Iterator, TypeVar
 
 from django.conf import settings
 from django.core.serializers.json import DjangoJSONEncoder
-from django.db import connection, models, transaction
+from django.db import connections, models, transaction, router
 from djmoney.money import Money
 from environs import Env
 
@@ -88,7 +88,9 @@ class HardDBLock:
         if not self.is_enabled():
             return
 
-        db_type = connection.vendor
+        self.db_name = router.db_for_write(models.Model)
+
+        db_type = connections[self.db_name].vendor
         if db_type != 'postgresql':
             log.warning(f'{self.__class__.__name__} works only with postgres right now, {db_type} is unsupported.')
 
@@ -115,10 +117,10 @@ class HardDBLock:
             return
 
         # Open our own transaction that will be guarded by the advisory lock.
-        self.transaction = transaction.atomic(durable=self.durable)
+        self.transaction = transaction.atomic(using=self.db_name, durable=self.durable)
         self.transaction.__enter__()
 
-        with connection.cursor() as cursor:
+        with connections[self.db_name].cursor() as cursor:
             # xact type of lock is automatically released when the transaction ends.
             cursor.execute(
                 'SELECT pg_advisory_xact_lock(%s, %s)',
