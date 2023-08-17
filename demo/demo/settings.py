@@ -172,4 +172,4 @@ STATIC_URL = 'static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-ENABLE_HARD_DB_LOCK = environ.get('ENABLE_HARD_DB_LOCK').lower() in {'1', 'true', 'enabled'}
+ENABLE_HARD_DB_LOCK = (environ.get('ENABLE_HARD_DB_LOCK') or 'enabled').lower() in {'1', 'true', 'enabled'}
