@@ -181,8 +181,8 @@ def test__paddle__payment_flow__regular(
 
     assert 'payment_url' in payment.metadata
 
-    # input(f'Use card {card_number} to pay here: {redirect_url}\nThen press Enter')
-    automate_payment(redirect_url, card_number, paddle_test_email)
+    input(f'Use card {card_number} to pay here: {redirect_url}\nThen press Enter')
+    # automate_payment(redirect_url, card_number, paddle_test_email)
 
     # ensure that status didn't change because webhook didn't go through
     assert payment.status == SubscriptionPayment.Status.PENDING
@@ -328,8 +328,8 @@ def test__paddle__payment_flow__trial_period(
     subscription = user.subscriptions.first()
     assert subscription.start == subscription.end
     assert subscription.initial_charge_offset == trial_period
-    # input(f'Use card {card_number} to pay here: {redirect_url}\nThen press Enter')
-    automate_payment(redirect_url, card_number, paddle_test_email)
+    input(f'Use card {card_number} to pay here: {redirect_url}\nThen press Enter')
+    # automate_payment(redirect_url, card_number, paddle_test_email)
 
     # ensure that status didn't change because webhook didn't go through
     assert payment.status == SubscriptionPayment.Status.PENDING
