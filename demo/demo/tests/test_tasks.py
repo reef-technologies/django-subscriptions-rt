@@ -267,6 +267,13 @@ def test__tasks__notify_stuck_pending_payments(subscription, user, caplog):
     min_age = days(3)
 
     with freeze_time(now() - min_age - days(10)):
+        _ = SubscriptionPayment.objects.create(
+            plan=subscription.plan,
+            user=user,
+            status=SubscriptionPayment.Status.PENDING,
+        )
+
+    with freeze_time(now() - min_age - days(10)):
         very_old_payment = SubscriptionPayment.objects.create(
             subscription=subscription,
             plan=subscription.plan,

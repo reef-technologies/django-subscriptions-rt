@@ -88,7 +88,7 @@ class SubscriptionPaymentRefundInline(admin.StackedInline):
 
 @admin.register(SubscriptionPayment)
 class SubscriptionPaymentAdmin(admin.ModelAdmin):
-    list_display = 'pk', 'status', 'created', 'amount', 'user', 'subscription_start', 'subscription_end',
+    list_display = 'pk', 'status', 'created', 'amount', 'user', 'get_subscription_display', 'subscription_start', 'subscription_end',
     autocomplete_fields = 'user', 'subscription',
     list_filter = 'subscription__plan', 'status', 'created', 'updated', 'provider_codename',
     search_fields = 'uid', 'user__email', 'user__first_name', 'user__last_name', 'amount',
@@ -97,6 +97,10 @@ class SubscriptionPaymentAdmin(admin.ModelAdmin):
     ]
     queryset = SubscriptionPayment.objects.select_related('subscription__plan')
     ordering = '-created',
+
+    @admin.display(description='subscription')
+    def get_subscription_display(self, instance):
+        return instance.subscription.short_id
 
 
 @admin.register(SubscriptionPaymentRefund)

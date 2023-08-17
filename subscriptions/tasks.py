@@ -133,6 +133,7 @@ def notify_stuck_pending_payments(older_than: timedelta = DEFAULT_NOTIFY_PENDING
     stuck_payments = SubscriptionPayment.objects.filter(
         created__lte=now() - older_than,
         status=SubscriptionPayment.Status.PENDING,
+        subscription__isnull=False,  # ignore initial payments (abandoned carts)
     )
     for payment in stuck_payments:
         log.error('Payment stuck in pending state: %s', payment)
