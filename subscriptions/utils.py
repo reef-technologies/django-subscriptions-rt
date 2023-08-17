@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 from datetime import datetime
 from typing import Callable, Iterable, Iterator, TypeVar
 
@@ -10,6 +11,8 @@ from django.db import connection, models, transaction
 from djmoney.money import Money
 
 from .defaults import DEFAULT_SUBSCRIPTIONS_CURRENCY
+
+logger = logging.getLogger(__name__)
 
 T = TypeVar('T')
 
@@ -80,9 +83,12 @@ class HardDBLock:
         lock_value: str | int,
         durable: bool = False,
     ):
+        if not settings.ENABLE_HARD_DB_LOCK:
+            return
+
         db_type = connection.vendor
-        assert db_type == 'postgresql', \
-            f'{self.__class__.__name__} works only with postgres right now, {db_type} is unsupported.'
+        if db_type != 'postgresql':
+            logger.warning(f'{self.__class__.__name__} works only with postgres right now, {db_type} is unsupported.')
 
         self.lock_marker = self._pg_str_to_int(lock_marker)
         self.lock_value = self._pg_str_to_int(lock_value)
@@ -99,6 +105,9 @@ class HardDBLock:
         return out_value % self.PSQL_MAX_LOCK_VALUE
 
     def __enter__(self):
+        if not settings.ENABLE_HARD_DB_LOCK:
+            return
+
         # Open our own transaction that will be guarded by the advisory lock.
         self.transaction = transaction.atomic(durable=self.durable)
         self.transaction.__enter__()
@@ -114,4 +123,7 @@ class HardDBLock:
         return self
 
     def __exit__(self, *args, **kwargs):
+        if not settings.ENABLE_HARD_DB_LOCK:
+            return
+
         self.transaction.__exit__(*args, **kwargs)
