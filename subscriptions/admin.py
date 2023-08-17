@@ -100,7 +100,7 @@ class SubscriptionPaymentAdmin(admin.ModelAdmin):
 
     @admin.display(description='subscription')
     def get_subscription_display(self, instance):
-        return instance.subscription.short_id
+        return instance.subscription and instance.subscription.short_id
 
 
 @admin.register(SubscriptionPaymentRefund)
