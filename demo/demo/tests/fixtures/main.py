@@ -359,3 +359,11 @@ def default_plan(db, settings) -> Plan:
 def trial_period(db, settings) -> relativedelta:
     settings.SUBSCRIPTIONS_TRIAL_PERIOD = trial_period = relativedelta(days=7)
     return trial_period
+
+
+@pytest.fixture
+def enable_hard_db_lock(request, monkeypatch):
+    """ Set ENABLE_HARD_DB_LOCK environment variable, this fixture must be used with `parametrize` """
+    if request.param is not None:
+        monkeypatch.setenv("ENABLE_HARD_DB_LOCK", request.param)
+    yield request.param
