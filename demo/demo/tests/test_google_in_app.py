@@ -66,6 +66,7 @@ def test__google__subscription_deactivation(google_in_app, plan_with_google):
     ...  # TODO
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__google__dismiss_token(google_in_app, user, subscription, purchase_token):
     # dismissing a token means that we end payments and subscriptions that exceed now()
 
@@ -105,6 +106,7 @@ def test__google__dismiss_token(google_in_app, user, subscription, purchase_toke
         assert subscription.end == now()
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__google__get_user_by_token(google_in_app, payment):
     assert google_in_app.get_user_by_token(payment.provider_transaction_id) is None
 
@@ -113,16 +115,19 @@ def test__google__get_user_by_token(google_in_app, payment):
     assert google_in_app.get_user_by_token(payment.provider_transaction_id) == payment.user
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__google__webhook_test__google__notification(google_in_app, google_test_notification, client):
     response = client.post('/api/webhook/google_in_app/', google_test_notification, content_type="application/json")
     assert response.status_code == 200, response.content
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__google__webhook_for_app_notification_unauthorized(google_in_app, app_notification, client):
     response = client.post('/api/webhook/google_in_app/', app_notification, content_type="application/json")
     assert response.status_code == 403, response.content
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__google__webhook_for_app_notification(google_in_app, app_notification, user_client, google_subscription_purchase, plan_with_google):
     assert not Subscription.objects.exists()
     assert not SubscriptionPayment.objects.exists()
@@ -142,6 +147,7 @@ def test__google__webhook_for_app_notification(google_in_app, app_notification, 
     assert payment.provider_transaction_id == app_notification['purchase_token']
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__google__webhook_for_app_notification_duplicate(google_in_app, app_notification, user_client, google_subscription_purchase, plan_with_google):
     assert not SubscriptionPayment.objects.exists()
     assert not Subscription.objects.exists()
@@ -155,6 +161,7 @@ def test__google__webhook_for_app_notification_duplicate(google_in_app, app_noti
             assert Subscription.objects.count() == 1
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__google__webhook_linked_token_dismissing(google_in_app, app_notification, user_client, google_subscription_purchase, user, plan_with_google):
     linked_token = 'trololo'
 
@@ -181,12 +188,14 @@ def test__google__webhook_linked_token_dismissing(google_in_app, app_notificatio
     assert payment.subscription.end < now()
 
 
-def test__google__google_notification_without_app_notification(db, google_in_app, client, google_subscription_purchase, google_rtdn_notification):
+@pytest.mark.django_db(databases=['actual_db'])
+def test__google__google_notification_without_app_notification(google_in_app, client, google_subscription_purchase, google_rtdn_notification):
     with mock.patch('subscriptions.providers.google_in_app.GoogleInAppProvider.get_purchase', return_value=google_subscription_purchase):
         response = client.post('/api/webhook/google_in_app/', google_rtdn_notification, content_type="application/json")
         assert response.status_code == 200, response.content
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__google__event_status_check(google_in_app, purchase_token, user, plan_with_google, client, google_subscription_purchase, google_rtdn_notification):
     SubscriptionPayment.objects.create(
         provider_codename=google_in_app.codename,
@@ -205,6 +214,7 @@ def test__google__event_status_check(google_in_app, purchase_token, user, plan_w
             assert response.status_code == 400, response.content
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__google__purchase_acknowledgement(google_in_app, user_client, google_subscription_purchase, app_notification, plan_with_google):
     with mock.patch.object(google_subscription_purchase, 'acknowledgementState', GoogleAcknowledgementState.PENDING):
         with mock.patch(
@@ -229,6 +239,7 @@ def test__google__check_event():
     ...  # TODO
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__google__purchase_flow(google_in_app, purchase_token, user, plan_with_google, client, user_client, app_notification, google_subscription_purchase, google_rtdn_notification_factory):
     """ Test initial purchase and renewal """
 
@@ -265,6 +276,7 @@ def test__google__purchase_flow(google_in_app, purchase_token, user, plan_with_g
     assert payment2.subscription.end == payment2.subscription_end
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__google__expiration_notification(google_in_app, purchase_token, user, plan_with_google, client, google_rtdn_notification_factory, google_in_app_payment, google_subscription_purchase):
 
     assert google_in_app_payment.subscription.end == google_in_app_payment.subscription_end
@@ -298,10 +310,12 @@ def test__google__check_payments(google_in_app):
     ...  # TODO
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__google__subscription_notification_models(google_in_app__subscription_purchase_dict):
     GoogleSubscriptionPurchaseV2.parse_obj(google_in_app__subscription_purchase_dict)
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__google__subscriptions__cancel__google(
     user,
     client,

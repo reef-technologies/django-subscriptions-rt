@@ -13,6 +13,7 @@ from subscriptions.models import Plan, Subscription, SubscriptionPayment
 from .helpers import days
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__default_plan__does_not_exist(settings, plan):
     assert get_default_plan() is None
 
@@ -20,10 +21,12 @@ def test__default_plan__does_not_exist(settings, plan):
         config.SUBSCRIPTIONS_DEFAULT_PLAN_ID = 12345
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__default_plan__exists(default_plan):
     assert get_default_plan() == default_plan
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__default_plan__created_for_new_user(default_plan, plan):
     assert not Subscription.objects.exists()
 
@@ -39,6 +42,7 @@ def test__default_plan__created_for_new_user(default_plan, plan):
     assert subscription.end > now_ + days(365*5)  # I will probably work somewhere else in 5 years, so no need to check further :D
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__default_plan__no_overlap_with_subscriptions(default_plan, plan, user):
     """
     -----[default subscription                      ]->
@@ -78,6 +82,7 @@ def test__default_plan__no_overlap_with_subscriptions(default_plan, plan, user):
     assert default_sub_after.end > now_ + days(356*5)
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__default_plan__split_if_subscription_appears(default_plan, plan, user):
     """
     -----[default subscription               ]->
@@ -112,6 +117,7 @@ def test__default_plan__split_if_subscription_appears(default_plan, plan, user):
     assert sub_after.end >= now() + timedelta(days=365*5)
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__default_plan__enable__old_subscription(user, subscription, settings):
     """
     -----[subscription]--------------------->
@@ -136,6 +142,7 @@ def test__default_plan__enable__old_subscription(user, subscription, settings):
         assert subscriptions[1].end > now_ + days(365*5)
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__default_plan__enable__active_subscription(user, subscription, settings):
     """
     -----[subscription        ]------------------->
@@ -159,6 +166,7 @@ def test__default_plan__enable__active_subscription(user, subscription, settings
     assert subscriptions[1].end > subscription.end + days(365*5)
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__default_plan__disabling__active(user, subscription, default_plan):
     """
     -----[subscription][default plan]----->
@@ -185,6 +193,7 @@ def test__default_plan__disabling__active(user, subscription, default_plan):
         assert now() - timedelta(seconds=2) < last_subscription.end < now()
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__default_plan__disabling__future(user, subscription, default_plan):
     """
     -----[subscription        ][default plan]----->
@@ -206,6 +215,7 @@ def test__default_plan__disabling__future(user, subscription, default_plan):
         assert not user.subscriptions.filter(plan=default_plan).exists()
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__default_plan__switch__active(user, default_plan):
     """
     -----[default plan                    ]->
@@ -234,6 +244,7 @@ def test__default_plan__switch__active(user, default_plan):
     assert new_subscription.end > now() + days(365)
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__default_plan__switch__future(user, subscription, default_plan):
     """
     --[subscription][default plan    ]->
@@ -260,6 +271,7 @@ def test__default_plan__switch__future(user, subscription, default_plan):
         assert new_subscription.end == default_subscription.end
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__default_plan__non_recurring__ignore_save(user, default_plan, recharge_plan):
     """
     ---[=default plan=============]->
@@ -284,6 +296,7 @@ def test__default_plan__non_recurring__ignore_save(user, default_plan, recharge_
     assert default_subscription_old.end == default_subscription_new.end
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__default_plan__non_recurring__ignore_when_adding_default(user, recharge_plan):
     """
     ----[recharge plan      ]------->
@@ -314,6 +327,7 @@ def test__default_plan__non_recurring__ignore_when_adding_default(user, recharge
     assert now() - timedelta(seconds=1) < default_subscription.start < now()
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__default_plan__subscription_payment__num_subscriptions(user, default_plan, subscription, plan):
     """
     Before payment:
@@ -334,6 +348,7 @@ def test__default_plan__subscription_payment__num_subscriptions(user, default_pl
     assert user.subscriptions.count() == 3
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__default_plan__subscription__shrink__before_default(user, default_plan, subscription, plan):
     """
     Before:
@@ -364,6 +379,7 @@ def test__default_plan__subscription__shrink__before_default(user, default_plan,
     assert subscriptions_after[1].end == subscriptions_after[2].start
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__default_plan__subscription__shrink__before_other_subscription(user, subscription, default_plan, plan):
     """
     Before:
@@ -402,6 +418,7 @@ def test__default_plan__subscription__shrink__before_other_subscription(user, su
     assert subscriptions_after[2].end == subscriptions_after[3].start
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__default_plan__subscription__eaten(user, subscription, default_plan, plan):
     """
     Before:
@@ -443,6 +460,7 @@ def test__default_plan__subscription__eaten(user, subscription, default_plan, pl
     assert subscriptions_after[2].start == subscriptions_after[0].end
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__default_plan__subscription_renewal(user, default_plan, subscription, payment, plan):
     """
     Before renewal:

@@ -40,29 +40,33 @@ def eps() -> timedelta:
     return timedelta(microseconds=1)
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 @pytest.fixture
-def user(db):
+def user():
     return get_user_model().objects.create(
         username='test',
     )
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 @pytest.fixture
-def other_user(db):
+def other_user():
     return get_user_model().objects.create(
         username='test2',
     )
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 @pytest.fixture
-def resource(db) -> Resource:
+def resource() -> Resource:
     return Resource.objects.create(
         codename='resource',
     )
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 @pytest.fixture
-def plan(db, resource) -> Plan:
+def plan(resource) -> Plan:
     return Plan.objects.create(
         codename='plan',
         name='Plan',
@@ -75,8 +79,9 @@ def plan(db, resource) -> Plan:
     )
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 @pytest.fixture
-def quota(db, plan, resource) -> Quota:
+def quota(plan, resource) -> Quota:
     return Quota.objects.create(
         plan=plan,
         resource=resource,
@@ -84,8 +89,9 @@ def quota(db, plan, resource) -> Quota:
     )
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 @pytest.fixture
-def bigger_plan(db, resource) -> Plan:
+def bigger_plan(resource) -> Plan:
     return Plan.objects.create(
         codename='bigger-plan',
         name='Bigger plan',
@@ -94,8 +100,9 @@ def bigger_plan(db, resource) -> Plan:
     )
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 @pytest.fixture
-def bigger_quota(db, bigger_plan, resource) -> Quota:
+def bigger_quota(bigger_plan, resource) -> Quota:
     return Quota.objects.create(
         plan=bigger_plan,
         resource=resource,
@@ -103,8 +110,9 @@ def bigger_quota(db, bigger_plan, resource) -> Quota:
     )
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 @pytest.fixture
-def recharge_plan(db, resource) -> Plan:
+def recharge_plan(resource) -> Plan:
     # $10 for 10 resources, expires in 14 days
     return Plan.objects.create(
         codename='recharge-plan',
@@ -115,8 +123,9 @@ def recharge_plan(db, resource) -> Plan:
     )
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 @pytest.fixture
-def recharge_quota(db, recharge_plan, resource) -> Quota:
+def recharge_quota(recharge_plan, resource) -> Quota:
     return Quota.objects.create(
         plan=recharge_plan,
         resource=resource,
@@ -124,8 +133,9 @@ def recharge_quota(db, recharge_plan, resource) -> Quota:
     )
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 @pytest.fixture
-def subscription(db, user, plan) -> Subscription:
+def subscription(user, plan) -> Subscription:
     return Subscription.objects.create(
         user=user,
         plan=plan,
@@ -239,8 +249,9 @@ def two_subscriptions(user, resource) -> list[Subscription]:
     return [subscription1, subscription2]
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 @pytest.fixture
-def five_subscriptions(db, plan, user) -> list[Subscription]:
+def five_subscriptions(plan, user) -> list[Subscription]:
     """
     Subscriptions:                    |now
     ----------------------------------[====sub0=====]-----> overlaps with "now"
@@ -345,8 +356,9 @@ def cache_backend(settings):
     caches['subscriptions'].clear()
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 @pytest.fixture
-def default_plan(db, settings) -> Plan:
+def default_plan(settings) -> Plan:
     plan = Plan.objects.create(
         name='Default Plan',
         charge_amount=usd(0),
@@ -355,8 +367,9 @@ def default_plan(db, settings) -> Plan:
     return plan
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 @pytest.fixture
-def trial_period(db, settings) -> relativedelta:
+def trial_period(settings) -> relativedelta:
     settings.SUBSCRIPTIONS_TRIAL_PERIOD = trial_period = relativedelta(days=7)
     return trial_period
 

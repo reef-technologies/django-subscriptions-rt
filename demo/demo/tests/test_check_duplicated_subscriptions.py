@@ -1,7 +1,10 @@
+import pytest
+
 from subscriptions.models import Subscription, SubscriptionPayment
 from subscriptions.tasks import check_duplicated_payments
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__duplicates__no_duplicates_in_transaction_id(user, plan):
     subscription = Subscription.objects.create(
         user=user,
@@ -26,6 +29,7 @@ def test__duplicates__no_duplicates_in_transaction_id(user, plan):
     assert len(results) == 0
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__duplicates__no_duplicates_in_providers(user, plan):
     subscription = Subscription.objects.create(
         user=user,
@@ -50,7 +54,8 @@ def test__duplicates__no_duplicates_in_providers(user, plan):
     assert len(results) == 0
 
 
-def test__duplicates__duplicated_transactions(db, user, plan):
+@pytest.mark.django_db(databases=['actual_db'])
+def test__duplicates__duplicated_transactions(user, plan):
     subscription = Subscription.objects.create(
         user=user,
         plan=plan,

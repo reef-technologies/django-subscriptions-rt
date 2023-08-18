@@ -25,6 +25,7 @@ def middle(period: list[timedelta]) -> timedelta:
     return (period[0] + period[1]) / 2
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__tasks__charge_expiring__not_charged_beyond_schedule(
     subscription,
     payment,
@@ -50,6 +51,7 @@ def test__tasks__charge_expiring__not_charged_beyond_schedule(
         assert SubscriptionPayment.objects.count() == 2
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__tasks__charge_expiring__not_charging_twice_in_same_period(
     subscription,
     payment,
@@ -68,6 +70,7 @@ def test__tasks__charge_expiring__not_charging_twice_in_same_period(
         assert SubscriptionPayment.objects.count() == 2
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__tasks__charge_expiring__not_charging_twice_if_pending_exists(
     subscription,
     payment,
@@ -97,7 +100,7 @@ def test__tasks__charge_expiring__not_charging_twice_if_pending_exists(
         assert SubscriptionPayment.objects.count() == 3
 
 
-@pytest.mark.django_db(transaction=True)
+@pytest.mark.django_db(transaction=True, databases=['actual_db'])
 @pytest.mark.parametrize('enable_hard_db_lock', [None, '1', 'true', '0', 'false'], indirect=True)
 def test__tasks__charge_expiring__multiple_threads__not_charge_twice(
     subscription,
@@ -123,6 +126,7 @@ def test__tasks__charge_expiring__multiple_threads__not_charge_twice(
         assert SubscriptionPayment.objects.count() >= 2
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__tasks__charge_expiring__previous_attempt_failed(
     subscription,
     payment,
@@ -146,6 +150,7 @@ def test__tasks__charge_expiring__previous_attempt_failed(
         assert SubscriptionPayment.objects.latest() != payment
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__tasks__charge_expiring__not_reacting_to_other_payments(
     subscription,
     payment,
@@ -172,6 +177,7 @@ def test__tasks__charge_expiring__not_reacting_to_other_payments(
         assert SubscriptionPayment.objects.latest().pk != other_subscription_payment.pk
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__tasks__charge_expiring__prolongation(
     subscription,
     payment,
@@ -206,6 +212,7 @@ def test__tasks__charge_expiring__prolongation(
         assert subscription.end == charge_dates[4]
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__tasks__charge_expiring__amount(
     subscription,
     payment,
@@ -220,6 +227,7 @@ def test__tasks__charge_expiring__amount(
         assert last_payment.amount == subscription.plan.charge_amount
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__tasks__charge_expiring__not_charging_after_cancellation(
     subscription,
     payment,
@@ -241,6 +249,7 @@ def test__tasks__charge_expiring__not_charging_after_cancellation(
         assert subscription.payments.count() == old_num_payments
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__tasks__charge_expiring__payment_failure(
     subscription,
     payment,
@@ -271,6 +280,7 @@ def test__tasks__charge_expiring__payment_failure(
             assert SubscriptionPayment.objects.count() == 2
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__tasks__notify_stuck_pending_payments(subscription, user, caplog):
     min_age = days(3)
 

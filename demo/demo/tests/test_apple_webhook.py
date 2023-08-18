@@ -154,11 +154,13 @@ def make_notification_query() -> dict:
     return {'signedPayload': 'test-signed-payload'}
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__apple__invalid_query_sent(user_client):
     response = user_client.post(APPLE_API_WEBHOOK, {'test': 'data'}, content_type='application/json')
     assert response.status_code == 400
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def assert__valid_receipt(user_client, apple_in_app, product_id, bundle_id, **receipt_data_kwargs):
     receipt_data = make_receipt_data(product_id, bundle_id, **receipt_data_kwargs)
     with mock.patch(RECEIPT_FETCH_FUNCTION, return_value=receipt_data):
@@ -176,11 +178,12 @@ def assert__valid_receipt(user_client, apple_in_app, product_id, bundle_id, **re
     assert payment.subscription_end == single_in_app.expires_date
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__apple__valid_receipt_sent(user_client, apple_in_app, apple_product_id, apple_bundle_id, user):
     assert__valid_receipt(user_client, apple_in_app, apple_product_id, apple_bundle_id)
 
 
-@pytest.mark.django_db(transaction=True)
+@pytest.mark.django_db(transaction=True, databases=['actual_db'])
 def test__apple__multiple_receipts(apple_in_app, apple_product_id, apple_bundle_id, user):
     receipt_data = make_receipt_data(apple_product_id, apple_bundle_id)
 
@@ -212,10 +215,12 @@ def test__apple__multiple_receipts(apple_in_app, apple_product_id, apple_bundle_
     assert payment.subscription_end == single_in_app.expires_date
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__apple__receipt_with_multiple_same_entries(user_client, apple_in_app, apple_product_id, apple_bundle_id):
     assert__valid_receipt(user_client, apple_in_app, apple_product_id, apple_bundle_id, num_latest_duplicates=10)
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__apple__invalid_receipt_sent(user_client, apple_in_app, apple_product_id, apple_bundle_id):
     receipt_data = make_receipt_data(apple_product_id, apple_bundle_id, is_valid=False)
     with mock.patch(RECEIPT_FETCH_FUNCTION, return_value=receipt_data):
@@ -225,6 +230,7 @@ def test__apple__invalid_receipt_sent(user_client, apple_in_app, apple_product_i
     assert not SubscriptionPayment.objects.exists()
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__apple__unauthorised_user(client, apple_in_app, apple_product_id, apple_bundle_id):
     receipt_data = make_receipt_data(apple_product_id, apple_bundle_id, is_valid=False)
     with mock.patch(RECEIPT_FETCH_FUNCTION, return_value=receipt_data):
@@ -234,6 +240,7 @@ def test__apple__unauthorised_user(client, apple_in_app, apple_product_id, apple
     assert not SubscriptionPayment.objects.exists()
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__apple__no_latest_receipt_info_passed(user_client, apple_in_app, apple_product_id, apple_bundle_id):
     receipt_data = make_receipt_data(apple_product_id, apple_bundle_id, is_valid=True)
     receipt_data.latest_receipt_info = None
@@ -244,6 +251,7 @@ def test__apple__no_latest_receipt_info_passed(user_client, apple_in_app, apple_
     assert not SubscriptionPayment.objects.exists()
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__apple__invalid_bundle_id_in_the_receipt(user_client, apple_in_app, apple_product_id, apple_bundle_id):
     receipt_data = make_receipt_data(apple_product_id, apple_bundle_id + 'x')
     with mock.patch(RECEIPT_FETCH_FUNCTION, return_value=receipt_data):
@@ -253,6 +261,7 @@ def test__apple__invalid_bundle_id_in_the_receipt(user_client, apple_in_app, app
     assert not SubscriptionPayment.objects.exists()
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__apple__basic_receipt_with_status_returned(user_client):
     receipt_data = AppleVerifyReceiptResponse.parse_obj(
         {'status': AppleValidationStatus.MALFORMED_DATA_OR_SERVICE_ISSUE.value}
@@ -276,12 +285,15 @@ def assert__notification(user_client, product_id, bundle_id, **notification_kwar
     return notification_data.transaction_info
 
 
-def test__apple__app_store_notification__product_upgrade(user_client,
-                                                  apple_in_app,
-                                                  user,
-                                                  apple_bundle_id,
-                                                  apple_product_id,
-                                                  apple_bigger_product_id):
+@pytest.mark.django_db(databases=['actual_db'])
+def test__apple__app_store_notification__product_upgrade(
+        user_client,
+        apple_in_app,
+        user,
+        apple_bundle_id,
+        apple_product_id,
+        apple_bigger_product_id,
+):
     transaction_id = 'special-transaction-id'
     new_transaction_id = 'upgrade-transaction-id'
 
@@ -321,12 +333,15 @@ def test__apple__app_store_notification__product_upgrade(user_client,
     assert payment.subscription_end == transaction_info.expires_date
 
 
-def test__apple__app_store_notification__product_downgrade(user_client,
-                                                    apple_in_app,
-                                                    user,
-                                                    apple_bundle_id,
-                                                    apple_product_id,
-                                                    apple_bigger_product_id):
+@pytest.mark.django_db(databases=['actual_db'])
+def test__apple__app_store_notification__product_downgrade(
+        user_client,
+        apple_in_app,
+        user,
+        apple_bundle_id,
+        apple_product_id,
+        apple_bigger_product_id,
+):
     transaction_id = 'special-transaction-id'
     new_transaction_id = 'upgrade-transaction-id'
 
@@ -400,11 +415,14 @@ def assert__app_store_notifications__renew__subscription_extended(
     assert payment.subscription_end == transaction_info.expires_date
 
 
-def test__apple__app_store_notifications__renew__subscription_extended(user_client,
-                                                                apple_bundle_id,
-                                                                apple_product_id,
-                                                                user,
-                                                                apple_in_app):
+@pytest.mark.django_db(databases=['actual_db'])
+def test__apple__app_store_notifications__renew__subscription_extended(
+        user_client,
+        apple_bundle_id,
+        apple_product_id,
+        user,
+        apple_in_app,
+):
     assert__app_store_notifications__renew__subscription_extended(
         user_client,
         apple_bundle_id,
@@ -414,11 +432,14 @@ def test__apple__app_store_notifications__renew__subscription_extended(user_clie
     )
 
 
-def test__apple__app_store_notifications__renew__subscription_extended__received_twice(user_client,
-                                                                                apple_bundle_id,
-                                                                                apple_product_id,
-                                                                                user,
-                                                                                apple_in_app):
+@pytest.mark.django_db(databases=['actual_db'])
+def test__apple__app_store_notifications__renew__subscription_extended__received_twice(
+        user_client,
+        apple_bundle_id,
+        apple_product_id,
+        user,
+        apple_in_app,
+):
     assert__app_store_notifications__renew__subscription_extended(
         user_client,
         apple_bundle_id,
@@ -440,6 +461,7 @@ def test__apple__app_store_notification__invalid_signature(client):
     pass
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__apple__app_store_notification__not_renew_operation_skipped(user_client):
     # Provide a notification with a different product id.
     notification_data = \
@@ -451,11 +473,14 @@ def test__apple__app_store_notification__not_renew_operation_skipped(user_client
     assert not SubscriptionPayment.objects.exists()
 
 
-def test__apple__app_store_notifications__refund(user_client,
-                                          apple_bundle_id,
-                                          apple_product_id,
-                                          user,
-                                          apple_in_app):
+@pytest.mark.django_db(databases=['actual_db'])
+def test__apple__app_store_notifications__refund(
+        user_client,
+        apple_bundle_id,
+        apple_product_id,
+        user,
+        apple_in_app,
+):
     transaction_id = 'special-transaction-id'
     assert__valid_receipt(
         user_client,
@@ -490,6 +515,7 @@ def test__apple__app_store_notifications__refund(user_client,
     assert refund.status == SubscriptionPayment.Status.COMPLETED
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__apple__notification_without_receipt(user_client, apple_bundle_id, apple_product_id):
     # In this case nothing should break, it means that we were not informed about an operation.
     notification_data = make_notification_data(

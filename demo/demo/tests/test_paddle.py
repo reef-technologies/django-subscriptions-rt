@@ -157,6 +157,7 @@ def automate_payment(url: str, card: str, email: str):
     final_three_d_s.raise_for_status()
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__paddle__payment_flow__regular(
     paddle, user, user_client, plan, card_number, recharge_plan, paddle_test_email,
 ):
@@ -301,6 +302,7 @@ def test__paddle__payment_flow__regular(
     assert Subscription.objects.count() == 2
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__paddle__payment_flow__trial_period(
     trial_period, paddle, user, user_client, plan, card_number, paddle_test_email,
 ):
@@ -374,6 +376,7 @@ def test__paddle__payment_flow__trial_period(
     payment.subscription.charge_offline()
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__paddle__webhook(paddle, client, user_client, paddle_unconfirmed_payment, paddle_webhook_payload):
     response = user_client.get('/api/subscriptions/')
     assert response.status_code == 200, response.content
@@ -400,6 +403,7 @@ def test__paddle__webhook(paddle, client, user_client, paddle_unconfirmed_paymen
         assert start + paddle_unconfirmed_payment.plan.charge_period == end
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__paddle__webhook_idempotence(paddle, client, paddle_unconfirmed_payment, paddle_webhook_payload):
     assert not Subscription.objects.all().exists()
 
@@ -415,6 +419,7 @@ def test__paddle__webhook_idempotence(paddle, client, paddle_unconfirmed_payment
     assert end_old == end_new
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__paddle__webhook_payload_as_form_data(paddle, client, paddle_unconfirmed_payment, paddle_webhook_payload):
     assert not Subscription.objects.all().exists()
 
@@ -425,6 +430,7 @@ def test__paddle__webhook_payload_as_form_data(paddle, client, paddle_unconfirme
     assert not isinstance(payment.metadata['subscription_id'], list)
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__paddle__webhook_non_existing_payment(paddle, client, paddle_unconfirmed_payment, paddle_webhook_payload, settings):
     paddle_webhook_payload['passthrough'] = json.dumps({
         "subscription_payment_id": "84e9a5a1-cbca-4af5-a7b7-719f8f2fb772",
@@ -434,6 +440,7 @@ def test__paddle__webhook_non_existing_payment(paddle, client, paddle_unconfirme
     assert response.status_code == 200, response.content
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__paddle__subscription_charge_online_avoid_duplicates(paddle, user_client, plan):
     assert not SubscriptionPayment.objects.all().exists()
 
@@ -449,6 +456,7 @@ def test__paddle__subscription_charge_online_avoid_duplicates(paddle, user_clien
     assert SubscriptionPayment.objects.last().metadata['payment_url'] == payment_url  # url hasn't changed
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__paddle__subscription_charge_online_new_payment_after_duplicate_lookup_time(paddle, user_client, plan):
     assert not SubscriptionPayment.objects.all().exists()
 
@@ -465,6 +473,7 @@ def test__paddle__subscription_charge_online_new_payment_after_duplicate_lookup_
     assert SubscriptionPayment.objects.count() == 2
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__paddle__subscription_charge_online_new_payment_if_no_pending(paddle, user_client, plan):
     assert not SubscriptionPayment.objects.all().exists()
 
@@ -481,6 +490,7 @@ def test__paddle__subscription_charge_online_new_payment_if_no_pending(paddle, u
     assert SubscriptionPayment.objects.count() == 2
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__paddle__subscription_charge_online_new_payment_if_no_payment_url(paddle, user_client, plan):
     assert not SubscriptionPayment.objects.all().exists()
 
@@ -497,6 +507,7 @@ def test__paddle__subscription_charge_online_new_payment_if_no_payment_url(paddl
     assert SubscriptionPayment.objects.count() == 2
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__paddle__reference_payment_non_matching_currency(paddle, user_client, paddle_payment):
     other_currency_plan = Plan.objects.create(
         codename='other',
@@ -513,6 +524,7 @@ def test__paddle__reference_payment_non_matching_currency(paddle, user_client, p
         )
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__paddle__subscription_charge_offline__zero_amount(paddle, user_client, paddle_payment):
     assert SubscriptionPayment.objects.count() == 1
 
@@ -534,6 +546,7 @@ def test__paddle__subscription_charge_offline__zero_amount(paddle, user_client, 
     assert last_payment.amount is None
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__paddle__subscription_charge_offline__error(paddle, user, paddle_payment, charge_expiring):
 
     subscription = paddle_payment.subscription
