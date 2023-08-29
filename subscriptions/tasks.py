@@ -1,11 +1,13 @@
+import dataclasses
 from concurrent.futures import ThreadPoolExecutor, wait
 from datetime import datetime, timedelta
-from functools import partial
+from functools import partial, wraps
 from logging import getLogger
 from operator import or_
-from typing import Iterable, Optional
+from typing import Iterable, Callable, Optional, Union, TYPE_CHECKING
 
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Q, QuerySet
 from django.utils.timezone import now
@@ -13,10 +15,17 @@ from more_itertools import first, pairwise
 
 from .defaults import DEFAULT_SUBSCRIPTIONS_OFFLINE_CHARGE_ATTEMPTS_SCHEDULE
 from .exceptions import PaymentError, ProlongationImpossible
-from .models import Subscription, SubscriptionPayment
+from .models import Subscription, SubscriptionPayment, SubscriptionNotificationEvent
 from .providers import get_provider
 
+if TYPE_CHECKING:
+    from typing import ParamSpec, TypeVar
+    P = ParamSpec('P')
+    R = TypeVar('R')
+F = Callable[['P'], 'R']
+
 log = getLogger(__name__)
+
 
 DEFAULT_CHARGE_ATTEMPTS_SCHEDULE = getattr(
     settings,
@@ -192,3 +201,54 @@ def check_unfinished_payments(within: timedelta = timedelta(hours=12)):
 
 
 # TODO: check for concurrency issues, probably add transactions
+
+
+@dataclasses.dataclass
+class _Notification:
+    name: str
+    function: F
+    queryset: Optional[QuerySet] =  dataclasses.field(default_factory=get_user_model().objects.all)
+    parameters: Optional[dict[str, Union[str, int]]] = dataclasses.field(default_factory=dict)
+
+
+class _NotificaticationManager:
+    """
+    Protected class, only one instance should be necessary.
+    """
+
+    def __init__(self):
+        self.__notifications: dict[str, _Notification] = {}
+
+    def __call__(
+            self, name: str,
+            forget_after: int = None,
+            queryset: QuerySet = None,
+            **parameters
+    ) -> Callable[[F], F]:
+        if name in self.__notifications:
+            notification = self.__notifications[name]
+            raise ValueError(f'Notification {name} already registered for {notification.function}')
+
+        def decorator(function: F) -> F:
+            self.__notifications[name] = _Notification(name, function, queryset, parameters)
+            return function
+        return decorator
+
+    def fetch(self, name: str) -> QuerySet:
+        """ Fetch all the missing notifications. """
+        notification = self.__notifications[name]
+        filters = {}
+        for parameter, value in notification.parameters.keys():
+            if 'days_since_' in parameter:
+                parameter = parameter[len('days_since_'):]
+                since = now() - timedelta(days=value)
+                filters.update({
+                    f'{parameter}__gte': since,
+                    f'{parameter}__lte': since + timedelta(1)
+                })
+            else:
+                filters[parameter] = value
+        return notification.queryset.filter(**filters)
+
+
+

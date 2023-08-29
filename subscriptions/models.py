@@ -572,20 +572,15 @@ class SubscriptionNotificationEvent(models.Model):
         ERROR = 4
 
     subscription = models.ForeignKey(
-        Subscription,
+        settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
-        related_name='notification_events'
+        related_name='subscription_notification_events'
     )
     name = models.CharField(
         max_length=255
     )
     status = models.IntegerField(choices=Status.choices, default=Status.PENDING)
-
-    class Meta:
-        unique_together = (
-            ('subscription', 'name'),
-        )
-
+    created = models.DateTimeField(auto_now_add=True)
 
 
 
