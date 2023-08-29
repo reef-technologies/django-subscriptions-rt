@@ -32,8 +32,13 @@ class RecurringSubscriptionsAlreadyExist(SubscriptionError):
 
 
 class PaymentError(Exception):
-    user_message: str = 'unknown error'  # TODO: won't work with __init__()
-    code = 'unknown'
+    def __init__(self, message, user_message: str = '', debug_info: dict | None = None):
+        super().__init__(message)
+        self.user_message = user_message
+        self.debug_info = debug_info or {}
+
+    def __str__(self) -> str:
+        return super().__str__() + f' {self.debug_info}'
 
 
 class BadReferencePayment(PaymentError):

@@ -1,4 +1,3 @@
-
 import logging
 from contextlib import suppress
 
@@ -9,7 +8,7 @@ from django.dispatch import receiver
 from django.utils.timezone import now
 
 from .functions import add_default_plan_to_users, get_default_plan
-from .models import INFINITY, Plan, Subscription
+from .models import MAX_DATETIME, Plan, Subscription
 
 log = logging.getLogger(__name__)
 
@@ -21,8 +20,9 @@ def create_default_subscription_for_new_user(sender, instance, created, **kwargs
             Subscription.objects.create(
                 user=instance,
                 plan=default_plan,
-                start=(now_ := now()),
-                end=now_+INFINITY,
+                auto_prolong=False,  # ignore default plan's `auto_prolong` value
+                start=now(),
+                end=MAX_DATETIME,
             )
 
 

@@ -1,18 +1,32 @@
+from __future__ import annotations
+
 import json
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from functools import partialmethod, wraps
 from logging import getLogger
-from typing import Callable, ClassVar, Iterator, List, Optional
+from typing import Callable, ClassVar, Iterator
 from urllib.parse import urlencode
-from tenacity import retry, retry_base, wait_incrementing, stop_after_attempt, retry_if_result
 
 import requests
 from djmoney.money import Money
 from requests.auth import AuthBase
+from tenacity import (
+    retry,
+    retry_base,
+    retry_if_result,
+    stop_after_attempt,
+    wait_incrementing,
+)
 
 log = getLogger(__name__)
+
+
+class PaddleError(Exception):
+    def __init__(self, message, code: int):
+        super().__init__(message)
+        self.code = code
 
 
 @dataclass
@@ -40,9 +54,17 @@ class PaddleAuth(AuthBase):
 def paddle_result(fn: Callable) -> Callable:
     @wraps(fn)
     def wrapper(*args, **kwargs):
-        result = fn(*args, **kwargs)
+        response = fn(*args, **kwargs)
+
+        try:
+            result = response.json()
+        except requests.JSONDecodeError:
+            assert not response.ok
+            response.raise_for_status()
+
         if not result['success']:
-            raise ValueError(result)
+            raise PaddleError(result['error']['message'], code=result['error']['code'])
+
         return result['response']
 
     return wrapper
@@ -86,34 +108,30 @@ class Paddle:
     post = partialmethod(request, 'post')
 
     @paddle_result
-    def list_subscription_plans(self) -> List[dict]:
-        response = self.get('/subscription/plans')
-        response.raise_for_status()
-        return response.json()
+    def list_subscription_plans(self) -> list[dict]:
+        return self.get('/subscription/plans')
 
     @paddle_result
     def generate_payment_link(
         self,
         product_id: int,
-        prices: List[Money],
+        prices: list[Money],
         email: str,
         message: str = '',
-        metadata: Optional[dict] = None,
+        metadata: dict | None = None,
     ) -> str:
         metadata_str = json.dumps(metadata or {})
         if len(metadata_str) > 1000:
             log.warning(f'Metadata string exceeds the limit of 1000 chars: {metadata_str}')
             metadata_str = metadata_str[:1000]
 
-        response = self.post('/product/generate_pay_link', json={
+        return self.post('/product/generate_pay_link', json={
             'product_id': product_id,
             'prices': [f'{price.currency}:{price.amount}' for price in prices],
             'custom_message': message,
             'customer_email': email,
             'passthrough': metadata_str,
         })
-        response.raise_for_status()
-        return response.json()
 
     @paddle_result
     def one_off_charge(
@@ -126,23 +144,21 @@ class Paddle:
             log.warning(f'Name exceeds the limit of 50 chars: {name}')
             name = name[:50]
 
-        response = self.post(f'/subscription/{subscription_id}/charge', json={
+        return self.post(f'/subscription/{subscription_id}/charge', json={
             'amount': str(amount),
             'charge_name': name,
         })
-        response.raise_for_status()
-        return response.json()
 
     @paddle_result
     def get_payments(
         self,
-        subscription_id: Optional[int] = None,
-        plans: List[int] = None,
-        is_paid: Optional[bool] = None,
-        from_: Optional[date] = None,
-        to: Optional[date] = None,
-        is_one_off_charge: Optional[bool] = None,
-    ) -> List[dict]:
+        subscription_id: int | None = None,
+        plans: list[int] = None,
+        is_paid: bool | None = None,
+        from_: date | None = None,
+        to: date | None = None,
+        is_one_off_charge: bool | None = None,
+    ) -> list[dict]:
         params = {}
 
         if subscription_id is not None:
@@ -163,17 +179,15 @@ class Paddle:
         if is_one_off_charge is not None:
             params['is_one_off_charge'] = int(is_one_off_charge)
 
-        response = self.post('/subscription/payments', json=params)
-        response.raise_for_status()
-        return response.json()
+        return self.post('/subscription/payments', json=params)
 
     @paddle_result
     def get_webhook_history(
         self,
-        page: Optional[int] = None,
-        alerts_per_page: Optional[int] = None,
-        start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None,
+        page: int | None = None,
+        alerts_per_page: int | None = None,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
     ) -> dict:
         params = {}
 
@@ -191,14 +205,12 @@ class Paddle:
         if end_date:
             params['query_head'] = end_date.astimezone(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
 
-        response = self.post('/alert/webhooks', json=params)
-        response.raise_for_status()
-        return response.json()
+        return self.post('/alert/webhooks', json=params)
 
     def iter_webhook_history(
         self,
-        start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
         max_pages: int = 100,
     ) -> Iterator[dict]:
 

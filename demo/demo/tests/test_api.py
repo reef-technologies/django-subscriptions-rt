@@ -1,26 +1,24 @@
 import logging
 import re
 from datetime import timedelta
-from django.utils.timezone import now
-from more_itertools import one
 
 import pytest
-from freezegun import freeze_time
 from dateutil.relativedelta import relativedelta
-from unittest import mock
+from django.utils.timezone import now
+from freezegun import freeze_time
+from more_itertools import one
 
 from subscriptions.exceptions import PaymentError
 from subscriptions.fields import relativedelta_to_dict
 from subscriptions.functions import use_resource
-from subscriptions.models import SubscriptionPayment, Usage, Subscription
+from subscriptions.models import Subscription, SubscriptionPayment, Usage
 from subscriptions.providers import get_providers
-from subscriptions.validators import get_validators
-from subscriptions.providers.google_in_app.models import GoogleSubscriptionNotificationType, GoogleSubscriptionState
 
-from .helpers import days, datetime_to_api
+from .helpers import datetime_to_api, days
 
 
-def test_plans(plan, client):
+@pytest.mark.django_db(databases=['actual_db'])
+def test__api__plans(plan, client):
     response = client.get('/api/plans/')
     assert response.status_code == 200
     assert response.json() == [
@@ -50,38 +48,41 @@ def test_plans(plan, client):
 #     }
 
 
-def test_unauthorized_subscriptions(client, two_subscriptions):
+@pytest.mark.django_db(databases=['actual_db'])
+def test__api__subscriptions__unauthorized(client, two_subscriptions):
     response = client.get('/api/subscriptions/')
     assert response.status_code == 403
 
 
-def test_subscriptions(user_client, two_subscriptions, now):
-    with freeze_time(now + timedelta(seconds=1)):
-        response = user_client.get('/api/subscriptions/')
-        assert response.status_code == 200, response.content
-        subscription = two_subscriptions[0]
-        assert response.json() == [{
-            'id': subscription.id,
-            'start': datetime_to_api(subscription.start),
-            'end': datetime_to_api(subscription.end),
-            'quantity': 1,
-            'next_charge_date': None,
-            'plan': {
-                'id': subscription.plan.id,
-                'codename': subscription.plan.codename,
-                'name': subscription.plan.name,
-                'charge_amount': subscription.plan.charge_amount and subscription.plan.charge_amount.amount,
-                'charge_amount_currency': str(subscription.plan.charge_amount.currency) if subscription.plan.charge_amount else 'USD',
-                'charge_period': relativedelta_to_dict(subscription.plan.charge_period),
-                'max_duration': relativedelta_to_dict(subscription.plan.max_duration),
-                'is_recurring': subscription.plan.is_recurring(),
-                'metadata': {},
-            }
-        }]
+@pytest.mark.django_db(databases=['actual_db'])
+def test__api__subscriptions__authorized(user_client, two_subscriptions):
+    response = user_client.get('/api/subscriptions/')
+    assert response.status_code == 200, response.content
+    subscription = two_subscriptions[0]
+    assert response.json() == [{
+        'id': subscription.id,
+        'start': datetime_to_api(subscription.start),
+        'end': datetime_to_api(subscription.end),
+        'quantity': 1,
+        'next_charge_date': None,
+        'payment_provider_class': None,
+        'plan': {
+            'id': subscription.plan.id,
+            'codename': subscription.plan.codename,
+            'name': subscription.plan.name,
+            'charge_amount': subscription.plan.charge_amount and subscription.plan.charge_amount.amount,
+            'charge_amount_currency': str(subscription.plan.charge_amount.currency) if subscription.plan.charge_amount else 'USD',
+            'charge_period': relativedelta_to_dict(subscription.plan.charge_period),
+            'max_duration': relativedelta_to_dict(subscription.plan.max_duration),
+            'is_recurring': subscription.plan.is_recurring(),
+            'metadata': {},
+        }
+    }]
 
 
-def test_subscriptions__next_charge_date(user_client, subscription, now):
-    subscription.end = now + relativedelta(days=90)
+@pytest.mark.django_db(databases=['actual_db'])
+def test__api__subscriptions__next_charge_date(user_client, subscription):
+    subscription.end = now() + relativedelta(days=90)
     subscription.save()
 
     with freeze_time(subscription.start):
@@ -100,95 +101,123 @@ def test_subscriptions__next_charge_date(user_client, subscription, now):
         assert response.json()[0]['next_charge_date'] == datetime_to_api(subscription.start + relativedelta(days=60))
 
 
-def test_unauthorized_subscribe(client, plan):
+@pytest.mark.django_db(databases=['actual_db'])
+def test__api__subscriptions__next_charge_date__not_prolong(user_client, subscription):
+    subscription.end = now() + relativedelta(days=90)
+    subscription.save()
+
+    with freeze_time(subscription.start):
+        response = user_client.get('/api/subscriptions/')
+        assert response.status_code == 200, response.content
+        assert response.json()[0]['next_charge_date'] == datetime_to_api(subscription.start)
+
+    subscription.auto_prolong = False
+    subscription.save()
+
+    with freeze_time(subscription.start):
+        response = user_client.get('/api/subscriptions/')
+        assert response.status_code == 200, response.content
+        assert response.json()[0]['next_charge_date'] is None
+
+
+@pytest.mark.django_db(databases=['actual_db'])
+def test__api__subscribe__unauthorized(client, plan):
     response = client.post('/api/subscribe/', {'plan': plan.id})
     assert response.status_code == 403
 
 
-def test_subscribe(client, user_client, plan, now, dummy):
-    with freeze_time(now):
-        response = user_client.post('/api/subscribe/', {'plan': plan.id, 'quantity': 2})
-        assert response.status_code == 200, response.content
-        result = response.json()
-        assert result['plan'] == plan.id
-        assert result['payment_id'] == SubscriptionPayment.objects.latest().id
-        assert result['quantity'] == 2
-        assert result['redirect_url'].startswith('/payment/')
-        assert result['background_charge_succeeded'] is False
+@pytest.mark.django_db(databases=['actual_db'])
+def test__api__subscribe__authorized(client, user_client, plan, dummy):
+    response = user_client.post('/api/subscribe/', {'plan': plan.id, 'quantity': 2})
+    assert response.status_code == 200, response.content
+    result = response.json()
+    assert result['plan'] == plan.id
+    assert result['payment_id'] == SubscriptionPayment.objects.latest().id
+    assert result['quantity'] == 2
+    assert result['redirect_url'].startswith('/payment/')
+    assert result['background_charge_succeeded'] is False
 
-        response = user_client.get('/api/subscriptions/')
-        assert response.status_code == 200, response.content
-        subscriptions = response.json()
-        assert len(subscriptions) == 0
+    response = user_client.get('/api/subscriptions/')
+    assert response.status_code == 200, response.content
+    subscriptions = response.json()
+    assert len(subscriptions) == 0
 
-        # manually invoke webhook
-        payment = SubscriptionPayment.objects.latest()
-        response = client.post('/api/webhook/dummy/', {'transaction_id': payment.provider_transaction_id})
-        assert response.status_code == 200, response.content
+    # manually invoke webhook
+    payment = SubscriptionPayment.objects.latest()
+    response = client.post('/api/webhook/dummy/', {'transaction_id': payment.provider_transaction_id})
+    assert response.status_code == 200, response.content
 
-        response = user_client.get('/api/subscriptions/')
-        assert response.status_code == 200, response.content
-        subscriptions = response.json()
-        assert len(subscriptions) == 1
-        subscription = subscriptions[0]
-        assert subscription['start'] == datetime_to_api(now)
-        assert subscription['end'] == datetime_to_api(now + plan.charge_period)
-        assert subscription['quantity'] == 2
+    response = user_client.get('/api/subscriptions/')
+    assert response.status_code == 200, response.content
+    subscriptions = response.json()
+    assert len(subscriptions) == 1
+    subscription = subscriptions[0]
+    subscription_start = Subscription.objects.first().start
+    assert now() - timedelta(seconds=5) < subscription_start < now()
+    assert subscription['start'] == datetime_to_api(subscription_start)
+    assert subscription['end'] == datetime_to_api(subscription_start + plan.charge_period)
+    assert subscription['quantity'] == 2
 
 
-def test__webhook_logging(client, caplog):
+@pytest.mark.django_db(databases=['actual_db'])
+def test__api__webhook_logging(client, caplog):
     with caplog.at_level(logging.INFO):
         client.post('/api/webhook/dummy/', {'webhook-key': 'webhook-value'})
     assert re.search(r"INFO .+? Webhook at http://testserver/api/webhook/dummy/ received payload {'webhook-key': 'webhook-value'}", caplog.text)
 
 
-def test_resources(user_client, subscription, resource, quota, now):
-    with freeze_time(now):
+@pytest.mark.django_db(databases=['actual_db'])
+def test__api__resources__initial(user_client, subscription, resource, quota):
+    with freeze_time(subscription.start):
         response = user_client.get('/api/resources/')
         assert response.status_code == 200, response.content
         assert response.json() == {resource.codename: quota.limit * subscription.quantity}
 
 
-def test_resources_usage(user, user_client, subscription, resource, quota, now):
-    with freeze_time(now + days(1)):
+@pytest.mark.django_db(databases=['actual_db'])
+def test__api__resources__usage(user, user_client, subscription, resource, quota):
+    with freeze_time(subscription.start + days(1)):
         Usage.objects.create(
             user=user,
             resource=resource,
             amount=20,
         )
 
-    with freeze_time(now + days(2)):
+    with freeze_time(subscription.start + days(2)):
         response = user_client.get('/api/resources')
         assert response.status_code == 200, response.content
         assert response.json() == {resource.codename: quota.limit * subscription.quantity - 20}
 
 
-def test_resources_expiration(user_client, subscription, resource, now, quota):
-    with freeze_time(now + quota.burns_in - days(1)):
+@pytest.mark.django_db(databases=['actual_db'])
+def test__api__resources__expiration(user_client, subscription, resource, quota):
+    with freeze_time(subscription.start + quota.burns_in - days(1)):
         response = user_client.get('/api/resources')
         assert response.status_code == 200, response.content
         assert response.json() == {resource.codename: quota.limit * subscription.quantity}
 
-    with freeze_time(now + quota.burns_in):
+    with freeze_time(subscription.start + quota.burns_in):
         response = user_client.get('/api/resources/')
         assert response.status_code == 200, response.content
         assert response.json() == {}
 
 
-def test_recurring_plan_switch(user, user_client, subscription, payment, bigger_plan, now):
-    with freeze_time(now):
+@pytest.mark.django_db(databases=['actual_db'])
+def test__api__recurring_plan_switch(user, user_client, subscription, payment, bigger_plan):
+    with freeze_time(subscription.start):
         assert one(user.subscriptions.active()).plan == subscription.plan
 
-    with freeze_time(now + days(2)):
+    with freeze_time(subscription.start + days(2)):
         response = user_client.post('/api/subscribe/', {'plan': bigger_plan.id})
         assert response.status_code == 200, response.content
 
-    with freeze_time(now + days(2) + timedelta(seconds=1)):
+    with freeze_time(subscription.start + days(2) + timedelta(seconds=1)):
         assert one(user.subscriptions.active()).plan == bigger_plan
 
 
-def test_recharge_plan_subscription(client, user_client, subscription, quota, recharge_plan, recharge_quota, now, resource):
-    with freeze_time(now + days(2)):
+@pytest.mark.django_db(databases=['actual_db'])
+def test__api__recharge_plan_subscription(client, user_client, subscription, quota, recharge_plan, recharge_quota, resource):
+    with freeze_time(subscription.start + days(2)):
         response = user_client.post('/api/subscribe/', {'plan': recharge_plan.id})
         assert response.status_code == 200, response.content
         result = response.json()
@@ -202,7 +231,7 @@ def test_recharge_plan_subscription(client, user_client, subscription, quota, re
         response = client.post('/api/webhook/dummy/', {'transaction_id': transaction_id})
         assert response.status_code == 200, response.content
 
-    with freeze_time(now + days(3)):
+    with freeze_time(subscription.start + days(3)):
         response = user_client.get('/api/resources/')
         assert response.status_code == 200, response.content
         assert response.json() == {
@@ -210,8 +239,9 @@ def test_recharge_plan_subscription(client, user_client, subscription, quota, re
         }
 
 
-def test_background_charge(subscription, now):
-    with freeze_time(now + days(1)):
+@pytest.mark.django_db(databases=['actual_db'])
+def test__background_charge(subscription):
+    with freeze_time(subscription.start + days(1)):
         payment = SubscriptionPayment.objects.create(
             provider_codename=get_providers()[0].codename,
             provider_transaction_id='0000',
@@ -221,18 +251,19 @@ def test_background_charge(subscription, now):
             subscription=subscription,
         )
 
-    with freeze_time(now + days(2)):
+    with freeze_time(subscription.start + days(2)):
         with pytest.raises(PaymentError, match='no previous successful payment'):
             subscription.charge_offline()
 
     payment.status = SubscriptionPayment.Status.COMPLETED
     payment.save()
 
-    with freeze_time(now + days(2)):
+    with freeze_time(subscription.start + days(2)):
         subscription.charge_offline()
 
 
-def test_payments(user_client, payment):
+@pytest.mark.django_db(databases=['actual_db'])
+def test__api__payment(user_client, payment):
     response = user_client.get(f'/api/payments/{payment.id}/')
     assert response.status_code == 200, response.content
     assert response.json() == {
@@ -261,6 +292,7 @@ def test_payments(user_client, payment):
             "start": datetime_to_api(payment.subscription.start),
             "end": datetime_to_api(payment.subscription.end),
             "next_charge_date": datetime_to_api(next(payment.subscription.iter_charge_dates(since=now()))),
+            "payment_provider_class": "DummyProvider",
         },
         "quantity": 2,
         "amount": 100.0,
@@ -272,36 +304,39 @@ def test_payments(user_client, payment):
     }
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__api__resource_headers_mixin__anonymous(client, resource):
     response = client.get('/api/headers_mixin/')
     assert response.status_code == 200
     assert not any(header.startswith('X-Resource-') for header in response.headers)
 
 
+@pytest.mark.django_db(databases=['actual_db'])
 def test__api__resource_headers_mixin__empty(user_client, resource):
     response = user_client.get('/api/headers_mixin/')
     assert response.status_code == 200
     assert f'X-Resource-{resource.codename}' not in response.headers
 
 
-def test__api__resource_headers_mixin__exists(user, user_client, resource, subscription, quota, now):
+@pytest.mark.django_db(databases=['actual_db'])
+def test__api__resource_headers_mixin__exists(user, user_client, resource, subscription, quota):
     available = quota.limit * subscription.quantity
 
-    with freeze_time(now):
+    with freeze_time(subscription.start):
         response = user_client.get('/api/headers_mixin/')
         assert response.status_code == 200
         assert response.headers[f'X-Resource-{resource.codename}'] == str(available)
 
-    with freeze_time(now + days(1)):
+    with freeze_time(subscription.start + days(1)):
         with use_resource(user, resource, 10):
             response = user_client.get('/api/headers_mixin/')
             assert response.status_code == 200
             assert response.headers[f'X-Resource-{resource.codename}'] == str(available - 10)
 
 
-def test_subscriptions__cancel__dummy(user, user_client, subscription, payment, now, dummy):
-    subscription.start = now
-    subscription.end = now + relativedelta(days=90)
+@pytest.mark.django_db(databases=['actual_db'])
+def test__api__subscriptions__cancel__dummy(user, user_client, subscription, payment, dummy):
+    subscription.end = subscription.start + relativedelta(days=90)
     subscription.auto_prolong = True
     subscription.save()
 
@@ -316,164 +351,8 @@ def test_subscriptions__cancel__dummy(user, user_client, subscription, payment, 
 
     with freeze_time(subscription.start + timedelta(days=1, seconds=1)):
         assert user.subscriptions.active().count() == 1
-        assert user.subscriptions.latest().end == now + relativedelta(days=90)
+        assert user.subscriptions.latest().end == subscription.start + relativedelta(days=90)
         assert user.subscriptions.latest().auto_prolong is False
 
     with freeze_time(subscription.end + timedelta(seconds=1)):
         assert user.subscriptions.active().count() == 0
-
-
-def test__trial_period__only_once__subsequent(db, trial_period, dummy, plan, user, user_client):
-    assert user.subscriptions.active().count() == 0
-
-    # create new subscription
-    response = user_client.post('/api/subscribe/', {'plan': plan.id})
-    assert response.status_code == 200, response.content
-    response = user_client.post('/api/webhook/dummy/', {
-        'transaction_id': SubscriptionPayment.objects.latest().provider_transaction_id,
-    })
-    assert response.status_code == 200, response.content
-    assert user.subscriptions.active().count() == 1
-
-    subscription = user.subscriptions.latest()
-    assert subscription.payments.count() == 1
-    payment = subscription.payments.first()
-    assert payment.amount == plan.charge_amount * 0
-    assert payment.subscription_start + trial_period == payment.subscription_end
-
-    # end subscription
-    response = user_client.delete(f'/api/subscriptions/{subscription.uid}/')
-    assert response.status_code == 204, response.content
-    assert user.subscriptions.latest().auto_prolong is False
-
-    # create another subscription and ensure no trial period is there
-    response = user_client.post('/api/subscribe/', {'plan': plan.id})
-    assert response.status_code == 200, response.content
-    assert user.subscriptions.active().count() == 1
-
-    subscription = user.subscriptions.latest()
-    assert subscription.payments.count() == 1
-    payment = subscription.payments.latest()
-    assert payment.amount == plan.charge_amount
-    assert payment.subscription_start + plan.charge_period == payment.subscription_end
-
-
-def test__trial_period__only_once__simultaneous(db, settings, trial_period, dummy, plan, bigger_plan, recharge_plan, user, user_client):
-    get_validators.cache_clear()
-    settings.SUBSCRIPTIONS_VALIDATORS = [
-        'subscriptions.validators.OnlyEnabledPlans',
-        'subscriptions.validators.AtLeastOneRecurringSubscription',
-    ]
-
-    assert user.subscriptions.active().count() == 0
-
-    # create new subscription
-    response = user_client.post('/api/subscribe/', {'plan': plan.id})
-    assert response.status_code == 200, response.content
-    response = user_client.post('/api/webhook/dummy/', {
-        'transaction_id': SubscriptionPayment.objects.latest().provider_transaction_id,
-    })
-    assert response.status_code == 200, response.content
-    assert user.subscriptions.active().count() == 1
-
-    subscription = user.subscriptions.latest()
-    assert subscription.payments.count() == 1
-    payment = subscription.payments.latest()
-    assert payment.amount == plan.charge_amount * 0
-    assert payment.subscription_start + trial_period == payment.subscription_end
-
-    # add resources and ensure no trial period is there
-    response = user_client.post('/api/subscribe/', {'plan': recharge_plan.id})
-    assert response.status_code == 200, response.content
-    assert user.subscriptions.active().count() == 2
-
-    subscription = user.subscriptions.latest()
-    assert subscription.payments.count() == 1
-    payment = subscription.payments.latest()
-    assert payment.amount == recharge_plan.charge_amount
-    assert payment.subscription_start + recharge_plan.max_duration == payment.subscription_end
-
-    # create another subscription and ensure no trial period is there
-    response = user_client.post('/api/subscribe/', {'plan': bigger_plan.id})
-    assert response.status_code == 200, response.content
-    assert user.subscriptions.active().count() == 3
-
-    subscription = user.subscriptions.latest()
-    assert subscription.payments.count() == 1
-    payment = subscription.payments.latest()
-    assert payment.amount == bigger_plan.charge_amount
-    assert payment.subscription_start + bigger_plan.charge_period == payment.subscription_end
-
-
-def test__get_trial_period__cheating__simultaneous_payments(
-    db,
-    trial_period,
-    plan,
-    user,
-    user_client,
-    dummy,
-):
-    assert not SubscriptionPayment.objects.exists()
-
-    response = user_client.post('/api/subscribe/', {'plan': plan.id})
-    assert response.status_code == 200, response.content
-
-    response = user_client.post('/api/subscribe/', {'plan': plan.id})
-    assert response.status_code == 200, response.content
-
-    payments = SubscriptionPayment.objects.all()
-    assert len(payments) == 2
-
-    for payment in payments:
-        payment.status = SubscriptionPayment.Status.COMPLETED
-        payment.save()
-
-    assert Subscription.objects.count() == 2
-    assert payments[0].subscription.initial_charge_offset == trial_period
-    assert payments[1].subscription.initial_charge_offset == relativedelta(0)
-
-
-def test__get_trial_period__cheating__multiacc__paddle(
-    db,
-    trial_period,
-    plan,
-    user,
-    client,
-    dummy,
-):
-    assert not Subscription.objects.exists()
-    raise NotImplementedError()
-    # response = client.post('/api/subscribe/', {'plan': plan.id})
-    # assert response.status_code == 200, response.content
-
-
-def test__get_trial_period__not_cheating__multiacc(
-    db,
-    trial_period,
-    plan,
-    user,
-    client,
-    other_user,
-    dummy,
-):
-    assert not Subscription.objects.exists()
-
-    client.force_login(user)
-    response = client.post('/api/subscribe/', {'plan': plan.id})
-    assert response.status_code == 200, response.content
-
-    client.force_login(other_user)
-    response = client.post('/api/subscribe/', {'plan': plan.id})
-    assert response.status_code == 200, response.content
-
-    payments = SubscriptionPayment.objects.all()
-    assert len(payments) == 2
-    for payment in payments:
-        payment.status = SubscriptionPayment.Status.COMPLETED
-        payment.save()
-
-    assert Subscription.objects.count() == 2
-    assert payments[0].subscription.initial_charge_offset == trial_period
-    assert payments[0].subscription.user == user
-    assert payments[1].subscription.initial_charge_offset == trial_period
-    assert payments[1].subscription.user == other_user

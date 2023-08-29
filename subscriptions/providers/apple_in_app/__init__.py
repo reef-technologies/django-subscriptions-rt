@@ -1,21 +1,15 @@
+from __future__ import annotations
+
 import datetime
 from dataclasses import dataclass
 from logging import getLogger
-from typing import (
-    Callable,
-    ClassVar,
-    Iterable,
-    Optional,
-    Tuple,
-)
+from typing import Callable, ClassVar, Iterable
 
 from django.conf import settings
-from django.contrib.auth.base_user import AbstractBaseUser
 from django.contrib.auth.models import User
 from django.core.exceptions import SuspiciousOperation
 from django.db import transaction
 from django.utils import timezone
-from djmoney.money import Money
 from pydantic import (
     BaseModel,
     ValidationError,
@@ -34,18 +28,21 @@ from subscriptions.models import (
     SubscriptionPayment,
     SubscriptionPaymentRefund,
 )
+
+from ...api.serializers import SubscriptionPaymentSerializer
+from ...utils import HardDBLock
+from .. import Provider
 from .api import (
     AppleAppStoreAPI,
-    AppleInApp,
     AppleLatestReceiptInfo,
     AppleReceiptRequest,
     AppleVerifyReceiptResponse,
 )
 from .app_store import (
+    AppleAppStoreNotification,
     AppStoreNotification,
     AppStoreNotificationTypeV2,
     AppStoreNotificationTypeV2Subtype,
-    AppleAppStoreNotification,
     PayloadValidationError,
     get_original_apple_certificate,
 )
@@ -55,8 +52,6 @@ from .exceptions import (
     AppleSubscriptionNotCompletedError,
     InvalidAppleReceiptError,
 )
-from .. import Provider
-from ...api.serializers import SubscriptionPaymentSerializer
 
 logger = getLogger(__name__)
 
@@ -79,7 +74,7 @@ class AppleInAppProvider(Provider):
         # Check whether the Apple certificate is provided and is a valid certificate.
         get_original_apple_certificate()
 
-    def charge_online(self, *args, **kwargs) -> Tuple[SubscriptionPayment, str]:
+    def charge_online(self, *args, **kwargs) -> tuple[SubscriptionPayment, str]:
         """
         In case of in-app purchase this operation is triggered from the mobile application library.
         """
@@ -121,7 +116,11 @@ class AppleInAppProvider(Provider):
     @classmethod
     def _raise_if_invalid(cls, response: AppleVerifyReceiptResponse) -> None:
         if not response.is_valid or response.receipt.bundle_id != cls.bundle_id:
-            raise AppleReceiptValidationError()
+            raise AppleReceiptValidationError(
+                server_response_code=response.status,
+                received_bundle_id=response.receipt and response.receipt.bundle_id,
+                expected_bundle_id=cls.bundle_id,
+            )
 
     def _get_plan_for_product_id(self, product_id: str) -> Plan:
         search_kwargs = {
@@ -129,7 +128,7 @@ class AppleInAppProvider(Provider):
         }
         return Plan.objects.get(**search_kwargs)
 
-    def _get_latest_transaction(self, original_transaction_id: str) -> Optional[SubscriptionPayment]:
+    def _get_latest_transaction(self, original_transaction_id: str) -> SubscriptionPayment | None:
         # We assume that the user has a single subscription active for this app on the Apple platform.
         return SubscriptionPayment.objects.filter(
             provider_codename=self.codename,
@@ -159,42 +158,48 @@ class AppleInAppProvider(Provider):
                                plan: Plan,
                                start: datetime.datetime,
                                end: datetime.datetime,
-                               subscription: Optional[Subscription] = None) -> SubscriptionPayment:
+                               subscription: Subscription | None = None) -> SubscriptionPayment:
         kwargs = dict(
             provider_codename=self.codename,
             provider_transaction_id=transaction_id,
         )
-        try:
-            payment, was_created = SubscriptionPayment.objects.get_or_create(
-                defaults={
-                    'status': SubscriptionPayment.Status.COMPLETED,
-                    # In-app purchase doesn't report the money.
-                    # We mark it as None to indicate we don't know how much did it cost.
-                    'amount': None,
-                    'user': user,
-                    'plan': plan,
-                    'subscription': subscription,
-                    'subscription_start': start,
-                    'subscription_end': end,
-                    'metadata': AppleInAppMetadata(original_transaction_id=original_transaction_id).dict(),
-                },
-                **kwargs
-            )
-            if was_created:
-                payment.subscription.auto_prolong = False
-                payment.subscription.save()
-        except SubscriptionPayment.MultipleObjectsReturned:
-            # This is left as a countermeasure in case the deduplication fails or the code is still "not good enough"
-            # and generates duplicates. It allows us to read a warning from sentry instead of rushing another fix.
-            logger.warning('Multiple payments found when get_or_create for transaction id "%s". '
-                           'Consider cleaning it up. Returning first of them.', transaction_id)
-            payment = SubscriptionPayment.objects.filter(**kwargs).first()
+
+        with HardDBLock(
+            lock_marker=self.__class__.__name__,
+            lock_value=transaction_id,  # Apple marks transaction_id as string, but all the values are in form of an int right now
+        ):
+            try:
+                payment, was_created = SubscriptionPayment.objects.get_or_create(
+                    defaults={
+                        'status': SubscriptionPayment.Status.COMPLETED,
+                        # In-app purchase doesn't report the money.
+                        # We mark it as None to indicate we don't know how much it costs.
+                        'amount': None,
+                        'user': user,
+                        'plan': plan,
+                        'subscription': subscription,
+                        'subscription_start': start,
+                        'subscription_end': end,
+                        'metadata': AppleInAppMetadata(original_transaction_id=original_transaction_id).dict(),
+                    },
+                    **kwargs
+                )
+                if was_created:
+                    payment.subscription.auto_prolong = False
+                    payment.subscription.save()
+            except SubscriptionPayment.MultipleObjectsReturned:
+                # This is left as a countermeasure in case the deduplication fails or the code is still "not good enough"
+                # and generates duplicates. It allows us to read a warning from sentry instead of rushing another fix.
+                logger.warning(
+                    'Multiple payments found when get_or_create for transaction id "%s". '
+                    'Consider cleaning it up. Returning first of them.', transaction_id)
+                payment = SubscriptionPayment.objects.filter(**kwargs).first()
 
         return payment
 
     def _handle_single_receipt_info(self,
                                     user: User,
-                                    receipt_info: AppleLatestReceiptInfo) -> Optional[SubscriptionPayment]:
+                                    receipt_info: AppleLatestReceiptInfo) -> SubscriptionPayment | None:
         if receipt_info.cancellation_date is not None:
             # Cancellation/refunds are handled via notifications, we skip them during receipt handling to simplify.
             logger.warning('Found a cancellation date in receipt: %s, ignoring this receipt.', receipt_info)

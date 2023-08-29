@@ -2,6 +2,7 @@ import json
 import unittest.mock
 from datetime import datetime
 
+import pytest
 import requests
 
 from subscriptions.providers.apple_in_app.api import (
@@ -67,7 +68,8 @@ def make_api_call(service_responses: list[tuple[int, str]]) \
     return result, fake_session.post.call_args_list
 
 
-def test__proper_receipt():
+@pytest.mark.django_db(databases=['actual_db'])
+def test__apple__proper_receipt():
     responses = [
         (200, make_json_response_with_status(AppleValidationStatus.OK)),
     ]
@@ -77,7 +79,8 @@ def test__proper_receipt():
     assert len(call_list) == 1
 
 
-def test__retry_on_sandbox_when_status_code_tells_you_so():
+@pytest.mark.django_db(databases=['actual_db'])
+def test__apple__retry_on_sandbox_when_status_code_tells_you_so():
     responses = [
         (200, make_json_response_with_status(AppleValidationStatus.SANDBOX_RECEIPT_ON_PRODUCTION_ENV)),
         (200, make_json_response_with_status(AppleValidationStatus.OK)),
@@ -91,7 +94,8 @@ def test__retry_on_sandbox_when_status_code_tells_you_so():
     assert call_list[1][0][0] == 'https://sandbox.itunes.apple.com/verifyReceipt'
 
 
-def test__retry_when_failed_request_is_retryable():
+@pytest.mark.django_db(databases=['actual_db'])
+def test__apple__retry_when_failed_request_is_retryable():
     responses = [
         (200, make_json_response_with_status(AppleValidationStatus.INTERNAL_SERVICE_ERROR, retryable=True)),
         (200, make_json_response_with_status(AppleValidationStatus.OK)),
@@ -101,7 +105,8 @@ def test__retry_when_failed_request_is_retryable():
     assert len(call_list) == 2
 
 
-def test__dont_retry_when_failed_request_is_not_retryable():
+@pytest.mark.django_db(databases=['actual_db'])
+def test__apple__dont_retry_when_failed_request_is_not_retryable():
     responses = [
         (200, make_json_response_with_status(AppleValidationStatus.INTERNAL_SERVICE_ERROR, retryable=False)),
     ]
@@ -110,7 +115,8 @@ def test__dont_retry_when_failed_request_is_not_retryable():
     assert len(call_list) == 1
 
 
-def test__retry_in_case_of_service_error():
+@pytest.mark.django_db(databases=['actual_db'])
+def test__apple__retry_in_case_of_service_error():
     responses = [
         (400, '{"status": %s}' % AppleValidationStatus.SANDBOX_RECEIPT_ON_PRODUCTION_ENV.value),
         (200, make_json_response_with_status(AppleValidationStatus.OK)),

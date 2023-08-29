@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import List, ClassVar
+from typing import ClassVar
 
 from django.conf import settings
 from django.db.models import QuerySet
@@ -46,5 +48,5 @@ class SingleRecurringSubscription(SubscriptionValidator):
 
 
 @lru_cache(maxsize=1)
-def get_validators() -> List[SubscriptionValidator]:
+def get_validators() -> list[SubscriptionValidator]:
     return [import_string(module)() for module in getattr(settings, 'SUBSCRIPTIONS_VALIDATORS', DEFAULT_SUBSCRIPTIONS_VALIDATORS)]

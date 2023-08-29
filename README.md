@@ -4,6 +4,8 @@
 
 See [noxfile.py](noxfile.py) for list of Python and Django versions supported (variables `PYTHON_VERSIONS` and `DJANGO_VERSIONS`).
 
+> Warning: current version only supports Postgres database (PG_ADVISORY_LOCK is used), however MySQL support may be added by supporting MySQL in HardDBLock context manager.
+
 # Features
 
 TODO
@@ -310,6 +312,7 @@ export POSTGRES_HOST=localhost
 export POSTGRES_PORT=8432
 export POSTGRES_USER=postgres
 export POSTGRES_PASSWORD=12345
+export PADDLE_TEST_EMAIL=<your-email>
 ```
 
 Start database (in another terminal with the same variables) with

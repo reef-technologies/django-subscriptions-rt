@@ -9,11 +9,10 @@ https://docs.djangoproject.com/en/4.0/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/4.0/ref/settings/
 """
+from __future__ import annotations
 
 from pathlib import Path
-from typing import List
 from os import environ
-from constance import config
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -28,7 +27,7 @@ SECRET_KEY = 'django-insecure-05xv#t=!60$9mkn39hn2-)_mexac&gttcesbk%xqi(xtkamns7
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS: List[str] = ['*']
+ALLOWED_HOSTS: list[str] = ['*']
 
 
 # Application definition
@@ -94,7 +93,9 @@ DATABASES = {
     #     'ENGINE': 'django.db.backends.sqlite3',
     #     'NAME': str(BASE_DIR / 'db.sqlite3'),
     # },
-    'default': {
+    'default': {},
+    # Set to check whether everything related to routing will be properly handled.
+    'actual_db': {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': environ['POSTGRES_DB'],
         'USER': environ['POSTGRES_USER'],
@@ -104,6 +105,9 @@ DATABASES = {
         'ATOMIC_REQUESTS': False,
     }
 }
+DATABASE_ROUTERS = [
+    'demo.db_router.DBRouter',
+]
 
 CONSTANCE_BACKEND = 'constance.backends.database.DatabaseBackend'
 CONSTANCE_CONFIG = {
@@ -120,6 +124,7 @@ SUBSCRIPTIONS_PAYMENT_PROVIDERS = [
 PADDLE_VENDOR_ID = environ.get('PADDLE_VENDOR_ID')
 PADDLE_VENDOR_AUTH_CODE = environ.get('PADDLE_VENDOR_AUTH_CODE')
 PADDLE_ENDPOINT = environ.get('PADDLE_ENDPOINT')
+PADDLE_TEST_EMAIL = environ.get('PADDLE_TEST_EMAIL')
 
 GOOGLE_PLAY_PACKAGE_NAME = environ.get('GOOGLE_PLAY_PACKAGE_NAME')
 GOOGLE_PLAY_SERVICE_ACCOUNT = environ.get('GOOGLE_PLAY_SERVICE_ACCOUNT')

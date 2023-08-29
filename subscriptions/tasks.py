@@ -1,8 +1,12 @@
 import dataclasses
+from __future__ import annotations
+
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, wait
 from datetime import datetime, timedelta
 from functools import partial, wraps
 from logging import getLogger
+from typing import Iterable
 from operator import or_
 from typing import Iterable, Callable, Optional, Union, TYPE_CHECKING
 
@@ -13,7 +17,10 @@ from django.db.models import Q, QuerySet
 from django.utils.timezone import now
 from more_itertools import first, pairwise
 
-from .defaults import DEFAULT_SUBSCRIPTIONS_OFFLINE_CHARGE_ATTEMPTS_SCHEDULE
+from .defaults import (
+    DEFAULT_NOTIFY_PENDING_PAYMENTS_AFTER,
+    DEFAULT_SUBSCRIPTIONS_OFFLINE_CHARGE_ATTEMPTS_SCHEDULE,
+)
 from .exceptions import PaymentError, ProlongationImpossible
 from .models import Subscription, SubscriptionPayment, SubscriptionNotificationEvent
 from .providers import get_provider
@@ -25,7 +32,6 @@ if TYPE_CHECKING:
 F = Callable[['P'], 'R']
 
 log = getLogger(__name__)
-
 
 DEFAULT_CHARGE_ATTEMPTS_SCHEDULE = getattr(
     settings,
@@ -68,18 +74,22 @@ def _charge_recurring_subscription(
         expiration_date - at,
     )
 
+    # we don't want to try charging if
+    # 1) there is already ANY charge attempt (successful or not) in this charge period
+    # (so if there was ERROR charge in this period, we will try again only in next period)
+    # 2) there is already any PENDING charge attempt; all charge attempts should end up
+    # being in COMPLETED/ERROR/ABANDONED etc state, and PENDING payments will be garbage-collected
+    # by a separate task
     previous_payment_attempts = subscription.payments.filter(
-        # any attempt in this period
-        created__gte=charge_period[0],
-        created__lt=charge_period[1],
+        Q(created__gte=charge_period[0], created__lt=charge_period[1]) |  # any attempt in this period
+        Q(status=SubscriptionPayment.Status.PENDING)  # any pending attempt
     )
-
     if previous_payment_attempts.exists():
         previous_payment_attempts = list(previous_payment_attempts)
-        log.debug('Skipping this payment, because there already exists payment attempt within specified charge period: %s', previous_payment_attempts)
+        log.debug('Skipping this payment, because of already existing payment attempt(s): %s', previous_payment_attempts)
 
         if len(previous_payment_attempts) > 1:
-            log.warning('Multiple payment attempts detected for period %s (should be at most 1 attempt): %s', charge_period, previous_payment_attempts)
+            log.warning('Multiple payment attempts detected (should be at most 1 attempt): %s', previous_payment_attempts)
 
         if (successful_attempts := [
             attempt for attempt in previous_payment_attempts
@@ -87,7 +97,7 @@ def _charge_recurring_subscription(
         ]):
             log.warning('Previous payment attempt was successful but subscription end is still approaching: %s', successful_attempts)
 
-        return  # don't try to charge one more time in this period
+        return
 
     log.debug('Trying to prolong subscription %s', subscription)
     try:
@@ -106,17 +116,19 @@ def _charge_recurring_subscription(
         log.debug('Offline-charging subscription %s', subscription)
         subscription.charge_offline()
     except PaymentError as exc:
-        log.debug('Failed to offline-charge subscription %s: %s', subscription, exc)
+        log.warning('Failed to offline-charge subscription', extra=exc.debug_info)
 
         # here we create a failed SubscriptionPayment to indicate that we tried
         # to charge but something went wrong, so that subsequent task calls
         # won't try charging and sending email again within same charge_period
         SubscriptionPayment.objects.create(
             provider_codename='',
+            user=subscription.user,
             status=SubscriptionPayment.Status.ERROR,
             plan=subscription.plan,
             subscription=subscription,
             quantity=subscription.quantity,
+            metadata=exc.debug_info,
         )
         return
 
@@ -127,10 +139,20 @@ def _charge_recurring_subscription(
     # to auto-prolong subscription itself
 
 
+def notify_stuck_pending_payments(older_than: timedelta = DEFAULT_NOTIFY_PENDING_PAYMENTS_AFTER):
+    stuck_payments = SubscriptionPayment.objects.filter(
+        created__lte=now() - older_than,
+        status=SubscriptionPayment.Status.PENDING,
+        subscription__isnull=False,  # ignore initial payments (abandoned carts)
+    )
+    for payment in stuck_payments:
+        log.error('Payment stuck in pending state: %s', payment)
+
+
 def charge_recurring_subscriptions(
-    subscriptions: Optional[QuerySet] = None,
+    subscriptions: QuerySet | None = None,
     schedule: Iterable[timedelta] = DEFAULT_CHARGE_ATTEMPTS_SCHEDULE,
-    num_threads: Optional[int] = None,
+    num_threads: int | None = None,
     lock: bool = True,
     # TODO: dry-run
 ):
@@ -199,6 +221,35 @@ def check_unfinished_payments(within: timedelta = timedelta(hours=12)):
             unfinished_payments.filter(provider_codename=codename)
         )
 
+
+def check_duplicated_payments() -> dict[tuple[str, str], list[SubscriptionPayment]]:
+    # This is rather massive as it's checking all operations.
+    all_entries = SubscriptionPayment.objects.prefetch_related('subscription').all()
+
+    transaction_id_to_entries: defaultdict[tuple[str, str], list[SubscriptionPayment]] = defaultdict(list)
+    for entry in all_entries:
+        # This happens for e.g.: unconfirmed paddle. We don't worry about these.
+        if entry.provider_transaction_id is None:
+            continue
+        key = (entry.provider_codename, entry.provider_transaction_id)
+        transaction_id_to_entries[key].append(entry)
+
+    result = {}
+    for (provider_codename, transaction_id), transaction_id_entries in transaction_id_to_entries.items():
+        # Single entry – no issue.
+        if len(transaction_id_entries) == 1:
+            continue
+
+        log.info('Found transaction ID: %s provider: %s with %s duplicates.',
+                 transaction_id, provider_codename, len(transaction_id_entries))
+
+        for idx, entry in enumerate(transaction_id_entries):
+            log.info('\t%s: Subscription UID: %s, payment UID: %s',
+                     (idx + 1), entry.subscription.uid, entry.uid)
+
+        result[(provider_codename, transaction_id)] = transaction_id_entries
+
+    return result
 
 # TODO: check for concurrency issues, probably add transactions
 

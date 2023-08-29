@@ -3,27 +3,38 @@ from __future__ import annotations
 from collections import defaultdict
 from contextlib import suppress
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from itertools import count, islice
 from logging import getLogger
 from operator import attrgetter
-from typing import TYPE_CHECKING, Callable, Iterable, Iterator, List, Optional
+from typing import TYPE_CHECKING, Callable, Iterable, Iterator
 from uuid import uuid4
 
 from dateutil.relativedelta import relativedelta
 from django.conf import settings
-from django.contrib.auth.models import AbstractBaseUser
-from django.core.serializers.json import DjangoJSONEncoder
 from django.db import models
-from django.db.models import F, Q, DateTimeField, ExpressionWrapper, Index, QuerySet, UniqueConstraint
+from django.db.models import (
+    DateTimeField,
+    ExpressionWrapper,
+    F,
+    Index,
+    Q,
+    QuerySet,
+    UniqueConstraint,
+)
 from django.db.models.functions import Least
 from django.urls import reverse
 from django.utils.timezone import now
 from pydantic import BaseModel
 
-from .exceptions import InconsistentQuotaCache, PaymentError, ProlongationImpossible, ProviderNotFound
+from .exceptions import (
+    InconsistentQuotaCache,
+    PaymentError,
+    ProlongationImpossible,
+    ProviderNotFound,
+)
 from .fields import MoneyField, RelativeDurationField
-from .utils import merge_iter
+from .utils import merge_iter, AdvancedJSONEncoder
 
 log = getLogger(__name__)
 
@@ -31,6 +42,7 @@ if TYPE_CHECKING:
     from .providers import Provider
 
 INFINITY = relativedelta(days=365 * 1000)
+MAX_DATETIME = datetime.max.replace(tzinfo=timezone.utc)
 
 
 class Resource(models.Model):
@@ -81,7 +93,7 @@ class Plan(models.Model):
         help_text='group of features connected to this plan',
         related_name='plans',
     )
-    metadata = models.JSONField(blank=True, default=dict, encoder=DjangoJSONEncoder)
+    metadata = models.JSONField(blank=True, default=dict, encoder=AdvancedJSONEncoder)
     is_enabled = models.BooleanField(default=True)
 
     class Meta:
@@ -125,7 +137,7 @@ class QuotaChunk:
 @dataclass
 class QuotaCache:
     datetime: datetime
-    chunks: List[QuotaChunk]
+    chunks: list[QuotaChunk]
 
     def apply(self, target_chunks: Iterable[QuotaChunk]) -> Iterator[QuotaChunk]:
         """
@@ -158,11 +170,11 @@ class SubscriptionQuerySet(models.QuerySet):
             'start__lte' if include_until else 'start__lt': until,
         })
 
-    def active(self, at: Optional[datetime] = None) -> QuerySet:
+    def active(self, at: datetime | None = None) -> QuerySet:
         at = at or now()
         return self.overlap(at, at, include_until=True)
 
-    def expiring(self, within: datetime, since: Optional[datetime] = None) -> QuerySet:
+    def expiring(self, within: datetime, since: datetime | None = None) -> QuerySet:
         since = since or now()
         return self.filter(end__gte=since, end__lte=since + within)
 
@@ -170,7 +182,7 @@ class SubscriptionQuerySet(models.QuerySet):
         subscriptions = self.select_related('plan')
         return subscriptions.exclude(plan__charge_period=INFINITY) if predicate else subscriptions.filter(plan__charge_period=INFINITY)
 
-    def with_ages(self, at: Optional[datetime] = None) -> QuerySet:
+    def with_ages(self, at: datetime | None = None) -> QuerySet:
         return self.annotate(
             age=ExpressionWrapper(Least(at or now(), F('end')) - F('start'), output_field=DateTimeField()),
         )
@@ -192,9 +204,9 @@ class Subscription(models.Model):
     uid = models.UUIDField(primary_key=True, default=uuid4)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='subscriptions')
     plan = models.ForeignKey(Plan, on_delete=models.PROTECT, related_name='subscriptions')
-    auto_prolong = models.BooleanField(default=True)
+    auto_prolong = models.BooleanField()
     quantity = models.PositiveIntegerField(default=1)
-    initial_charge_offset = RelativeDurationField(default=default_initial_charge)
+    initial_charge_offset = RelativeDurationField(blank=True, default=default_initial_charge)
     start = models.DateTimeField(blank=True)
     end = models.DateTimeField(blank=True)
 
@@ -204,11 +216,11 @@ class Subscription(models.Model):
         get_latest_by = 'start'
 
     @property
-    def id(self) -> Optional[str]:
+    def id(self) -> str | None:
         return self.uid and str(self.uid)
 
     @property
-    def short_id(self) -> Optional[str]:
+    def short_id(self) -> str | None:
         with suppress(TypeError):
             return self.id[:8]
 
@@ -222,6 +234,8 @@ class Subscription(models.Model):
     def save(self, *args, **kwargs):
         self.start = self.start or now()
         self.end = self.end or min(self.start + self.plan.charge_period, self.max_end)
+        if self.auto_prolong is None:
+            self.auto_prolong = self.plan.is_recurring()
         super().save(*args, **kwargs)
         self.adjust_default_subscription()
 
@@ -252,8 +266,8 @@ class Subscription(models.Model):
 
     def iter_quota_chunks(
         self,
-        since: Optional[datetime] = None,
-        until: Optional[datetime] = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
         sort_by: Callable = attrgetter('start'),
     ) -> Iterator[QuotaChunk]:
 
@@ -263,7 +277,11 @@ class Subscription(models.Model):
             key=sort_by,
         )
 
-    def _iter_single_quota_chunks(self, quota: 'Quota', since: Optional[datetime] = None, until: Optional[datetime] = None):
+    def _iter_single_quota_chunks(
+        self, quota: 'Quota',
+        since: datetime | None = None,
+        until: datetime | None = None,
+    ):
 
         epsilon = timedelta(milliseconds=1)  # we use epsilon to exclude chunks which start right at `since - quota.burns_in`
         min_start_time = max(since - quota.burns_in + epsilon, self.start) if since else self.start  # quota chunks starting after this are OK
@@ -310,61 +328,91 @@ class Subscription(models.Model):
 
             yield charge_date
 
-    def charge_offline(self):
+    def get_reference_payment(self) -> SubscriptionPayment:
+        return self.payments.filter(status=SubscriptionPayment.Status.COMPLETED).latest()
+
+    def charge_offline(self) -> SubscriptionPayment:
         from .providers import get_provider
 
         try:
-            last_payment = self.payments.filter(status=SubscriptionPayment.Status.COMPLETED).latest()
+            reference_payment = self.get_reference_payment()
         except SubscriptionPayment.DoesNotExist:
             raise PaymentError('There is no previous successful payment to take credentials from')
 
-        provider_codename = last_payment.provider_codename
+        provider_codename = reference_payment.provider_codename
         try:
             provider = get_provider(provider_codename)
         except ProviderNotFound as exc:
             raise PaymentError(f'Could not retrieve provider "{provider_codename}"') from exc
 
-        provider.charge_offline(
+        return provider.charge_offline(
             user=self.user,
             plan=self.plan,
             subscription=self,
             quantity=self.quantity,
-            reference_payment=last_payment,
+            reference_payment=reference_payment,
         )
 
     def adjust_default_subscription(self):
         # this subscription pushes out every default subscription out of its (start,end) period;
-        # IMPORTANT: this does not "fill in" gaps with default sub if current subscription is shrinked
+        # if this subscription is shrink, then it fills the gap with default subscription
 
         from .functions import get_default_plan
 
         try:
             default_plan = get_default_plan()
+            if not default_plan:
+                return
         except Plan.DoesNotExist:
             return
 
         if self.plan == default_plan or not self.plan.is_recurring():
             return
 
+        # adjust overlapping default subscriptions
         default_subscriptions = (
-            Subscription.objects
+            self.user.subscriptions
             .overlap(self.start, self.end, include_until=True)
-            .filter(user=self.user, plan=default_plan)
+            .filter(plan=default_plan)
         )
 
         for default_subscription in default_subscriptions:
-            if default_subscription.start < self.start:  # split default subscription into two parts
+            if default_subscription.start >= self.start:
+                if default_subscription.end <= self.end:
+                    # if default subscription is fully covered with current subscription -> delete default
+                    default_subscription.delete()
+                else:
+                    # otherwise just shift default subscription to end of current subscription
+                    default_subscription.start = self.end
+                    default_subscription.save()
+
+            # here default_subscription.start < self.start
+            elif default_subscription.end != self.start:
+                # split default subscription into two parts
                 default_subscription.end = self.start
                 default_subscription.save()
 
                 default_subscription.pk = None
+                default_subscription._state.adding = True
                 default_subscription.start = self.end
-                default_subscription.end = self.end + INFINITY
+                default_subscription.end = datetime.max
                 default_subscription.save()
 
-            else:  # just shift default subscription to end of current subscription
-                default_subscription.start = self.end
-                default_subscription.save()
+        # create a default subscription if there is none afterwards;
+        # note that this will not create a default subscription if ANY
+        # afterward subscription exists (either recurring or not)
+        if not self.user.subscriptions.active(at=self.end).exclude(end=self.end).exists():
+            next_subscription = self.user.subscriptions.filter(start__gt=self.end).order_by('start').first()
+            if next_subscription and next_subscription.plan == default_plan:
+                next_subscription.start = self.end
+                next_subscription.save()
+            else:
+                Subscription.objects.create(
+                    user=self.user,
+                    plan=default_plan,
+                    start=self.end,
+                    end=next_subscription.start if next_subscription else MAX_DATETIME,
+                )
 
 
 class Quota(models.Model):
@@ -417,13 +465,19 @@ class AbstractTransaction(models.Model):
         ERROR = 4
 
     uid = models.UUIDField(primary_key=True, blank=True)
+
+    # This field should go away once we add provider-specific child models (see below)
     provider_codename = models.CharField(max_length=255)
+    # Sometimes there is no information about internal provider's transaction ID.
+    # For such cases we set `provider_transaction_id` to None and fill it in later.
+    # Also, this field is legacy and should be replaced by provider-specific child
+    # model, see https://github.com/reef-technologies/django-subscriptions-rt/issues/13
     provider_transaction_id = models.CharField(max_length=255, blank=True, null=True)
     status = models.PositiveSmallIntegerField(choices=Status.choices, default=Status.PENDING)
     amount = MoneyField(blank=True, null=True)  # set None for services where the payment information is completely out of reach
     # source = models.ForeignKey(MoneyStorage, on_delete=models.PROTECT, related_name='transactions_out')
     # destination = models.ForeignKey(MoneyStorage, on_delete=models.PROTECT, related_name='transactions_in')
-    metadata = models.JSONField(blank=True, default=dict, encoder=DjangoJSONEncoder)
+    metadata = models.JSONField(blank=True, default=dict, encoder=AdvancedJSONEncoder)
     created = models.DateTimeField(blank=True, editable=False)
     updated = models.DateTimeField(blank=True, editable=False)
 
@@ -442,11 +496,11 @@ class AbstractTransaction(models.Model):
         return super().save(*args, **kwargs)
 
     @property
-    def id(self) -> Optional[str]:
+    def id(self) -> str | None:
         return self.uid and str(self.uid)
 
     @property
-    def short_id(self) -> Optional[str]:
+    def short_id(self) -> str | None:
         with suppress(TypeError):
             return self.id[:8]
 
@@ -503,8 +557,7 @@ class SubscriptionPayment(AbstractTransaction):
 
                 else:
                     # prolong existing subscription and set payment's (start, end)
-                    subscription.end = subscription.prolong()  # TODO: what if this fails?
-                    self.subscription_end = subscription.end
+                    self.subscription_end = subscription.end = subscription.prolong()  # TODO: what if this fails?
 
                 subscription.save()
 
@@ -525,14 +578,6 @@ class SubscriptionPayment(AbstractTransaction):
                 pass  # TODO: send email if not silent
 
         return super().save(*args, **kwargs)
-
-    @classmethod
-    def get_last_successful(cls, user: AbstractBaseUser) -> Optional[SubscriptionPayment]:
-        with suppress(cls.DoesNotExist):
-            return cls.objects.filter(
-                user=user,
-                status=SubscriptionPayment.Status.COMPLETED,
-            ).latest()
 
     @property
     def meta(self) -> BaseModel:

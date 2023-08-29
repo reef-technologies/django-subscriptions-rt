@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 from base64 import b64decode
 from enum import Enum
-from typing import Any, List, Optional, Union
+from typing import Any, Optional, Union
 
 from pydantic import BaseModel, Extra
 
@@ -160,7 +162,7 @@ class GoogleBasePlan(BaseModel):
     # https://developers.google.com/android-publisher/api-ref/rest/v3/monetization.subscriptions#BasePlan
     basePlanId: str
     state: GoogleBasePlanState
-    regionalConfigs: List[GoogleRegionalBasePlanConfig]
+    regionalConfigs: list[GoogleRegionalBasePlanConfig]
     autoRenewingBasePlanType: Optional[GoogleAutoRenewingBasePlanType]
     prepaidBasePlanType: Optional[GooglePrepaidBasePlanType]
 
@@ -172,7 +174,7 @@ class GoogleSubscription(BaseModel):
     # https://developers.google.com/android-publisher/api-ref/rest/v3/monetization.subscriptions
     packageName: str
     productId: str
-    basePlans: List[GoogleBasePlan]
+    basePlans: list[GoogleBasePlan]
     archived: Optional[bool] = None
 
     class Config:
@@ -216,7 +218,7 @@ class GooglePrepaidPlan(BaseModel):
 
 class GoogleOfferDetails(BaseModel):
     # https://developers.google.com/android-publisher/api-ref/rest/v3/purchases.subscriptionsv2#OfferDetails
-    offerTags: List[str] = []
+    offerTags: list[str] = []
     basePlanId: str
     offerId: Optional[str] = None
 
@@ -238,7 +240,7 @@ class GoogleSubscriptionPurchaseLineItem(BaseModel):
 
 class GoogleSubscriptionPurchaseV2(BaseModel):
     # https://developers.google.com/android-publisher/api-ref/rest/v3/purchases.subscriptionsv2#resource:-subscriptionpurchasev2
-    lineItems: List[GoogleSubscriptionPurchaseLineItem]
+    lineItems: list[GoogleSubscriptionPurchaseLineItem]
     startTime: str
     subscriptionState: GoogleSubscriptionState
     linkedPurchaseToken: Optional[str] = None

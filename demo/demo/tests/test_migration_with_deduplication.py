@@ -4,10 +4,7 @@ Content of this test is based of off https://www.caktusgroup.com/blog/2016/02/02
 import datetime
 import uuid
 from decimal import Decimal
-from typing import (
-    Any,
-    Callable,
-)
+from typing import Any, Callable
 
 import pytest
 from dateutil.relativedelta import relativedelta
@@ -86,7 +83,7 @@ def make_user_plans_and_subscriptions(apps: Apps,
 
 @pytest.mark.skip
 @pytest.mark.django_db
-def test__check_migration_deduplication(apple_in_app, days):
+def test__deduplication_migration__check_migration_deduplication(apple_in_app, days):
     expected_count = 0
 
     def pre_migration_run(pre_apps: Apps) -> None:
@@ -142,7 +139,7 @@ def test__check_migration_deduplication(apple_in_app, days):
 
 @pytest.mark.skip
 @pytest.mark.django_db
-def test__fail__same_transaction_different_plan(apple_in_app, days):
+def test__deduplication_migration__fail__same_transaction_different_plan(apple_in_app, days):
     def pre_migration_run(pre_apps) -> None:
         pre_model = pre_apps.get_model('subscriptions', 'SubscriptionPayment')
 
@@ -174,7 +171,7 @@ def test__fail__same_transaction_different_plan(apple_in_app, days):
 
 @pytest.mark.skip
 @pytest.mark.django_db
-def test__fail__multiple_reused_subscriptions(apple_in_app, days):
+def test__deduplication_migration__fail__multiple_reused_subscriptions(apple_in_app, days):
     def pre_migration_run(pre_apps) -> None:
         pre_model = pre_apps.get_model('subscriptions', 'SubscriptionPayment')
 

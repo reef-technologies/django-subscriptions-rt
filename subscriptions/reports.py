@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from decimal import Decimal
 from statistics import median
-from typing import Dict, Iterator, List, Optional, Tuple
+from typing import Iterator
 
 from djmoney.money import Money
 from django.db.models import Q, QuerySet
@@ -27,6 +29,8 @@ class IterPeriodsMixin:
 
         For frequency, use `subscriptions.reports.[YEARLY|MONTHLY|WEEKLY|DAILY|HOURLY|MINUTELY|SECONDLY]`.
         """
+        assert since.microsecond == until.microsecond == 0, \
+            "iter_periods would truncate microseconds, use .replace(microsecond=0) for `since` and `until`"
         points_in_time = rrule(frequency, dtstart=since, until=until)
         end = since
         for start, end in pairwise(points_in_time):
@@ -44,10 +48,11 @@ class SubscriptionsReport(IterPeriodsMixin):
 
     since: datetime
     until: datetime = field(default_factory=now)
+    include_until: bool = False
 
     @property
     def overlapping(self) -> QuerySet:
-        return Subscription.objects.overlap(self.since, self.until)
+        return Subscription.objects.overlap(self.since, self.until, include_until=self.include_until)
 
     @property
     def new(self) -> QuerySet:
@@ -57,8 +62,8 @@ class SubscriptionsReport(IterPeriodsMixin):
         """ Number of newly created subscriptions within selected period. """
         return self.new.count()
 
-    def get_new_datetimes(self) -> List[datetime]:
-        """ List of newly created subscriptions' dates within selected period. """
+    def get_new_datetimes(self) -> list[datetime]:
+        """ list of newly created subscriptions' dates within selected period. """
         return list(self.new.values_list('start', flat=True))
 
     @property
@@ -75,12 +80,12 @@ class SubscriptionsReport(IterPeriodsMixin):
         """ Number of subscriptions ending within selected period. """
         return self.ended_or_ending.count()
 
-    def get_ended_datetimes(self) -> List[datetime]:
-        """ List of end dates for subscriptions that end within selected period. """
+    def get_ended_datetimes(self) -> list[datetime]:
+        """ list of end dates for subscriptions that end within selected period. """
         return list(self.ended_or_ending.values_list('end', flat=True))
 
-    def get_ended_or_ending_ages(self) -> List[timedelta]:
-        """ List of ages for ended or ending subscriptions."""
+    def get_ended_or_ending_ages(self) -> list[timedelta]:
+        """ list of ages for ended or ending subscriptions."""
         return self.ended_or_ending.with_ages(at=self.until).values_list('age', flat=True)
 
     @property
@@ -101,12 +106,12 @@ class SubscriptionsReport(IterPeriodsMixin):
         """ Number of users that have active subscriptions within selected period. """
         return self.active.order_by('user').distinct('user').count()
 
-    def get_active_ages(self) -> List[timedelta]:
-        """ List of ages for active subscriptions. """
+    def get_active_ages(self) -> list[timedelta]:
+        """ list of ages for active subscriptions. """
         return self.active.with_ages(at=self.until).values_list('age', flat=True)
 
-    def get_active_plans_and_quantities(self) -> List[Tuple[Plan, int]]:
-        """ List of plan & quantity tuples per subscription. """
+    def get_active_plans_and_quantities(self) -> list[tuple[Plan, int]]:
+        """ list of plan & quantity tuples per subscription. """
         id_to_plan = {plan.id: plan for plan in Plan.objects.all()}
         return [
             (id_to_plan[plan_id], quantity)
@@ -153,15 +158,15 @@ class TransactionsReport(IterPeriodsMixin):
     def completed_payments(self) -> QuerySet:
         return self.payments.filter(status=AbstractTransaction.Status.COMPLETED)
 
-    def get_completed_payments_amounts(self) -> List[Optional[Money]]:
-        """ List of amounts for completed payments. """
+    def get_completed_payments_amounts(self) -> list[Money | None]:
+        """ list of amounts for completed payments. """
         return [
             Money(amount, amount_currency) * quantity if amount is not None else None
             for amount, amount_currency, quantity
             in self.completed_payments.values_list('amount', 'amount_currency', 'quantity')
         ]
 
-    def get_completed_payments_average(self) -> Optional[Money]:
+    def get_completed_payments_average(self) -> Money | None:
         """ Median amount for completed payments. """
         amounts = [amount for amount in self.get_completed_payments_amounts() if amount is not None]
         if amounts:
@@ -172,8 +177,8 @@ class TransactionsReport(IterPeriodsMixin):
         amounts = [amount for amount in self.get_completed_payments_amounts() if amount is not None]
         return sum(amounts) if amounts else NO_MONEY
 
-    def get_incompleted_payments_amounts(self) -> List[Optional[Decimal]]:
-        """ List of amounts for incompleted payments. """
+    def get_incompleted_payments_amounts(self) -> list[Money | None]:
+        """ list of amounts for incompleted payments. """
         incompleted_payments = self.payments.exclude(status=AbstractTransaction.Status.COMPLETED)
         return [
             Money(amount, amount_currency) * quantity if amount is not None else None
@@ -202,25 +207,25 @@ class TransactionsReport(IterPeriodsMixin):
         """ Total number of refunds."""
         return self.refunds.count()
 
-    def get_refunds_amounts(self) -> List[Optional[Money]]:
-        """ List of refunds' amounts. """
+    def get_refunds_amounts(self) -> list[Money | None]:
+        """ list of refunds' amounts. """
         return [
             Money(amount, currency) if amount is not None else None
             for amount, currency in self.refunds.values_list('amount', 'amount_currency')
         ]
 
-    def get_refunds_average(self) -> Optional[Money]:
+    def get_refunds_average(self) -> Money | None:
         """ Median amount for refunds. """
         amounts = [amount for amount in self.get_refunds_amounts() if amount is not None]
         if amounts:
             return median(amounts)
 
-    def get_refunds_total(self) -> Optional[Money]:
+    def get_refunds_total(self) -> Money | None:
         """ Total amount for refunds. """
         amounts = [amount for amount in self.get_refunds_amounts() if amount is not None]
         return sum(amounts) if amounts else NO_MONEY
 
-    def get_estimated_recurring_charge_amounts_by_time(self) -> Dict[datetime, Money]:
+    def get_estimated_recurring_charge_amounts_by_time(self) -> dict[datetime, Money]:
         """
         Estimated charge amount by datetime.
 

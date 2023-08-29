@@ -1,10 +1,13 @@
+from __future__ import annotations
+
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal
 from functools import cached_property
 from logging import getLogger
 from operator import itemgetter
-from typing import ClassVar, Iterable, Optional, Tuple
+from typing import ClassVar, Iterable
 
 from django.conf import settings
 from django.contrib.auth.models import AbstractBaseUser
@@ -19,8 +22,8 @@ from rest_framework.status import HTTP_200_OK
 from ...exceptions import BadReferencePayment, PaymentError
 from ...models import Plan, Subscription, SubscriptionPayment
 from .. import Provider
-from .api import Paddle
-from .models import Passthrough, Alert
+from .api import Paddle, PaddleError
+from .schemas import Alert, Passthrough
 
 log = getLogger(__name__)
 
@@ -59,7 +62,7 @@ class PaddleProvider(Provider):
             f'There should be exactly one subscription plan, but there are {num_plans}: {plans}'
         return plans[0]
 
-    def get_amount(self, user: AbstractBaseUser, plan: Plan) -> Optional[Money]:
+    def get_amount(self, user: AbstractBaseUser, plan: Plan) -> Money | None:
         if self.STAFF_DISCOUNT and user.is_staff:
             return Money(
                 amount=Decimal('1.0') + Decimal('0.01') * plan.id,
@@ -72,12 +75,12 @@ class PaddleProvider(Provider):
         self,
         user: AbstractBaseUser,
         plan: Plan,
-        subscription: Optional[Subscription] = None,
-        amount: Optional[Money] = None,
+        subscription: Subscription | None = None,
+        amount: Money | None = None,
         quantity: int = 1,
-        subscription_start: Optional[datetime] = None,
-        subscription_end: Optional[datetime] = None,
-    ) -> Tuple[SubscriptionPayment, str]:
+        subscription_start: datetime | None = None,
+        subscription_end: datetime | None = None,
+    ) -> tuple[SubscriptionPayment, str]:
 
         if amount is None:
             amount = self.get_amount(user=user, plan=plan)
@@ -114,19 +117,17 @@ class PaddleProvider(Provider):
                 'payment_url': payment_link,
             }
             payment.save()
-        else:
-            payment_link = payment.metadata['payment_url']
 
-        return payment, payment_link
+        return payment, payment.metadata['payment_url']
 
     def charge_offline(
         self,
         user: AbstractBaseUser,
         plan: Plan,
-        subscription: Optional[Subscription] = None,
-        amount: Optional[Money] = None,
+        subscription: Subscription | None = None,
+        amount: Money | None = None,
         quantity: int = 1,
-        reference_payment: Optional[SubscriptionPayment] = None,
+        reference_payment: SubscriptionPayment | None = None,
     ) -> SubscriptionPayment:
 
         assert quantity > 0
@@ -147,8 +148,21 @@ class PaddleProvider(Provider):
                 metadata={},
             )
 
+        if not reference_payment and subscription:
+            with suppress(SubscriptionPayment.DoesNotExist):
+                reference_payment = subscription.get_reference_payment()
+
         if not reference_payment:
-            reference_payment = SubscriptionPayment.get_last_successful(user)
+            # this happens when user had a subscription and wants a new one,
+            # so this new subscription doesn't have a reference payment yet;
+            # however we could take payment credentials from some other
+            # successful payment by same provider
+            with suppress(SubscriptionPayment.DoesNotExist):
+                reference_payment = SubscriptionPayment.objects.filter(
+                    user=user,
+                    provider_codename=self.codename,
+                    status=SubscriptionPayment.Status.COMPLETED,
+                ).latest()
 
         if not reference_payment:
             raise PaymentError('No reference payment to take credentials from')
@@ -157,18 +171,27 @@ class PaddleProvider(Provider):
         try:
             subscription_id = reference_payment.metadata['subscription_id']
         except KeyError as exc:
-            log.warning('Reference payment (%s) metadata has no "subscription_id" field', reference_payment)
-            raise BadReferencePayment('Reference payment metadata has no "subscription_id" field') from exc
+            # TODO: better iterate over reference payments
+            log.error('Reference payment (%s) metadata has no "subscription_id" field', reference_payment)
+            raise BadReferencePayment(f'Reference payment {reference_payment.uid} metadata has no "subscription_id" field') from exc
 
         # paddle doesn't allow one-off charges with different currencies
         if reference_payment.subscription.plan.charge_amount.currency != plan.charge_amount.currency:
             raise BadReferencePayment('Reference payment has different currency than current plan')
 
-        metadata = self._api.one_off_charge(
-            subscription_id=subscription_id,
-            amount=amount.amount * quantity,
-            name=plan.name,
-        )
+        try:
+            metadata = self._api.one_off_charge(
+                subscription_id=subscription_id,
+                amount=amount.amount * quantity,
+                name=plan.name,
+            )
+        except PaddleError as exc:
+            raise PaymentError('Failed to offline-charge Paddle', debug_info={
+                'paddle_msg': str(exc),
+                'paddle_code': exc.code,
+                'user': user,
+                'subscription': subscription,
+            }) from exc
 
         status_mapping = {
             'success': SubscriptionPayment.Status.COMPLETED,
@@ -202,7 +225,7 @@ class PaddleProvider(Provider):
         'subscription_payment_failed': SubscriptionPayment.Status.ERROR,
     }
 
-    def webhook(self, request: Optional[Request], payload: dict) -> Response:
+    def webhook(self, request: Request | None, payload: dict) -> Response:
         alert = Alert.parse_obj(payload)
 
         try:

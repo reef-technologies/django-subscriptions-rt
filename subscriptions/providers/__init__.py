@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 from datetime import datetime
 from functools import lru_cache
 from logging import getLogger
-from typing import ClassVar, Iterable, List, Optional, Tuple
+from typing import ClassVar, Iterable
 
 from django.conf import settings
 from django.contrib.auth.models import AbstractBaseUser
@@ -26,7 +28,7 @@ class Provider:
     codename: ClassVar[str]
     is_external: ClassVar[bool]
     is_enabled: ClassVar[bool] = True
-    form: ClassVar[Optional[Form]] = None
+    form: ClassVar[Form | None] = None
     metadata_class: ClassVar[BaseModel] = BaseModel
 
     def get_amount(self, user: AbstractBaseUser, plan: Plan) -> Money:
@@ -36,22 +38,22 @@ class Provider:
         self,
         user: AbstractBaseUser,
         plan: Plan,
-        subscription: Optional[Subscription] = None,
-        amount: Optional[Money] = None,
+        subscription: Subscription | None = None,
+        amount: Money | None = None,
         quantity: int = 1,
-        subscription_start: Optional[datetime] = None,
-        subscription_end: Optional[datetime] = None,
-    ) -> Tuple[SubscriptionPayment, str]:
+        subscription_start: datetime | None = None,
+        subscription_end: datetime | None = None,
+    ) -> tuple[SubscriptionPayment, str]:
         raise NotImplementedError()
 
     def charge_offline(
         self,
         user: AbstractBaseUser,
         plan: Plan,
-        subscription: Optional[Subscription] = None,
-        amount: Optional[Money] = None,
+        subscription: Subscription | None = None,
+        amount: Money | None = None,
         quantity: int = 1,
-        reference_payment: Optional[SubscriptionPayment] = None,
+        reference_payment: SubscriptionPayment | None = None,
     ) -> SubscriptionPayment:
         raise NotImplementedError()
 
@@ -64,7 +66,7 @@ class Provider:
 
 
 @lru_cache
-def get_providers() -> List[Provider]:
+def get_providers() -> list[Provider]:
     providers = []
     seen_codenames = set()
 
@@ -80,7 +82,7 @@ def get_providers() -> List[Provider]:
 
 
 @lru_cache
-def get_provider(codename: Optional[str] = None) -> Provider:
+def get_provider(codename: str | None = None) -> Provider:
     if not (providers := get_providers()):
         raise ProviderNotFound('No providers defined')
 
