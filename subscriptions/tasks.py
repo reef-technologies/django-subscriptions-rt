@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from functools import partial
 from logging import getLogger
 from typing import Iterable
+from uuid import UUID
 
 from django.conf import settings
 from django.db import transaction
@@ -34,17 +35,19 @@ DEFAULT_CHARGE_ATTEMPTS_SCHEDULE = getattr(
 @suppress(DryRunRollback)
 @transaction.atomic
 def _charge_recurring_subscription(
-    subscription: Subscription,
+    subscription_uid: UUID,
     schedule: Iterable[timedelta],
     at: datetime,
     lock: bool = True,
     dry_run: bool = False,
 ):
+    query = Subscription.objects.filter(uid=subscription_uid)
     if lock:
         # here we lock specific subscription object, so that we don't try charging it twice
-        # at the same time
-        _ = list(Subscription.objects.filter(pk=subscription.pk).select_for_update(of=('self',)))  # TODO: skip_locked=True?
+        # at the same time; also we always get latest subscription object from DB
+        query = query.select_for_update(of=('self',))  # TODO: skip_locked=True?
 
+    subscription = query.first()
     log.debug('Processing subscription %s', subscription)
 
     # expiration_date = next(subscription.iter_charge_dates(since=now_))
@@ -162,18 +165,18 @@ def charge_recurring_subscriptions(
 
     now_ = now()
 
-    subscriptions = Subscription.objects.all() if subscriptions is None else subscriptions
-    expiring_subscriptions = subscriptions\
-    .filter(  # noqa
-        auto_prolong=True,
-    ).expiring(
-        since=now_ - schedule[-1],
-        within=schedule[-1] - schedule[0],
-    ).select_related(
-        'user', 'plan',
+    subscriptions = subscriptions or Subscription.objects.all()
+    expiring_subscriptions_uids = list(
+        subscriptions
+        .filter(
+            auto_prolong=True,
+        ).expiring(
+            since=now_ - schedule[-1],
+            within=schedule[-1] - schedule[0],
+        ).values_list('uid', flat=True)
     )
 
-    if not expiring_subscriptions.exists():
+    if not expiring_subscriptions_uids:
         log.debug('No subscriptions to charge')
         return
 
@@ -188,14 +191,14 @@ def charge_recurring_subscriptions(
     if num_threads == 0:
         for subscription_uid in expiring_subscriptions_uids:
             try:
-                charge(subscription)
+                charge(subscription_uid)
             except Exception:
-                log.exception('Failed to charge subscription %s', subscription)
+                log.exception('Failed to charge subscription %s', subscription_uid)
     else:
         with ThreadPoolExecutor(max_workers=num_threads) as pool:
             wait(
-                pool.submit(charge, subscription)
-                for subscription in expiring_subscriptions
+                pool.submit(charge, subscription_uid)
+                for subscription_uid in expiring_subscriptions_uids
             )
 
 
