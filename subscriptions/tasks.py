@@ -17,9 +17,10 @@ from .defaults import (
     DEFAULT_NOTIFY_PENDING_PAYMENTS_AFTER,
     DEFAULT_SUBSCRIPTIONS_OFFLINE_CHARGE_ATTEMPTS_SCHEDULE,
 )
-from .exceptions import PaymentError, ProlongationImpossible
+from .exceptions import DryRunRollback, PaymentError, ProlongationImpossible
 from .models import Subscription, SubscriptionPayment
 from .providers import get_provider
+from .utils import suppress
 
 log = getLogger(__name__)
 
@@ -30,12 +31,14 @@ DEFAULT_CHARGE_ATTEMPTS_SCHEDULE = getattr(
 )
 
 
+@suppress(DryRunRollback)
 @transaction.atomic
 def _charge_recurring_subscription(
     subscription: Subscription,
     schedule: Iterable[timedelta],
     at: datetime,
     lock: bool = True,
+    dry_run: bool = False,
 ):
     if lock:
         # here we lock specific subscription object, so that we don't try charging it twice
@@ -100,11 +103,13 @@ def _charge_recurring_subscription(
         subscription.save()
         log.debug('Turned off auto-prolongation of subscription %s', subscription)
         # TODO: send email to user
+        if dry_run:
+            raise DryRunRollback()
         return
 
     try:
         log.debug('Offline-charging subscription %s', subscription)
-        subscription.charge_offline()
+        payment = subscription.charge_offline(_dry_run=dry_run)
     except PaymentError as exc:
         log.warning('Failed to offline-charge subscription', extra=exc.debug_info)
 
@@ -128,6 +133,9 @@ def _charge_recurring_subscription(
     # `subscription.status = COMPLETED` (by charge_offline or webhook or whatever)
     # to auto-prolong subscription itself
 
+    if dry_run:
+        raise DryRunRollback()
+
 
 def notify_stuck_pending_payments(older_than: timedelta = DEFAULT_NOTIFY_PENDING_PAYMENTS_AFTER):
     stuck_payments = SubscriptionPayment.objects.filter(
@@ -144,7 +152,7 @@ def charge_recurring_subscriptions(
     schedule: Iterable[timedelta] = DEFAULT_CHARGE_ATTEMPTS_SCHEDULE,
     num_threads: int | None = 0,
     lock: bool = True,
-    # TODO: dry-run
+    dry_run: bool = False,
 ):
     # TODO: management command
     log.debug('Background charging according to schedule %s', schedule)
@@ -174,6 +182,7 @@ def charge_recurring_subscriptions(
         schedule=schedule,
         at=now_,
         lock=lock,
+        dry_run=dry_run,
     )
 
     if num_threads == 0:

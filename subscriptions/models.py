@@ -331,7 +331,7 @@ class Subscription(models.Model):
     def get_reference_payment(self) -> SubscriptionPayment:
         return self.payments.filter(status=SubscriptionPayment.Status.COMPLETED).latest()
 
-    def charge_offline(self) -> SubscriptionPayment:
+    def charge_offline(self, _dry_run: bool = False) -> SubscriptionPayment:
         from .providers import get_provider
 
         try:
@@ -351,6 +351,7 @@ class Subscription(models.Model):
             subscription=self,
             quantity=self.quantity,
             reference_payment=reference_payment,
+            _dry_run=_dry_run,
         )
 
     def adjust_default_subscription(self):

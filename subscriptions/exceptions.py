@@ -47,3 +47,7 @@ class BadReferencePayment(PaymentError):
 
 class InvalidOperation(Exception):
     pass
+
+
+class DryRunRollback(Exception):
+    pass

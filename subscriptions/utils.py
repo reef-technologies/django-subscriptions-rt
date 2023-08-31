@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import hashlib
 import logging
+from contextlib import ContextDecorator, suppress
 from datetime import datetime
 from typing import Callable, Iterable, Iterator, TypeVar
 
 from django.conf import settings
 from django.core.serializers.json import DjangoJSONEncoder
-from django.db import connections, models, transaction, router
+from django.db import connections, models, router, transaction
 from djmoney.money import Money
 from environs import Env
 
@@ -135,3 +136,7 @@ class HardDBLock:
             return
 
         self.transaction.__exit__(*args, **kwargs)
+
+
+class suppress(suppress, ContextDecorator):
+    """ This may be called as usual (context manager) or as decorator. """

@@ -128,6 +128,7 @@ class PaddleProvider(Provider):
         amount: Money | None = None,
         quantity: int = 1,
         reference_payment: SubscriptionPayment | None = None,
+        _dry_run: bool = False,
     ) -> SubscriptionPayment:
 
         assert quantity > 0
@@ -184,7 +185,7 @@ class PaddleProvider(Provider):
                 subscription_id=subscription_id,
                 amount=amount.amount * quantity,
                 name=plan.name,
-            )
+            ) if not _dry_run else {'status': 'success'}
         except PaddleError as exc:
             raise PaymentError('Failed to offline-charge Paddle', debug_info={
                 'paddle_msg': str(exc),
@@ -208,7 +209,7 @@ class PaddleProvider(Provider):
         # when status is PENDING, no webhook will come, so we rely on
         # background task to search for payments not in webhook history
 
-        return SubscriptionPayment.objects.create(
+        payment = SubscriptionPayment.objects.create(
             provider_codename=self.codename,
             provider_transaction_id=None,  # paddle doesn't return anything
             amount=amount,
@@ -219,6 +220,7 @@ class PaddleProvider(Provider):
             quantity=quantity,
             metadata=metadata,
         )
+        return payment
 
     WEBHOOK_ACTION_TO_PAYMENT_STATUS: ClassVar[dict] = {
         'subscription_payment_succeeded': SubscriptionPayment.Status.COMPLETED,

@@ -566,3 +566,23 @@ def test__paddle__subscription_charge_offline__error(paddle, user, paddle_paymen
     with mock.patch.object(paddle._api, 'request', lambda *args, **kwargs: response):
         with pytest.raises(PaymentError):
             subscription.charge_offline()
+
+
+@pytest.mark.django_db(databases=['actual_db'])
+def test__paddle__tasks__charge_expiring__dry_run(
+    paddle,
+    paddle_payment,
+    charge_expiring,
+    charge_schedule,
+):
+    assert Subscription.objects.count() == 1
+    assert SubscriptionPayment.objects.count() == 1
+    subscription = paddle_payment.subscription
+    end_date = subscription.end
+
+    with freeze_time(subscription.end + charge_schedule[0], tick=True):
+        charge_expiring(dry_run=True)
+        assert SubscriptionPayment.objects.count() == 1
+        assert Subscription.objects.count() == 1
+        subscription = Subscription.objects.first()
+        assert subscription.end == end_date

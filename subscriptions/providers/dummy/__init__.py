@@ -60,6 +60,7 @@ class DummyProvider(Provider):
         amount: Money | None = None,
         quantity: int = 1,
         reference_payment: SubscriptionPayment | None = None,
+        _dry_run: bool = False,
     ) -> SubscriptionPayment:
 
         if not user.payments.filter(

@@ -331,7 +331,10 @@ def charge_schedule() -> list[timedelta]:
 def charge_expiring(charge_schedule, monkeypatch):
     """ Call: charge_expiring(payment_status=SubscriptionPayment.Status.PENDING) """
 
-    def wrapper(payment_status: SubscriptionPayment.Status = SubscriptionPayment.Status.COMPLETED):
+    def wrapper(
+        payment_status: SubscriptionPayment.Status = SubscriptionPayment.Status.COMPLETED,
+        dry_run: bool = False,
+    ):
         with monkeypatch.context() as monkey:
             # here we don't allow setting any status except `payment_status` to SubscriptionPayment
             monkey.setattr(
@@ -339,7 +342,7 @@ def charge_expiring(charge_schedule, monkeypatch):
                 lambda obj, name, value: super(SubscriptionPayment, obj).__setattr__(name, payment_status if name == 'status' else value)
             )
 
-            return charge_recurring_subscriptions(schedule=charge_schedule)
+            return charge_recurring_subscriptions(schedule=charge_schedule, dry_run=dry_run)
 
     return wrapper
 
