@@ -339,10 +339,7 @@ def charge_expiring(charge_schedule, monkeypatch):
                 lambda obj, name, value: super(SubscriptionPayment, obj).__setattr__(name, payment_status if name == 'status' else value)
             )
 
-            return charge_recurring_subscriptions(
-                schedule=charge_schedule,
-                num_threads=1,
-            )
+            return charge_recurring_subscriptions(schedule=charge_schedule)
 
     return wrapper
 

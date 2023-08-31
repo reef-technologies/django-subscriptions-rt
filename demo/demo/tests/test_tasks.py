@@ -116,7 +116,7 @@ def test__tasks__charge_expiring__multiple_threads__not_charge_twice(
 
         with ThreadPoolExecutor(max_workers=num_parallel_threads) as pool:
             for _ in range(num_parallel_threads):
-                pool.submit(charge_recurring_subscriptions, schedule=charge_schedule, num_threads=1)
+                pool.submit(charge_recurring_subscriptions, schedule=charge_schedule)
 
     if enable_hard_db_lock in {None, '1', 'true'}:
         assert HardDBLock.is_enabled()
@@ -266,7 +266,7 @@ def test__tasks__charge_expiring__payment_failure(
 
     with freeze_time(subscription.end + charge_schedule[-2], tick=True):
         with mock.patch.object(dummy, 'charge_offline', raise_payment_error):
-            charge_recurring_subscriptions(schedule=charge_schedule, num_threads=1)
+            charge_recurring_subscriptions(schedule=charge_schedule)
 
             assert SubscriptionPayment.objects.count() == 2
             last_payment = SubscriptionPayment.objects.order_by('created').last()
@@ -276,7 +276,7 @@ def test__tasks__charge_expiring__payment_failure(
                 'foo': 'bar',
             }
 
-            charge_recurring_subscriptions(schedule=charge_schedule, num_threads=1)
+            charge_recurring_subscriptions(schedule=charge_schedule)
             assert SubscriptionPayment.objects.count() == 2
 
 

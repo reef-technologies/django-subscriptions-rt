@@ -142,7 +142,7 @@ def notify_stuck_pending_payments(older_than: timedelta = DEFAULT_NOTIFY_PENDING
 def charge_recurring_subscriptions(
     subscriptions: QuerySet | None = None,
     schedule: Iterable[timedelta] = DEFAULT_CHARGE_ATTEMPTS_SCHEDULE,
-    num_threads: int | None = None,
+    num_threads: int | None = 0,
     lock: bool = True,
     # TODO: dry-run
 ):
@@ -176,8 +176,8 @@ def charge_recurring_subscriptions(
         lock=lock,
     )
 
-    if num_threads is not None and num_threads < 2:
-        for subscription in expiring_subscriptions:
+    if num_threads == 0:
+        for subscription_uid in expiring_subscriptions_uids:
             try:
                 charge(subscription)
             except Exception:
