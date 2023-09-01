@@ -254,6 +254,7 @@ def test__trial_period__full_charge_after_trial(dummy, plan, charge_expiring, ch
 
     assert user.subscriptions.count() == 1
     subscription = user.subscriptions.latest()
+    assert subscription.payments.count() == 1
     payment = subscription.payments.latest()
     payment.status = SubscriptionPayment.Status.COMPLETED
     payment.save()
@@ -265,8 +266,16 @@ def test__trial_period__full_charge_after_trial(dummy, plan, charge_expiring, ch
         charge_expiring()
         assert user.subscriptions.count() == 1
         subscription = user.subscriptions.latest()
+        assert subscription.end == old_end
+        assert subscription.payments.count() == 1
+
+    with freeze_time(subscription.end):
+        charge_expiring()
+        assert user.subscriptions.count() == 1
+        subscription = user.subscriptions.latest()
         assert subscription.end == old_end + plan.charge_period
 
+        assert subscription.payments.count() == 2
         payment = subscription.payments.latest()
         assert payment.subscription_end == old_end + plan.charge_period
         assert payment.amount == plan.charge_amount

@@ -50,6 +50,11 @@ def _charge_recurring_subscription(
     subscription = query.first()
     log.debug('Processing subscription %s', subscription)
 
+    first_charge_date = next(subscription.iter_charge_dates())
+    if at < first_charge_date:
+        log.debug('Current time %s is before first charge date %s, skipping', at, first_charge_date)
+        return
+
     # expiration_date = next(subscription.iter_charge_dates(since=now_))
     # TODO: what if `subscription.end_date` expiration_date doesn't match `subscription.iter_charge_dates()`?
     expiration_date = subscription.end
