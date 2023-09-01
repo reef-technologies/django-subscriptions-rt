@@ -316,8 +316,8 @@ def card_number() -> str:
 @pytest.fixture
 def charge_schedule() -> list[timedelta]:
     return [
-        timedelta(days=-7),
         timedelta(days=-3),
+        timedelta(days=-2),
         timedelta(days=-1),
         timedelta(hours=-1),
         timedelta(0),
