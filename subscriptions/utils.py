@@ -59,7 +59,7 @@ def fromisoformat(value: str) -> datetime:
 class AdvancedJSONEncoder(DjangoJSONEncoder):
     def default(self, o):
         if isinstance(o, models.Model):
-            o = o.pk
+            return o.pk
         return super().default(o)
 
 
