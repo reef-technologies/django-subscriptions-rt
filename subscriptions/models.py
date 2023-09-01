@@ -345,6 +345,7 @@ class Subscription(models.Model):
         except ProviderNotFound as exc:
             raise PaymentError(f'Could not retrieve provider "{provider_codename}"') from exc
 
+        log.debug('Offline-charging subscription %s with provider %s', self, provider)
         return provider.charge_offline(
             user=self.user,
             plan=self.plan,

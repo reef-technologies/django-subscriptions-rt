@@ -97,13 +97,13 @@ def _charge_recurring_subscription(
 
     log.debug('Trying to prolong subscription %s', subscription)
     try:
-        subscription.prolong()  # try extending end date of subscription
+        _ = subscription.prolong()  # try extending end date of subscription
         log.debug('Prolongation of subscription is possible')
     except ProlongationImpossible as exc:
         # cannot prolong anymore, disable auto_prolong for this subscription
         log.debug('Prolongation of subscription is impossible: %s', exc)
         subscription.auto_prolong = False
-        subscription.save()
+        subscription.save(update_fields=['auto_prolong'])
         log.debug('Turned off auto-prolongation of subscription %s', subscription)
         # TODO: send email to user
         if dry_run:
@@ -119,8 +119,8 @@ def _charge_recurring_subscription(
         # here we create a failed SubscriptionPayment to indicate that we tried
         # to charge but something went wrong, so that subsequent task calls
         # won't try charging and sending email again within same charge_period
-        SubscriptionPayment.objects.create(
-            provider_codename='',
+        payment = SubscriptionPayment.objects.create(
+            provider_codename='',  # TODO: FIX THIS
             user=subscription.user,
             status=SubscriptionPayment.Status.ERROR,
             plan=subscription.plan,

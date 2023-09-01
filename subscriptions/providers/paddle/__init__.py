@@ -133,6 +133,10 @@ class PaddleProvider(Provider):
 
         assert quantity > 0
 
+        log.debug(
+            'Paddle offline charge, user=%s, plan=%s, subscription=%s, amount=%s, quantity=%s',
+            user, plan, subscription, amount, quantity,
+        )
         if amount is None:
             amount = self.get_amount(user=user, plan=plan)
 
@@ -209,6 +213,7 @@ class PaddleProvider(Provider):
         # when status is PENDING, no webhook will come, so we rely on
         # background task to search for payments not in webhook history
 
+        log.debug('Payment not created yet, subscription=%s', subscription)
         payment = SubscriptionPayment.objects.create(
             provider_codename=self.codename,
             provider_transaction_id=None,  # paddle doesn't return anything
@@ -220,6 +225,7 @@ class PaddleProvider(Provider):
             quantity=quantity,
             metadata=metadata,
         )
+        log.debug('Payment %s already saved, subscription=%s', payment, subscription)
         return payment
 
     WEBHOOK_ACTION_TO_PAYMENT_STATUS: ClassVar[dict] = {
