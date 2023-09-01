@@ -113,6 +113,7 @@ def _charge_recurring_subscription(
     try:
         log.debug('Offline-charging subscription %s', subscription)
         payment = subscription.charge_offline(_dry_run=dry_run)
+        log.debug('Created successful payment: %s', payment)
     except PaymentError as exc:
         log.warning('Failed to offline-charge subscription', extra=exc.debug_info)
 
@@ -128,9 +129,9 @@ def _charge_recurring_subscription(
             quantity=subscription.quantity,
             metadata=exc.debug_info,
         )
-        return
+        log.debug('Created failed payment: %s', payment)
 
-    log.debug('Offline charge successfully created for subscription %s', subscription)
+    log.debug('Offline charge attempted for subscription %s', subscription)
     # even if offline subscription succeeds, we are not sure about its status,
     # so we don't prolong the subscription here but instead let setting
     # `subscription.status = COMPLETED` (by charge_offline or webhook or whatever)
