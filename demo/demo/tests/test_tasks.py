@@ -328,3 +328,36 @@ def test__tasks__notify_stuck_pending_payments(subscription, user, caplog):
         assert len(caplog.records) == 2
         assert caplog.records[0].message == f'Payment stuck in pending state: {very_old_payment}'
         assert caplog.records[1].message == f'Payment stuck in pending state: {slightly_old_payment}'
+
+
+@pytest.mark.django_db(databases=['actual_db'])
+def test__tasks__charge_expiring__not_charging_twice_in_charge_schedule(
+    subscription,
+    payment,
+    charge_expiring,
+    charge_schedule,
+    caplog,
+):
+    caplog.set_level(logging.WARNING)
+    assert SubscriptionPayment.objects.count() == 1
+
+    with freeze_time(subscription.end + charge_schedule[0]):
+        charge_expiring(payment_status=SubscriptionPayment.Status.COMPLETED)
+        assert SubscriptionPayment.objects.count() == 2
+
+    # simulate a situation with completed payment but subscription not changed
+    Subscription.objects.update(end=subscription.end)
+    last_payment = SubscriptionPayment.objects.latest()
+    assert last_payment.subscription_end == Subscription.objects.first().end + subscription.plan.charge_period
+
+    with freeze_time(subscription.end + middle((charge_schedule[0], charge_schedule[-1]))):  # middle of charge period
+        charge_expiring(payment_status=SubscriptionPayment.Status.PENDING)
+        assert len(caplog.records) == 1
+        assert 'dry run' in caplog.records[-1].message
+        assert SubscriptionPayment.objects.count() == 2
+
+    with freeze_time(subscription.end + charge_schedule[-1] - timedelta(minutes=1)):
+        charge_expiring(payment_status=SubscriptionPayment.Status.PENDING)
+        assert len(caplog.records) == 2
+        assert 'dry run' in caplog.records[-1].message
+        assert SubscriptionPayment.objects.count() == 2

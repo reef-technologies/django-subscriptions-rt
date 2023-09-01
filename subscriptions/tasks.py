@@ -95,6 +95,15 @@ def _charge_recurring_subscription(
 
         return
 
+    # TODO: remove this after fixing
+    attempts_within_charge_schedule = subscription.payments.filter(
+        created__gte=charge_dates[0],  # ~1 day before subscription ends
+        created__lt=charge_dates[-1],  # ~29 days after subscription ends
+    )
+    if attempts_within_charge_schedule.exists():
+        log.warning('Found already existing payment attempts within charge schedule, switching to dry run: %s', attempts_within_charge_schedule)
+        dry_run = True
+
     log.debug('Trying to prolong subscription %s', subscription)
     try:
         _ = subscription.prolong()  # try extending end date of subscription
@@ -136,6 +145,10 @@ def _charge_recurring_subscription(
     # so we don't prolong the subscription here but instead let setting
     # `subscription.status = COMPLETED` (by charge_offline or webhook or whatever)
     # to auto-prolong subscription itself
+
+    # TODO: remove this after fix
+    subscription = Subscription.objects.get(pk=subscription.pk)
+    log.debug('Real subscription value after successful offline charge: %s', subscription)
 
     if dry_run:
         raise DryRunRollback()
@@ -201,6 +214,12 @@ def charge_recurring_subscriptions(
                 pool.submit(charge, subscription_uid)
                 for subscription_uid in expiring_subscriptions_uids
             )
+
+    # TODO: remove this after fix
+    if not dry_run:
+        for subscription_uid in expiring_subscriptions_uids:
+            subscription = Subscription.objects.get(uid=subscription_uid)
+            log.debug('Real subscription value after all tasks excution: %s', subscription)
 
 
 def check_unfinished_payments(within: timedelta = timedelta(hours=12)):
