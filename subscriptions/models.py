@@ -616,7 +616,7 @@ class SubscriptionNotificationEvent(models.Model):
         CANCELLED = 3
         ERROR = 4
 
-    subscription = models.ForeignKey(
+    user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name='subscription_notification_events'
@@ -626,7 +626,6 @@ class SubscriptionNotificationEvent(models.Model):
     )
     status = models.IntegerField(choices=Status.choices, default=Status.PENDING)
     created = models.DateTimeField(auto_now_add=True)
-
 
 
 from .signals import create_default_subscription_for_new_user  # noqa
