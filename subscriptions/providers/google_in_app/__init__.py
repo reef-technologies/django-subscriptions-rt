@@ -545,7 +545,10 @@ class GoogleInAppProvider(Provider):
                 'Expected purchase status to be of %s after event %s but got %s',
                 expected_statuses, event, purchase_status,
             )
-            raise SuspiciousOperation(f'Status mismatch for {event=}: {purchase_status=}, {expected_statuses=}')
+            # Currently, we can sometimes catch this if we get old notification from RTDN.
+            # So far, we've confirmed that these notifications can be even 24h late.
+            # Commenting out of this code is not a solution, it's a temporary measure for uncluttering sentry.
+            # raise SuspiciousOperation(f'Status mismatch for {event=}: {purchase_status=}, {expected_statuses=}')
 
     def check_payments(self, payments: Iterable[SubscriptionPayment]):
         """
