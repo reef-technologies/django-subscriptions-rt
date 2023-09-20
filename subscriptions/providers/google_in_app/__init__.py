@@ -418,7 +418,7 @@ class GoogleInAppProvider(Provider):
                 last_payment = self.get_last_payment(purchase_token)
                 subscription = last_payment.subscription
                 subscription.end = max(subscription.end, purchase_end)
-                subscription.auto_prolong = True
+                # subscription.auto_prolong = True  # TODO: set this when it does not affect offline charges
                 subscription.save()
 
             elif event == GoogleSubscriptionNotificationType.RENEWED:
@@ -433,7 +433,7 @@ class GoogleInAppProvider(Provider):
                     last_payment.save()
 
                 subscription = last_payment.subscription
-                subscription.auto_prolong = True
+                # subscription.auto_prolong = True  # TODO: set this when it does not affect offline charges
                 subscription.save()
 
             elif event == GoogleSubscriptionNotificationType.CANCELED:
