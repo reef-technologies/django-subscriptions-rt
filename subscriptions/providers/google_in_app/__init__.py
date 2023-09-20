@@ -450,10 +450,16 @@ class GoogleInAppProvider(Provider):
 
             elif event == GoogleSubscriptionNotificationType.PURCHASED:
                 plan = self.get_plan_by_google_id(product_id)
-                last_payment, _ = SubscriptionPayment.objects.get_or_create(
-                    provider_codename=self.codename,
-                    provider_transaction_id=purchase_token,
-                    defaults=dict(
+
+                try:
+                    last_payment = SubscriptionPayment.objects.filter(
+                        provider_codename=self.codename,
+                        provider_transaction_id=purchase_token,
+                    ).latest()
+                except SubscriptionPayment.DoesNotExist:
+                    last_payment = SubscriptionPayment.objects.create(
+                        provider_codename=self.codename,
+                        provider_transaction_id=purchase_token,
                         user=user,
                         status=SubscriptionPayment.Status.COMPLETED,
                         plan=plan,
@@ -462,7 +468,6 @@ class GoogleInAppProvider(Provider):
                         subscription_end=purchase_end,
                         metadata=Metadata(purchase=purchase).dict(),
                     )
-                )
 
             elif event in {
                 GoogleSubscriptionNotificationType.ON_HOLD,
