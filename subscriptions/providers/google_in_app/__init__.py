@@ -22,6 +22,7 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.status import HTTP_200_OK, HTTP_400_BAD_REQUEST
+from tenacity import retry, retry_if_exception_type, stop_after_delay, wait_fixed
 
 from ...api.serializers import SubscriptionPaymentSerializer
 from ...models import Plan, SubscriptionPayment
@@ -311,6 +312,7 @@ class GoogleInAppProvider(Provider):
             packageName=self.package_name,
             token=purchase_token,
         ).execute()
+        log.debug('Got raw purchase info %s', subscription_purchase_dict)
         return GoogleSubscriptionPurchaseV2.parse_obj(subscription_purchase_dict)
 
     # TODO: rate limit this. Maybe make this a CBV and use Throttle and IsAuthenticated classes?
@@ -378,7 +380,15 @@ class GoogleInAppProvider(Provider):
         This method also sends an acknowledgement to Google when Subscription is created.
         """
 
-        purchase = self.get_purchase(purchase_token)
+        purchase = retry(
+            # sometimes google returns incomplete data for selected purchase token,
+            # so we retry in case of ValidationError
+            retry=retry_if_exception_type(ValidationError),
+            wait=wait_fixed(1),
+            stop=stop_after_delay(3),
+            reraise=True,
+        )(self.get_purchase)(purchase_token)
+
         linked_token = purchase.linkedPurchaseToken
 
         purchase_item = one(purchase.lineItems)
