@@ -232,10 +232,26 @@ class Subscription(models.Model):
         return self.start + self.plan.max_duration
 
     def save(self, *args, **kwargs):
-        self.start = self.start or now()
-        self.end = self.end or min(self.start + self.plan.charge_period, self.max_end)
+        update_fields = set()
+
+        if not self.start:
+            self.start = now()
+            update_fields.add('start')
+
+        if not self.end:
+            self.end = min(self.start + self.plan.charge_period, self.max_end)
+            update_fields.add('end')
+
         if self.auto_prolong is None:
             self.auto_prolong = self.plan.is_recurring()
+            update_fields.add('auto_prolong')
+
+        # don't pass update_fields when creating a new object
+        if not self._state.adding:
+            passed_in_update_fields = kwargs.get('update_fields', ())
+            update_fields.update(passed_in_update_fields)
+            kwargs['update_fields'] = update_fields
+
         super().save(*args, **kwargs)
         self.adjust_default_subscription()
 
@@ -561,7 +577,7 @@ class SubscriptionPayment(AbstractTransaction):
                     # prolong existing subscription and set payment's (start, end)
                     self.subscription_end = subscription.end = subscription.prolong()  # TODO: what if this fails?
 
-                subscription.save()
+                subscription.save(update_fields=['end'])
 
             else:
                 self.subscription = Subscription.objects.create(

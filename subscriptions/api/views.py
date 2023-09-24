@@ -88,7 +88,7 @@ class SubscriptionView(DestroyAPIView):
                 raise BadRequest(detail='Cancellation endpoint is not allowed for this provider')
 
         instance.auto_prolong = False
-        instance.save()
+        instance.save(update_fields=['auto_prolong'])
 
 
 class SubscriptionSelectView(GenericAPIView):
@@ -139,7 +139,7 @@ class SubscriptionSelectView(GenericAPIView):
                 now_ = now()
                 for subscription in exc.subscriptions:
                     subscription.end = now()
-                    subscription.save()
+                    subscription.save(update_fields=['end'])
             except SubscriptionError as exc:
                 raise PermissionDenied(detail=str(exc)) from exc
 
