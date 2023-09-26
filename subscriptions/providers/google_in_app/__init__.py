@@ -279,7 +279,9 @@ class GoogleInAppProvider(Provider):
             subscription = latest_payment.subscription
             if subscription.end > now_:
                 subscription.end = now_
+                log.debug('Trying to save subscription: %s', subscription)
                 subscription.save()
+                log.debug('Saving is complete for subscription: %s', subscription)
 
     def get_user_by_token(self, token: str) -> AbstractBaseUser | None:
         with suppress(SubscriptionPayment.DoesNotExist):
@@ -429,7 +431,9 @@ class GoogleInAppProvider(Provider):
                 subscription = last_payment.subscription
                 subscription.end = max(subscription.end, purchase_end)
                 # subscription.auto_prolong = True  # TODO: set this when it does not affect offline charges
+                log.debug('Trying to save subscription: %s', subscription)
                 subscription.save()
+                log.debug('Saving is complete for subscription: %s', subscription)
 
             elif event == GoogleSubscriptionNotificationType.RENEWED:
                 # TODO: handle case when subscription is resumed from a pause
@@ -444,7 +448,9 @@ class GoogleInAppProvider(Provider):
 
                 subscription = last_payment.subscription
                 # subscription.auto_prolong = True  # TODO: set this when it does not affect offline charges
+                log.debug('Trying to save subscription: %s', subscription)
                 subscription.save()
+                log.debug('Saving is complete for subscription: %s', subscription)
 
             elif event == GoogleSubscriptionNotificationType.CANCELED:
                 last_payment = self.get_last_payment(purchase_token)
@@ -452,7 +458,9 @@ class GoogleInAppProvider(Provider):
 
                 subscription.end = purchase_end
                 subscription.auto_prolong = False
+                log.debug('Trying to save subscription: %s', subscription)
                 subscription.save()
+                log.debug('Saving is complete for subscription: %s', subscription)
 
                 if last_payment.subscription_end > subscription.end:
                     last_payment.subscription_end = subscription.end
@@ -489,14 +497,18 @@ class GoogleInAppProvider(Provider):
 
                 subscription.end = now()
                 subscription.auto_prolong = False
+                log.debug('Trying to save subscription: %s', subscription)
                 subscription.save()
+                log.debug('Saving is complete for subscription: %s', subscription)
 
             elif event == GoogleSubscriptionNotificationType.EXPIRED:
                 last_payment = self.get_last_payment(purchase_token)
                 subscription = last_payment.subscription
                 subscription.end = purchase_end
                 subscription.auto_prolong = False
+                log.debug('Trying to save subscription: %s', subscription)
                 subscription.save()
+                log.debug('Saving is complete for subscription: %s', subscription)
 
             else:
                 raise ValueError('Unsupported notification type %s', event)
@@ -509,7 +521,9 @@ class GoogleInAppProvider(Provider):
                 subscription.auto_prolong
             ):
                 subscription.auto_prolong = False
+                log.debug('Trying to save subscription: %s', subscription)
                 subscription.save()
+                log.debug('Saving is complete for subscription: %s', subscription)
 
             if linked_token:
                 assert purchase_token != linked_token

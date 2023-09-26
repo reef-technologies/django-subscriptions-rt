@@ -561,7 +561,9 @@ class SubscriptionPayment(AbstractTransaction):
                     # prolong existing subscription and set payment's (start, end)
                     self.subscription_end = subscription.end = subscription.prolong()  # TODO: what if this fails?
 
+                log.debug('Trying to save subscription: %s', subscription)
                 subscription.save()
+                log.debug('Saving is complete for subscription: %s', subscription)
 
             else:
                 self.subscription = Subscription.objects.create(
