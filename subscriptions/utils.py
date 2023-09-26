@@ -157,8 +157,8 @@ def wrap_method_with_logs(func=None, *, msg: str):
         frames = inspect.stack()
         frame = frames[3] if frames[1].filename.endswith('django/db/models/query.py') else frames[1]
 
-        log.debug(f'START: {msg} %s from file %s line %s', self, frame.filename, frame.lineno)
+        log.debug('START: %s %s from file %s line %s', msg, self, frame.filename, frame.lineno)
         func(self, *args, **kwargs)
-        log.debug(f'END: {msg} %s from file %s line %s', self, frame.filename, frame.lineno)
+        log.debug('END: %s %s from file %s line %s', msg, self, frame.filename, frame.lineno)
 
     return wrapped
