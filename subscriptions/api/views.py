@@ -88,9 +88,7 @@ class SubscriptionView(DestroyAPIView):
                 raise BadRequest(detail='Cancellation endpoint is not allowed for this provider')
 
         instance.auto_prolong = False
-        log.debug('Trying to save subscription: %s', instance)
         instance.save()
-        log.debug('Saving is complete for subscription: %s', instance)
 
 
 class SubscriptionSelectView(GenericAPIView):
@@ -141,9 +139,7 @@ class SubscriptionSelectView(GenericAPIView):
                 now_ = now()
                 for subscription in exc.subscriptions:
                     subscription.end = now()
-                    log.debug('Trying to save subscription: %s', subscription)
                     subscription.save()
-                    log.debug('Saving is complete for subscription: %s', subscription)
             except SubscriptionError as exc:
                 raise PermissionDenied(detail=str(exc)) from exc
 

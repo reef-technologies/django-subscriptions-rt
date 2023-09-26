@@ -63,9 +63,7 @@ with suppress(ImportError):
         for subscription in future_subscriptions:
             if new_value:
                 subscription.plan_id = new_value
-                log.debug('Trying to save subscription: %s', subscription)
                 subscription.save()
-                log.debug('Saving is complete for subscription: %s', subscription)
             else:
                 subscription.delete()
 
@@ -80,9 +78,7 @@ with suppress(ImportError):
             end = subscription.end
 
             subscription.end = now_
-            log.debug('Trying to save subscription: %s', subscription)
             subscription.save()
-            log.debug('Saving is complete for subscription: %s', subscription)
 
             if new_value:
                 subscription.pk = None
