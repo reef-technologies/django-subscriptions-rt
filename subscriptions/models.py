@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import inspect
 from collections import defaultdict
 from contextlib import suppress
 from dataclasses import dataclass
@@ -237,15 +236,7 @@ class Subscription(models.Model):
         self.end = self.end or min(self.start + self.plan.charge_period, self.max_end)
         if self.auto_prolong is None:
             self.auto_prolong = self.plan.is_recurring()
-
-        # TODO: remove the following block and logs after fixing double payments bug
-        frames = inspect.stack()
-        frame = frames[3] if frames[1].filename.endswith('django/db/models/query.py') else frames[1]
-
-        log.debug('Trying to save subscription: %s from file %s line %s', self, frame.filename, frame.lineno)
         super().save(*args, **kwargs)
-        log.debug('Saving is complete for subscription: %s from file %s line %s', self, frame.filename, frame.lineno)
-
         self.adjust_default_subscription()
 
     def stop(self):
