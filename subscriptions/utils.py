@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import functools
 import hashlib
+import inspect
 import logging
 from contextlib import ContextDecorator, suppress
 from datetime import datetime
@@ -140,3 +142,23 @@ class HardDBLock:
 
 class suppress(suppress, ContextDecorator):
     """ This may be called as usual (context manager) or as decorator. """
+
+
+def wrap_method_with_logs(func=None, *, msg: str):
+    """
+    Log at the start and end of the wrapped function.
+    Along with the given msg, it also logs the 'self' of the method, and the method's caller's filename and line number.
+    """
+    if func is None:
+        return functools.partial(wrap_method_with_logs, msg=msg)
+
+    @functools.wraps(func)
+    def wrapped(self, *args, **kwargs):
+        frames = inspect.stack()
+        frame = frames[3] if frames[1].filename.endswith('django/db/models/query.py') else frames[1]
+
+        log.debug(f'START: {msg} %s from file %s line %s', self, frame.filename, frame.lineno)
+        func(self, *args, **kwargs)
+        log.debug(f'END: {msg} %s from file %s line %s', self, frame.filename, frame.lineno)
+
+    return wrapped
