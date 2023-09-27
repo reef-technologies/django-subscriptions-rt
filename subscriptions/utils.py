@@ -154,20 +154,22 @@ def wrap_method_with_logs(func=None, *, msg: str):
 
     @functools.wraps(func)
     def wrapped(self, *args, **kwargs):
-        caller_filename = None
-        caller_lineno = None
-        for frame in inspect.stack()[1:]:
-            if not (
+        stack = inspect.stack()
+        i = 1
+        for i, frame in enumerate(stack):
+            if i > 0 and not (
                 frame.filename.endswith('django/db/models/query.py')
                 or frame.filename.endswith('django/db/models/manager.py')
-                or frame.function == func.__name__
             ):
-                caller_filename = frame.filename
-                caller_lineno = frame.lineno
                 break
 
+        if i + 1 > len(stack):
+            i += 1
+
+        frame = stack[i]
+
         _log = lambda prefix: log.debug('%s: %s %s from file %s line %s',
-                                        prefix, msg, self, caller_filename, caller_lineno)
+                                        prefix, msg, self, frame.filename, frame.lineno)
 
         _log('START')
         func(self, *args, **kwargs)
