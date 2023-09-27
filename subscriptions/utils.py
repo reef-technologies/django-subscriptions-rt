@@ -157,7 +157,11 @@ def wrap_method_with_logs(func=None, *, msg: str):
         caller_filename = None
         caller_lineno = None
         for frame in inspect.stack()[1:]:
-            if not frame.filename.endswith('django/db/models/query.py'):
+            if not (
+                frame.filename.endswith('django/db/models/query.py')
+                or frame.filename.endswith('django/db/models/manager.py')
+                or frame.function == func.__name__
+            ):
                 caller_filename = frame.filename
                 caller_lineno = frame.lineno
                 break
