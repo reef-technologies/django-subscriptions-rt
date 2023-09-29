@@ -5,7 +5,7 @@ from concurrent.futures import ThreadPoolExecutor, wait
 from datetime import datetime, timedelta
 from functools import partial
 from logging import getLogger
-from typing import Iterable
+from typing import Iterable, Iterator
 from uuid import UUID
 
 from django.conf import settings
@@ -278,4 +278,33 @@ def check_duplicated_payments() -> dict[tuple[str, str], list[SubscriptionPaymen
 
     return result
 
-# TODO: check for concurrency issues, probably add transactions
+
+def check_not_extended_subscriptions(
+    auto_fix: bool = True,
+    tolerance: timedelta = timedelta(seconds=1),  # sometimes difference is microseconds
+) -> Iterator[SubscriptionPayment]:
+    # this task goes through all subscriptions which have completed payments
+    # but were not extended properly, and yields it; if auto_fix is enabled,
+    # the payments are re-saved - this extends subscription correctly based on the payment
+
+    def is_outstanding(payment) -> bool:
+        return (
+            payment.status == payment.Status.COMPLETED
+            and payment.subscription_end - payment.subscription.end > tolerance
+        )
+
+    for subscription in Subscription.objects.order_by('start').prefetch_related('payments'):
+        for payment in subscription.payments.all():
+            if (
+                payment.amount
+                and payment.amount.amount != 0
+                and is_outstanding(payment)
+            ):
+                yield payment
+                if auto_fix:
+                    with transaction.atomic():
+                        # fetch latest subscription and payment data from DB
+                        payment.subscription = Subscription.objects.select_for_update().get(pk=subscription.pk)
+                        payment.refresh_from_db()
+                        payment.save()
+                break

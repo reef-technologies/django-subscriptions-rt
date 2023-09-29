@@ -8,13 +8,14 @@ from unittest import mock
 import pytest
 from django.utils.timezone import now
 from freezegun import freeze_time
-from more_itertools import spy
+from more_itertools import one, spy
 
 from subscriptions.exceptions import PaymentError
 from subscriptions.models import Subscription, SubscriptionPayment
 from subscriptions.tasks import (
     charge_recurring_subscriptions,
     notify_stuck_pending_payments,
+    check_not_extended_subscriptions,
 )
 from subscriptions.utils import HardDBLock
 
@@ -361,3 +362,33 @@ def test__tasks__charge_expiring__not_charging_twice_in_charge_schedule(
         assert len(caplog.records) == 2
         assert 'dry run' in caplog.records[-1].message
         assert SubscriptionPayment.objects.count() == 2
+
+
+@pytest.mark.django_db(databases=['actual_db'])
+def test__tasks__check_not_extended_subscriptions(
+    subscription,
+    payment,
+):
+    initial_subscription_end = subscription.end
+    assert list(check_not_extended_subscriptions()) == []
+
+    # extend payment without changing the subscription
+    SubscriptionPayment.objects.update(subscription_end=initial_subscription_end + days(30))
+
+    # run checks only
+    outstanding_payment = one(check_not_extended_subscriptions(auto_fix=False))
+    assert outstanding_payment.pk == payment.pk
+    assert outstanding_payment.subscription_end == initial_subscription_end + days(30)
+
+    # check whether autofix was not performed
+    subscription.refresh_from_db()
+    assert subscription.end == initial_subscription_end
+
+    # run checks and fixes
+    outstanding_payment = one(check_not_extended_subscriptions())  # auto_fix=True
+    assert outstanding_payment.pk == payment.pk
+    assert outstanding_payment.subscription_end == initial_subscription_end + days(30)
+
+    # check whether autofix was performed
+    subscription.refresh_from_db()
+    assert subscription.end == initial_subscription_end + days(30)
