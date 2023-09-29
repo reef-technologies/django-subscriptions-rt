@@ -293,7 +293,7 @@ def check_not_extended_subscriptions(
             and payment.subscription_end - payment.subscription.end > tolerance
         )
 
-    for subscription in Subscription.objects.order_by('start').prefetch_related('payments'):
+    for subscription in Subscription.objects.order_by('start'):
         for payment in subscription.payments.all():
             if (
                 payment.amount
@@ -307,4 +307,3 @@ def check_not_extended_subscriptions(
                         payment.subscription = Subscription.objects.select_for_update().get(pk=subscription.pk)
                         payment.refresh_from_db()
                         payment.save()
-                break
