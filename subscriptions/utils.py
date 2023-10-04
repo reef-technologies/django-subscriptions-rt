@@ -163,8 +163,14 @@ def wrap_method_with_logs(func=None, *, msg: str):
                 break
 
         frame = stack[i + 1]
+        filename = frame.filename
+        lineno = frame.lineno
+
+        # break reference cycle. ref: https://docs.python.org/3/library/inspect.html#inspect.Traceback
+        del stack, frame
+
         _log = lambda prefix: log.debug('%s: %s %s from file %s line %s',
-                                        prefix, msg, self, frame.filename, frame.lineno)
+                                        prefix, msg, self, filename, lineno)
 
         _log('START')
         func(self, *args, **kwargs)
