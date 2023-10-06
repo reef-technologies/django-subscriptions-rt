@@ -34,7 +34,7 @@ from .exceptions import (
     ProviderNotFound,
 )
 from .fields import MoneyField, RelativeDurationField
-from .utils import merge_iter, AdvancedJSONEncoder
+from .utils import merge_iter, AdvancedJSONEncoder, wrap_method_with_logs
 
 log = getLogger(__name__)
 
@@ -231,6 +231,7 @@ class Subscription(models.Model):
     def max_end(self) -> datetime:
         return self.start + self.plan.max_duration
 
+    @wrap_method_with_logs(msg='Saving subscription')
     def save(self, *args, **kwargs):
         self.start = self.start or now()
         self.end = self.end or min(self.start + self.plan.charge_period, self.max_end)
