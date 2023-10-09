@@ -1,19 +1,10 @@
-import enum
 from datetime import datetime, timezone
 
 import pytest
 from dateutil.relativedelta import relativedelta
+from djmoney.money import Money
 
-from subscriptions.models import Subscription
-
-
-class SubType(enum.Enum):
-    PAST_ENDING_BEFORE_TRIAL_END = enum.auto()
-    PAST_ENDING_AFTER_TRIAL_END = enum.auto()
-    PAST_WITHOUT_TRIAL = enum.auto()
-    CURRENT_BEFORE_TRIAL_END = enum.auto()
-    CURRENT_AFTER_TRIAL_END = enum.auto()
-    CURRENT_WITHOUT_TRIAL = enum.auto()
+from subscriptions.models import Subscription, SubscriptionPayment
 
 
 @pytest.fixture
@@ -22,102 +13,179 @@ def now_() -> datetime:
 
 
 @pytest.fixture
-def subscriptions(plan, user, now_) -> dict[SubType, Subscription]:
-    return {
-        SubType.PAST_ENDING_BEFORE_TRIAL_END: Subscription.objects.create(
-            user=user,
-            plan=plan,
-            auto_prolong=False,
-            initial_charge_offset=relativedelta(days=5),
-            # Two days long subscription, trial period.
-            start=now_ - relativedelta(months=10, days=10),
-            end=now_ - relativedelta(months=10, days=8),
-        ),
-        SubType.PAST_ENDING_AFTER_TRIAL_END: Subscription.objects.create(
-            user=user,
-            plan=plan,
-            auto_prolong=False,
-            initial_charge_offset=relativedelta(days=5),
-            # Eight days long subscription, past trial period.
-            start=now_ - relativedelta(months=9, days=10),
-            end=now_ - relativedelta(months=9, days=2),
-        ),
-        SubType.PAST_WITHOUT_TRIAL: Subscription.objects.create(
-            user=user,
-            plan=plan,
-            auto_prolong=False,
-            start=now_ - relativedelta(months=8, days=12),
-            end=now_ - relativedelta(months=8, days=1),
-        ),
-        SubType.CURRENT_BEFORE_TRIAL_END: Subscription.objects.create(
-            user=user,
-            plan=plan,
-            auto_prolong=False,
-            initial_charge_offset=relativedelta(days=5),
-            # Trial period not finished yet.
-            start=now_ - relativedelta(days=2),
-            end=now_ + relativedelta(days=5),
-        ),
-        SubType.CURRENT_AFTER_TRIAL_END: Subscription.objects.create(
-            user=user,
-            plan=plan,
-            auto_prolong=False,
-            initial_charge_offset=relativedelta(days=5),
-            # Trial period finished two days ago.
-            start=now_ - relativedelta(days=7),
-            end=now_ + relativedelta(days=5),
-        ),
-        SubType.CURRENT_WITHOUT_TRIAL: Subscription.objects.create(
-            user=user,
-            plan=plan,
-            auto_prolong=False,
-            start=now_ - relativedelta(days=5),
-            end=now_ + relativedelta(days=5),
-        )
+def past_subscription_ending_before_trial_end(plan, user, now_) -> Subscription:
+    return Subscription.objects.create(
+        user=user,
+        plan=plan,
+        auto_prolong=False,
+        initial_charge_offset=relativedelta(days=5),
+        # Two days long subscription, trial period.
+        start=now_ - relativedelta(months=10, days=10),
+        end=now_ - relativedelta(months=10, days=8),
+    )
+
+
+@pytest.fixture
+def past_subscription_ending_after_trial_end(plan, user, now_, dummy) -> Subscription:
+    subscription = Subscription.objects.create(
+        user=user,
+        plan=plan,
+        auto_prolong=False,
+        initial_charge_offset=relativedelta(days=5),
+        # Eight days long subscription, past trial period.
+        start=now_ - relativedelta(months=9, days=10),
+        end=now_ - relativedelta(months=9, days=2),
+    )
+    SubscriptionPayment.objects.create(
+        provider_codename=dummy,
+        amount=Money(1, 'USD'),
+        status=SubscriptionPayment.Status.COMPLETED,
+        user=user,
+        plan=plan,
+        subscription=subscription,
+        subscription_start=now_ - relativedelta(months=9, days=5),
+        subscription_end=subscription.end,
+    )
+    return subscription
+
+
+@pytest.fixture
+def past_subscription_without_trial(plan, user, now_, dummy) -> Subscription:
+    subscription = Subscription.objects.create(
+        user=user,
+        plan=plan,
+        auto_prolong=False,
+        start=now_ - relativedelta(months=8, days=12),
+        end=now_ - relativedelta(months=8, days=1),
+    )
+    SubscriptionPayment.objects.create(
+        provider_codename=dummy,
+        amount=Money(1, 'USD'),
+        status=SubscriptionPayment.Status.COMPLETED,
+        user=user,
+        plan=plan,
+        subscription=subscription,
+        subscription_start=subscription.start,
+        subscription_end=subscription.end,
+    )
+    return subscription
+
+
+@pytest.fixture
+def current_subscription_before_trial_end(plan, user, now_) -> Subscription:
+    return Subscription.objects.create(
+        user=user,
+        plan=plan,
+        auto_prolong=False,
+        initial_charge_offset=relativedelta(days=5),
+        # Trial period not finished yet.
+        start=now_ - relativedelta(days=2),
+        end=now_ + relativedelta(days=5),
+    )
+
+
+@pytest.fixture
+def current_subscription_after_trial_end(plan, user, now_, dummy) -> Subscription:
+    subscription = Subscription.objects.create(
+        user=user,
+        plan=plan,
+        auto_prolong=False,
+        initial_charge_offset=relativedelta(days=5),
+        # The trial period finished two days ago.
+        start=now_ - relativedelta(days=7),
+        end=now_ + relativedelta(days=5),
+    )
+    SubscriptionPayment.objects.create(
+        provider_codename=dummy,
+        amount=Money(1, 'USD'),
+        status=SubscriptionPayment.Status.COMPLETED,
+        user=user,
+        plan=plan,
+        subscription=subscription,
+        subscription_start=now_ - relativedelta(days=2),
+        subscription_end=subscription.end,
+    )
+    return subscription
+
+
+@pytest.fixture
+def current_subscription_without_trial(plan, user, now_, dummy) -> Subscription:
+    subscription = Subscription.objects.create(
+        user=user,
+        plan=plan,
+        auto_prolong=False,
+        start=now_ - relativedelta(days=5),
+        end=now_ + relativedelta(days=5),
+    )
+    SubscriptionPayment.objects.create(
+        provider_codename=dummy,
+        amount=Money(1, 'USD'),
+        status=SubscriptionPayment.Status.COMPLETED,
+        user=user,
+        plan=plan,
+        subscription=subscription,
+        subscription_start=subscription.start,
+        subscription_end=subscription.end,
+    )
+    return subscription
+
+
+@pytest.mark.django_db(databases=['actual_db'])
+def test__subscription__listing_charged_subscriptions(
+        now_,
+        past_subscription_ending_before_trial_end,
+        past_subscription_ending_after_trial_end,
+        past_subscription_without_trial,
+        current_subscription_before_trial_end,
+        current_subscription_after_trial_end,
+        current_subscription_without_trial,
+):
+    charged_subscriptions = set(elem for elem in Subscription.objects.charged())
+    assert charged_subscriptions == {
+        past_subscription_ending_after_trial_end,
+        past_subscription_without_trial,
+        current_subscription_after_trial_end,
+        current_subscription_without_trial,
     }
 
 
 @pytest.mark.django_db(databases=['actual_db'])
-def test__subscription__listing_charged_subscriptions(now_, subscriptions):
-    expected_keys = {
-        SubType.PAST_ENDING_AFTER_TRIAL_END,
-        SubType.PAST_WITHOUT_TRIAL,
-        SubType.CURRENT_AFTER_TRIAL_END,
-        SubType.CURRENT_WITHOUT_TRIAL,
+def test__subscription__listing_charged_inactive_subscriptions(
+        now_,
+        past_subscription_ending_before_trial_end,
+        past_subscription_ending_after_trial_end,
+        past_subscription_without_trial,
+        current_subscription_before_trial_end,
+        current_subscription_after_trial_end,
+        current_subscription_without_trial,
+):
+    charged_inactive_subscriptions = set(elem for elem in Subscription.objects.charged().inactive(now_))
+    assert charged_inactive_subscriptions == {
+        past_subscription_ending_after_trial_end,
+        past_subscription_without_trial,
     }
-    charged_subscriptions = [elem for elem in Subscription.objects.all() if elem.was_charged(now_)]
-    received_keys = {key for key, value in subscriptions.items() if value in charged_subscriptions}
-    assert expected_keys == received_keys
 
 
 @pytest.mark.django_db(databases=['actual_db'])
-def test__subscription__listing_charged_inactive_subscriptions(now_, subscriptions):
-    expected_keys = {
-        SubType.PAST_ENDING_AFTER_TRIAL_END,
-        SubType.PAST_WITHOUT_TRIAL,
+def test__subscription__listing_inactive_and_active_subscriptions(
+        now_,
+        past_subscription_ending_before_trial_end,
+        past_subscription_ending_after_trial_end,
+        past_subscription_without_trial,
+        current_subscription_before_trial_end,
+        current_subscription_after_trial_end,
+        current_subscription_without_trial,
+):
+    inactive_subscriptions = set(Subscription.objects.inactive(now_).all())
+    assert inactive_subscriptions == {
+        past_subscription_ending_after_trial_end,
+        past_subscription_ending_before_trial_end,
+        past_subscription_without_trial,
     }
 
-    charged_inactive_subscriptions = [elem for elem in Subscription.objects.inactive(now_) if elem.was_charged(now_)]
-    received_keys = {key for key, value in subscriptions.items() if value in charged_inactive_subscriptions}
-    assert expected_keys == received_keys
-
-
-@pytest.mark.django_db(databases=['actual_db'])
-def test__subscription__listing_inactive_and_active_subscriptions(now_, subscriptions):
-    expected_inactive_keys = {
-        SubType.PAST_ENDING_AFTER_TRIAL_END,
-        SubType.PAST_ENDING_BEFORE_TRIAL_END,
-        SubType.PAST_WITHOUT_TRIAL,
+    active_subscriptions = set(Subscription.objects.active(now_).all())
+    assert active_subscriptions == {
+        current_subscription_before_trial_end,
+        current_subscription_after_trial_end,
+        current_subscription_without_trial,
     }
-    inactive_subscriptions = Subscription.objects.inactive(now_).all()
-    received_inactive_keys = {key for key, value in subscriptions.items() if value in inactive_subscriptions}
-    assert expected_inactive_keys == received_inactive_keys
-
-    expected_active_keys = {
-        SubType.CURRENT_BEFORE_TRIAL_END,
-        SubType.CURRENT_AFTER_TRIAL_END,
-        SubType.CURRENT_WITHOUT_TRIAL,
-    }
-    active_subscriptions = Subscription.objects.active(now_).all()
-    received_active_keys = {key for key, value in subscriptions.items() if value in active_subscriptions}
-    assert expected_active_keys == received_active_keys

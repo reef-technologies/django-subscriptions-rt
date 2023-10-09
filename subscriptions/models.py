@@ -190,6 +190,12 @@ class SubscriptionQuerySet(models.QuerySet):
         subscriptions = self.select_related('plan')
         return subscriptions.exclude(plan__charge_period=INFINITY) if predicate else subscriptions.filter(plan__charge_period=INFINITY)
 
+    def charged(self) -> QuerySet:
+        """
+        Checking for subscriptions that have completed payments with amount more than zero.
+        """
+        return self.filter(payments__status=SubscriptionPayment.Status.COMPLETED, payments__amount__gte=0)
+
     def with_ages(self, at: datetime | None = None) -> QuerySet:
         return self.annotate(
             age=ExpressionWrapper(Least(at or now(), F('end')) - F('start'), output_field=DateTimeField()),
@@ -238,20 +244,6 @@ class Subscription(models.Model):
     @property
     def max_end(self) -> datetime:
         return self.start + self.plan.max_duration
-
-    def was_charged(self, at: datetime | None = None) -> bool:
-        """
-        Checks whether the subscriptions went past its `initial_charge_offset`; thus the client was charged for it.
-        If subscription finished, this also means that the end of subscription was after the `initial_charge_offset`.
-
-        Note: this cannot be done as a filter, since `RelativeDurationField` is a JSON field and
-        start__lte=F('end') - F('initial_charge_offset') makes no sense (subtracting jsonb from datetime).
-        """
-        at = at or now()
-        # If the subscription already ended, we need to check whether it was charged before it ended.
-        # Otherwise, we check whether it was charged before the moment at which we're checking it.
-        earliest_end = self.end if at > self.end else at
-        return self.start + self.initial_charge_offset < earliest_end
 
     def save(self, *args, **kwargs):
         self.start = self.start or now()
