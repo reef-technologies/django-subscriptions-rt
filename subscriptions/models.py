@@ -174,6 +174,14 @@ class SubscriptionQuerySet(models.QuerySet):
         at = at or now()
         return self.overlap(at, at, include_until=True)
 
+    def inactive(self, at: datetime | None = None) -> QuerySet:
+        """
+        Lists all subscriptions that are not currently active.
+        This is the equivalent of "ended" part of "ended_or_ending".
+        """
+        at = at or now()
+        return self.filter(end__lte=at)
+
     def expiring(self, within: datetime, since: datetime | None = None) -> QuerySet:
         since = since or now()
         return self.filter(end__gte=since, end__lte=since + within)
@@ -181,6 +189,12 @@ class SubscriptionQuerySet(models.QuerySet):
     def recurring(self, predicate: bool = True) -> QuerySet:
         subscriptions = self.select_related('plan')
         return subscriptions.exclude(plan__charge_period=INFINITY) if predicate else subscriptions.filter(plan__charge_period=INFINITY)
+
+    def charged(self) -> QuerySet:
+        """
+        Checking for subscriptions that have completed payments with amount more than zero.
+        """
+        return self.filter(payments__status=SubscriptionPayment.Status.COMPLETED, payments__amount__gt=0)
 
     def with_ages(self, at: datetime | None = None) -> QuerySet:
         return self.annotate(
