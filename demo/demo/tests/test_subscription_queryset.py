@@ -165,6 +165,37 @@ def test__subscription__listing_charged_inactive_subscriptions(
         past_subscription_without_trial,
     }
 
+    # Reverse order of operations.
+    charged_inactive_subscriptions = set(elem for elem in Subscription.objects.inactive(now_).charged())
+    assert charged_inactive_subscriptions == {
+        past_subscription_ending_after_trial_end,
+        past_subscription_without_trial,
+    }
+
+
+@pytest.mark.django_db(databases=['actual_db'])
+def test__subscription__listing_charged_active_subscriptions(
+        now_,
+        past_subscription_ending_before_trial_end,
+        past_subscription_ending_after_trial_end,
+        past_subscription_without_trial,
+        current_subscription_before_trial_end,
+        current_subscription_after_trial_end,
+        current_subscription_without_trial,
+):
+    charged_inactive_subscriptions = set(elem for elem in Subscription.objects.charged().active(now_))
+    assert charged_inactive_subscriptions == {
+        current_subscription_after_trial_end,
+        current_subscription_without_trial,
+    }
+
+    # Reverse order of operations.
+    charged_inactive_subscriptions = set(elem for elem in Subscription.objects.active(now_).charged())
+    assert charged_inactive_subscriptions == {
+        current_subscription_after_trial_end,
+        current_subscription_without_trial,
+    }
+
 
 @pytest.mark.django_db(databases=['actual_db'])
 def test__subscription__listing_inactive_and_active_subscriptions(
