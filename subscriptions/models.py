@@ -194,7 +194,7 @@ class SubscriptionQuerySet(models.QuerySet):
         """
         Checking for subscriptions that have completed payments with amount more than zero.
         """
-        return self.filter(payments__status=SubscriptionPayment.Status.COMPLETED, payments__amount__gte=0)
+        return self.filter(payments__status=SubscriptionPayment.Status.COMPLETED, payments__amount__gt=0)
 
     def with_ages(self, at: datetime | None = None) -> QuerySet:
         return self.annotate(
