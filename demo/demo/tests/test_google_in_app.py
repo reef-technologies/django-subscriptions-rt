@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import Any
 from unittest import mock
 
@@ -356,3 +357,36 @@ def test__google__subscriptions__cancel__google(
 
     assert user.subscriptions.active().count() == 1
     assert user.subscriptions.active().latest().auto_prolong is False
+
+
+@pytest.mark.django_db(databases=['actual_db'])
+def test__google__subscriptions__voided_purchase(
+    user,
+    client,
+    subscription,
+    google_in_app,
+    google_rtdn_voided_purchase_notification,
+):
+    subscription.end = now() + days(10)
+    subscription.save()
+
+    SubscriptionPayment.objects.create(
+        user=user,
+        plan=subscription.plan,
+        subscription=subscription,
+        provider_codename=google_in_app.codename,
+        provider_transaction_id='12345',
+        status=SubscriptionPayment.Status.PENDING,
+        subscription_start=now() + days(10),
+        subscription_end=now() + days(40),
+    )
+
+    assert user.subscriptions.active().count() == 1
+
+    response = client.post('/api/webhook/google_in_app/', google_rtdn_voided_purchase_notification, content_type="application/json")
+    assert response.status_code == 200, response.content
+
+    assert user.subscriptions.active().count() == 0
+    subscription = user.subscriptions.latest()
+    assert now() - timedelta(seconds=5) <= subscription.end <= now()
+    # assert subscription.auto_prolong is False

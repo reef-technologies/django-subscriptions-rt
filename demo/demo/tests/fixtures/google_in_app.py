@@ -101,6 +101,27 @@ def google_rtdn_notification_factory(settings, google_in_app, purchase_token, go
 
 
 @pytest.fixture
+def google_rtdn_voided_purchase_notification(settings, purchase_token):
+    return {
+        "message": {
+            "messageId": "136969346945",
+            "publishTime": "2022-10-25T13:15:00.858Z",
+            "data": b64encode(json.dumps({
+                "version": '1.0',
+                "packageName": settings.GOOGLE_PLAY_PACKAGE_NAME,
+                "eventTimeMillis": 100,
+                "voidedPurchaseNotification": {
+                    'purchaseToken': purchase_token,
+                    'orderId': 'GS.0000-0000-0000',
+                    'productType': 1,
+                },
+            }).encode('utf8')).decode('utf8'),
+        },
+        "subscription": "projects/myproject/subscriptions/mysubscription",
+    }
+
+
+@pytest.fixture
 def google_rtdn_notification(google_rtdn_notification_factory) -> dict:
     return google_rtdn_notification_factory(GoogleSubscriptionNotificationType.PURCHASED)
 

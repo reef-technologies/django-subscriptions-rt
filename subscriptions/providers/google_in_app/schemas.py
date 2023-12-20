@@ -40,6 +40,15 @@ class GoogleTestNotification(BaseModel):
         extra = Extra.forbid
 
 
+class VoidedPurchaseNotification(BaseModel):
+    purchaseToken: str
+    orderId: str
+    productType: int
+
+    class Config:
+        extra = Extra.forbid
+
+
 class GoogleDeveloperNotification(BaseModel):
     # https://developer.android.com/google/play/billing/rtdn-reference#sub
     version: str
@@ -47,6 +56,7 @@ class GoogleDeveloperNotification(BaseModel):
     eventTimeMillis: str
     oneTimeProductNotification: Optional[Any] = None
     subscriptionNotification: Optional[GoogleSubscriptionNotification] = None
+    voidedPurchaseNotification: Optional[VoidedPurchaseNotification] = None
     testNotification: Optional[GoogleTestNotification] = None
 
     class Config:
