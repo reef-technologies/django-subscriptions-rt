@@ -351,6 +351,14 @@ class GoogleInAppProvider(Provider):
         When a subscription is purchased, a SubscriptionNotification with type SUBSCRIPTION_PURCHASED notification is sent. When you receive this notification, you should query the Google Play Developer API to get the latest subscription state.
         """
         log.debug('Received RTDN notification %s', notification)
+
+        if notification.voidedPurchaseNotification:
+            log.debug('Received voided purchase notification -> cancelling subscription')
+            self.dismiss_token(notification.voidedPurchaseNotification.purchaseToken)
+            return Response({}, status=HTTP_200_OK)
+
+        assert notification.subscriptionNotification, \
+            'subscriptionNotification field not found in notification'
         payment = self.update_or_create_subscription(
             purchase_token=notification.subscriptionNotification.purchaseToken,
             event=notification.subscriptionNotification.notificationType,
