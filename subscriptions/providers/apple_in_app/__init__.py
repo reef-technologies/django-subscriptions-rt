@@ -186,7 +186,7 @@ class AppleInAppProvider(Provider):
                 )
                 if was_created:
                     payment.subscription.auto_prolong = False
-                    payment.subscription.save()
+                    payment.subscription.save(update_fields=['auto_prolong'])
             except SubscriptionPayment.MultipleObjectsReturned:
                 # This is left as a countermeasure in case the deduplication fails or the code is still "not good enough"
                 # and generates duplicates. It allows us to read a warning from sentry instead of rushing another fix.
@@ -273,7 +273,7 @@ class AppleInAppProvider(Provider):
             current_plan = self._get_plan_for_product_id(transaction_info.product_id)
             # Stopping old subscription, so that the user won't benefit from both of them.
             subscription.end = timezone.now()
-            subscription.save()
+            subscription.save(update_fields=['end'])
             # New subscription will be created with a new payment object.
             subscription = None
 
@@ -311,7 +311,7 @@ class AppleInAppProvider(Provider):
         # Ensuring that subscription ends earlier before making the payment end earlier.
         now = timezone.now()
         latest_payment.subscription.end = now
-        latest_payment.subscription.save()
+        latest_payment.subscription.save(update_fields=['end'])
         latest_payment.subscription_end = now
 
         latest_payment.save()
@@ -339,7 +339,7 @@ class AppleInAppProvider(Provider):
         assert refunded_payment, f'Refund received for {transaction_info=} where no payments exist.'
 
         refunded_payment.subscription.end = transaction_info.revocation_date
-        refunded_payment.subscription.save()
+        refunded_payment.subscription.save(update_fields=['end'])
         refunded_payment.subscription_end = transaction_info.revocation_date
         refunded_payment.status = SubscriptionPayment.Status.CANCELLED
 

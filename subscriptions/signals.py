@@ -63,7 +63,7 @@ with suppress(ImportError):
         for subscription in future_subscriptions:
             if new_value:
                 subscription.plan_id = new_value
-                subscription.save()
+                subscription.save(update_fields=['plan_id'])
             else:
                 subscription.delete()
 
@@ -78,7 +78,7 @@ with suppress(ImportError):
             end = subscription.end
 
             subscription.end = now_
-            subscription.save()
+            subscription.save(update_fields=['end'])
 
             if new_value:
                 subscription.pk = None
