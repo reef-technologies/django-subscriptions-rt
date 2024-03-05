@@ -20,6 +20,8 @@ from .defaults import (
 from .exceptions import PaymentError, ProlongationImpossible
 from .models import Subscription, SubscriptionPayment
 from .providers import get_provider
+from .logic.notifications import NotificationManager
+
 
 log = getLogger(__name__)
 
@@ -240,5 +242,15 @@ def check_duplicated_payments() -> dict[tuple[str, str], list[SubscriptionPaymen
         result[(provider_codename, transaction_id)] = transaction_id_entries
 
     return result
+
+
+def dispatch_notifications(name: str = None) -> None:
+    """ Dispatch the notifications. """
+
+    if name:
+        NotificationManager.execute(name)
+    else:
+        NotificationManager.execute_all()
+
 
 # TODO: check for concurrency issues, probably add transactions

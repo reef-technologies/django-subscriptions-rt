@@ -618,4 +618,28 @@ class Tax(models.Model):
         return f'{self.id} {self.amount}'
 
 
+class SubscriptionNotificationEvent(models.Model):
+    """
+    This model represent notifications that have happened
+    or are happening.
+    """
+    class Status(models.IntegerChoices):
+        PENDING = 0
+        ONGOING = 1
+        COMPLETED = 2
+        CANCELLED = 3
+        ERROR = 4
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='subscription_notification_events'
+    )
+    name = models.CharField(
+        max_length=255
+    )
+    status = models.IntegerField(choices=Status.choices, default=Status.PENDING)
+    created = models.DateTimeField(auto_now_add=True)
+
+
 from .signals import create_default_subscription_for_new_user  # noqa

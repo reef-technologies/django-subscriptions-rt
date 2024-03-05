@@ -322,6 +322,10 @@ docker-compose -f demo/docker-compose.yml up
 
 Run tests with
 ```bash
+
 nox -s test
 ```
-
+If you want to use ipdb for debugging, you can set it up as following:
+```bash
+export PYTHONBREAKPOINT=ipdb.set_trace
+```
