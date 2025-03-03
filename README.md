@@ -1,20 +1,31 @@
-# Django-subscriptions-rt: subscriptions and payments for your Django app
+# django_subscriptions_rt: subscriptions and payments for your Django app
+&nbsp;[![Continuous Integration](https://github.com/reef-technologies/django-subscriptions-rt/workflows/Continuous%20Integration/badge.svg)](https://github.com/reef-technologies/django-subscriptions-rt/actions?query=workflow%3A%22Continuous+Integration%22)&nbsp;[![License](https://img.shields.io/pypi/l/django_subscriptions_rt.svg?label=License)](https://pypi.python.org/pypi/django_subscriptions_rt)&nbsp;[![python versions](https://img.shields.io/pypi/pyversions/django_subscriptions_rt.svg?label=python%20versions)](https://pypi.python.org/pypi/django_subscriptions_rt)&nbsp;[![PyPI version](https://img.shields.io/pypi/v/django_subscriptions_rt.svg?label=PyPI%20version)](https://pypi.python.org/pypi/django_subscriptions_rt)
 
-# Supported versions
+## Supported versions
 
 See [noxfile.py](noxfile.py) for list of Python and Django versions supported (variables `PYTHON_VERSIONS` and `DJANGO_VERSIONS`).
 
 > Warning: current version only supports Postgres database (PG_ADVISORY_LOCK is used), however MySQL support may be added by supporting MySQL in HardDBLock context manager.
 
-# Features
+## Features
 
-TODO
+* Basic Recurring. Subscription Plans are defined for the same products/services on a fixed, recurring charge.
+* Good-Better-Best. Subscription Plans are defined with products or services sold in feature tiers, with escalating features and pricing for each tier.
+* Per-Seat. Subscription Plans are defined with products or services sold in user/license quantity tiers, with volume pricing for each tier of user/license quantities.
+* Metered Billing. Subscription Plans are defined where customers are billed in arrears based on usage of your product/service as calculated by your platform.
 
-# Usage
+### TODO
 
-## Subscriptions
+* Support more granular plans, as described in [Google Play docs](https://support.google.com/googleplay/android-developer/answer/12154973?hl=en)
+* Grace period
+* Hold / pause
 
-\
+## Usage
+
+> [!IMPORTANT]
+> This package uses [ApiVer](#versioning), make sure to import `subscriptions.v0`.
+
+### Subscriptions
 
 ```
 |--------subscription-------------------------------------------->
@@ -31,22 +42,7 @@ quota   (quota lifetime)       quota burned
 (quota recharge period) (quota recharge period) |----------------->
 ```
 
-# Cases
-
-* Basic Recurring. Subscription Plans are defined for the same products/services on a fixed, recurring charge.
-* Good-Better-Best. Subscription Plans are defined with products or services sold in feature tiers, with escalating features and pricing for each tier.
-* Per-Seat. Subscription Plans are defined with products or services sold in user/license quantity tiers, with volume pricing for each tier of user/license quantities.
-* Metered Billing. Subscription Plans are defined where customers are billed in arrears based on usage of your product/service as calculated by your platform.
-
-# TODO
-
-* Support more granular plans, as described in [Google Play docs](https://support.google.com/googleplay/android-developer/answer/12154973?hl=en)
-* Grace period
-* Hold / pause
-
-# Plans, tiers & features
-
-## Default plan
+### Default plan
 
 Use `pip install django-subscriptions-rt[default_plan]` to install constance as dependency.
 
@@ -67,7 +63,7 @@ CONSTANCE_CONFIG = {
 
 Changing default plan value will adjust default subscriptions automatically.
 
-## Trial period
+### Trial period
 
 It is possible to postpone user's first payment by some timedelta. When creating a subscription, set `initial_charge_offset`, which will shift all charge dates by this offset:
 
@@ -126,7 +122,7 @@ Internally, trial period works like this:
                                        ^--- Here real price will be charged
 ```
 
-# Cache
+### Cache
 
 Cache is required for fast resource calculations.
 
@@ -137,13 +133,11 @@ settings.CACHES['subscriptions'] = {
 }
 ```
 
-# Middleware
+### Middleware
 
 It is costy - calculates resources for each authenticated user's request! May be handy in html templates, but better not to use it too much.
 
-# Humanize
-
-# Payment providers
+## Payment providers
 
 There is a clear distinction between "self-hosted" vs "external" subscription solutions. "Self-hosted" means that everything (plans, upgrade/downgrade rules, charging schedules etc) is set up on backend side, and payment provider is only used to store CC information and charge money when  backend asks to do so. However, some payment providers don't allow that, thus it is called "external" - everything is configured in provider dashboard, and it's a provider who does periodic charges etc. The only thing backend does - receives webhook (or periodically fetches information itself, or both altogether), and updates subscriptions (changes timespan, pauses, resumes etc).
 
@@ -151,13 +145,13 @@ There is a clear distinction between "self-hosted" vs "external" subscription so
 
 "External" providers are limited to whatever logic is provided by third-party developers. However, it is much easier to setup and maintain it.
 
-## Paddle
+### Paddle
 
 Uses [paddle.com](https://paddle.com) as payment provider.
 
 This implementation is self-hosted. Paddle does not provide a lot of control over charges, however it has an undocumented opportunity to create a zero-cost subscription with infinite charge period. After this subscription is created, user can be charged by backend at any moment with any amount.
 
-## App store
+### App store
 
 Workflow from the mobile application perspective:
 
@@ -174,7 +168,7 @@ Workflow from the mobile application perspective:
    restart. Utmost care should be taken when handling the receipt. It should be stored on the device until the server
    accepts the operation. Failure to comply will result in client dissatisfaction and a potential refund
 
-### WARNING
+#### WARNING
 
 Server is unable to reject any payment coming from Apple. Receipt that we receive means that the user has already paid.
 Thus, it is in the best interest of the frontend application to prohibit user that is already on a paid plan from
@@ -198,7 +192,7 @@ Currently, only `version 2` of the notifications is supported.
 2) Renewal operation contains original transaction id (the first transaction that initiated the whole subscription) – this is used (in turns) to fetch user for which this operation is performed
 3) New `SubscriptionPayment` is created, using expiration date provided in the notification
 
-## Google in-app purchase
+### Google in-app purchase
 
 Automatic sync of plans between Google Play and the backend (BE) is not implemented yet, so operator should keep both in sync manually:
 
@@ -221,7 +215,7 @@ Workflow:
 
 [How to test](https://developer.android.com/google/play/billing/test)
 
-# Reports
+## Reports
 
 This app comes with basic reporting functionality, including (but not limited to) completed and incompleted payments during selected period of time, as well as estimated recurring charges' dates and amounts in past and future.
 
@@ -298,30 +292,38 @@ for report in TransactionsReport.iter_periods(
 
 Reports may be extended by subclassing the above classes.
 
-# Development setup
 
-Install the `subscriptions` as a development module using
-```bash
-pip install -e .
+## Versioning
+
+This package uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+TL;DR you are safe to use [compatible release version specifier](https://packaging.python.org/en/latest/specifications/version-specifiers/#compatible-release) `~=MAJOR.MINOR` in your `pyproject.toml` or `requirements.txt`.
+
+Additionally, this package uses [ApiVer](https://www.youtube.com/watch?v=FgcoAKchPjk) to further reduce the risk of breaking changes.
+This means, the public API of this package is explicitly versioned, e.g. `subscriptions.v0`, and will not change in a backwards-incompatible way even when `subscriptions.v1` is released.
+
+Internal packages, i.e. prefixed by `subscriptions._` do not share these guarantees and may change in a backwards-incompatible way at any time even in patch releases.
+
+
+## Development
+
+
+Pre-requisites:
+- [pdm](https://pdm.fming.dev/)
+- [nox](https://nox.thea.codes/en/stable/)
+- [docker](https://www.docker.com/) and [docker compose plugin](https://docs.docker.com/compose/)
+
+
+Ideally, you should run `nox -t format lint` before every commit to ensure that the code is properly formatted and linted.
+Before submitting a PR, make sure that tests pass as well, you can do so using:
+```
+nox -t check # equivalent to `nox -t format lint test`
 ```
 
-Set environmental variables
-```bash
-export POSTGRES_DB=postgres
-export POSTGRES_HOST=localhost
-export POSTGRES_PORT=8432
-export POSTGRES_USER=postgres
-export POSTGRES_PASSWORD=12345
-export PADDLE_TEST_EMAIL=<your-email>
+If you wish to install dependencies into `.venv` so your IDE can pick them up, you can do so using:
+```
+pdm install --dev
 ```
 
-Start database (in another terminal with the same variables) with
-```bash
-docker-compose -f demo/docker-compose.yml up
-```
+### Release process
 
-Run tests with
-```bash
-nox -s test
-```
-
+Run `nox -s make_release -- X.Y.Z` where `X.Y.Z` is the version you're releasing and follow the printed instructions.

@@ -4,6 +4,5 @@ from subscriptions.api.views import ResourceHeadersMixin
 
 
 class ResourceHeadersMixinTestView(ResourceHeadersMixin):
-
     def get(self, request):
-        return HttpResponse('ok')
+        return HttpResponse("ok")

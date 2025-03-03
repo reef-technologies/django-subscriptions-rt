@@ -1,0 +1,20 @@
+{
+  "template": "https://github.com/reef-technologies/cookiecutter-rt-pkg.git",
+  "commit": "ef29edded43605df402e1d5ae7530d69310be251",
+  "checkout": null,
+  "context": {
+    "cookiecutter": {
+      "package_name": "django_subscriptions_rt",
+      "repository_github_url": "https://github.com/reef-technologies/django-subscriptions-rt",
+      "is_django_package": "y",
+      "build_docker_image": "n",
+      "_jinja2_env_vars": {
+        "block_start_string": "# COOKIECUTTER{%",
+        "block_end_string": "%}"
+      },
+      "_template": "https://github.com/reef-technologies/cookiecutter-rt-pkg.git",
+      "_commit": "ef29edded43605df402e1d5ae7530d69310be251"
+    }
+  },
+  "directory": null
+}
