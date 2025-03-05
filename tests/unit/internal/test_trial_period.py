@@ -4,12 +4,12 @@ import pytest
 from dateutil.relativedelta import relativedelta
 from freezegun import freeze_time
 
-from subscriptions.api.views import SubscriptionSelectView
-from subscriptions.models import INFINITY, Subscription, SubscriptionPayment
-from subscriptions.tasks import check_unfinished_payments
-from subscriptions.validators import get_validators
+from subscriptions.v0.api.views import SubscriptionSelectView
+from subscriptions.v0.models import INFINITY, Subscription, SubscriptionPayment
+from subscriptions.v0.tasks import check_unfinished_payments
+from subscriptions.v0.validators import get_validators
 
-from .helpers import days
+from ..helpers import days
 
 
 @pytest.mark.django_db(databases=["actual_db"])

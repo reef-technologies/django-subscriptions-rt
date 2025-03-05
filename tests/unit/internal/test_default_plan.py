@@ -7,10 +7,10 @@ from django.utils.timezone import now
 from freezegun import freeze_time
 from more_itertools import one
 
-from subscriptions.functions import get_default_plan
-from subscriptions.models import Plan, Subscription, SubscriptionPayment
+from subscriptions.v0.functions import get_default_plan
+from subscriptions.v0.models import Plan, Subscription, SubscriptionPayment
 
-from .helpers import days
+from ..helpers import days
 
 
 @pytest.mark.django_db(databases=["actual_db"])

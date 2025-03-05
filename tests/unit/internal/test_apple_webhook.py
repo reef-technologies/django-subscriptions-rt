@@ -9,23 +9,27 @@ import pytest
 from django.test.client import Client
 from more_itertools import one
 
-from subscriptions.models import (
+from subscriptions.v0.models import (
     SubscriptionPayment,
     SubscriptionPaymentRefund,
 )
-from subscriptions.providers.apple_in_app import (
+from subscriptions.v0.providers.apple_in_app.exceptions import (
     AppleReceiptValidationError,
+)
+from subscriptions.v0.providers.apple_in_app.api import (
     AppleVerifyReceiptResponse,
-    AppStoreNotification,
+)
+from subscriptions.v0.providers.apple_in_app.exceptions import (
     InvalidAppleReceiptError,
 )
-from subscriptions.providers.apple_in_app.api import AppleReceiptRequest
-from subscriptions.providers.apple_in_app.app_store import (
+from subscriptions.v0.providers.apple_in_app.api import AppleReceiptRequest
+from subscriptions.v0.providers.apple_in_app.app_store import (
+    AppStoreNotification,
     AppStoreNotificationTypeV2,
     AppStoreNotificationTypeV2Subtype,
     AppStoreTransactionInfo,
 )
-from subscriptions.providers.apple_in_app.enums import (
+from subscriptions.v0.providers.apple_in_app.enums import (
     AppleEnvironment,
     AppleValidationStatus,
 )

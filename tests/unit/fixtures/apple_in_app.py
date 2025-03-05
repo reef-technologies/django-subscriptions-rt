@@ -1,7 +1,7 @@
 import pytest
 
-from subscriptions.providers import get_provider, get_providers
-from subscriptions.providers.apple_in_app import AppleInAppProvider
+from subscriptions.v0.providers import get_provider, get_providers
+from subscriptions.v0.providers.apple_in_app import AppleInAppProvider
 
 
 @pytest.fixture

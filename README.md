@@ -224,8 +224,8 @@ Below is an example how to use reporting functionality. Please pay attention tha
 ```python
 from django.utils.timezone import now
 from datetime import timedelta
-from subscriptions.reports import SubscriptionsReport, TransactionsReport
-from subscriptions.providers import get_provider
+from subscriptions.v0 import SubscriptionsReport, TransactionsReport
+from subscriptions.v0 import get_provider
 
 subscriptions = SubscriptionsReport(
    since=now()-timedelta(days=30),
@@ -272,7 +272,7 @@ print('Estimated charge total:', transactions.get_estimated_recurring_charge_tot
 Usually it is handy to generate reports for some periods e.g. weeks, months, or years. There is a class method which will auto-generate subsequent reports with desired frequency:
 
 ```python
-from subscriptions.reports import SubscriptionsReport, TransactionsReport, MONTHLY, DAILY
+from subscriptions.v0 import SubscriptionsReport, TransactionsReport, MONTHLY, DAILY
 
 for report in SubscriptionsReport.iter_periods(
    frequency=MONTHLY,

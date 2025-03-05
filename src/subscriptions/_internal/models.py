@@ -46,11 +46,15 @@ INFINITY = relativedelta(days=365 * 1000)
 MAX_DATETIME = datetime.max.replace(tzinfo=UTC)
 
 
+class SubscriptionsMeta:
+    app_label = 'subscriptions'
+
+
 class Resource(models.Model):
     codename = models.CharField(max_length=255)
     units = models.CharField(max_length=255, blank=True)
 
-    class Meta:
+    class Meta(SubscriptionsMeta):
         constraints = [
             UniqueConstraint(fields=["codename"], name="unique_resource"),
         ]
@@ -64,6 +68,9 @@ class Feature(models.Model):
     description = models.TextField(blank=True)
     is_negative = models.BooleanField(default=False)
 
+    class Meta(SubscriptionsMeta):
+        pass
+
     def __str__(self) -> str:
         return self.codename
 
@@ -75,6 +82,9 @@ class Tier(models.Model):
     level = models.SmallIntegerField(default=0)
 
     features = models.ManyToManyField(Feature)
+
+    class Meta(SubscriptionsMeta):
+        pass
 
     def __str__(self) -> str:
         return self.codename
@@ -97,7 +107,7 @@ class Plan(models.Model):
     metadata = models.JSONField(blank=True, default=dict, encoder=AdvancedJSONEncoder)
     is_enabled = models.BooleanField(default=True)
 
-    class Meta:
+    class Meta(SubscriptionsMeta):
         constraints = [
             UniqueConstraint(fields=["codename"], name="unique_plan_codename"),
         ]
@@ -236,7 +246,7 @@ class Subscription(models.Model):
 
     objects = SubscriptionQuerySet.as_manager()
 
-    class Meta:
+    class Meta(SubscriptionsMeta):
         get_latest_by = "start"
 
     @property
@@ -449,7 +459,7 @@ class Quota(models.Model):
     )
     burns_in = RelativeDurationField(blank=True, help_text="leave blank to burn each recharge period")
 
-    class Meta:
+    class Meta(SubscriptionsMeta):
         constraints = [
             UniqueConstraint(fields=["plan", "resource"], name="unique_quota"),
         ]
@@ -473,7 +483,7 @@ class Usage(models.Model):
     amount = models.PositiveIntegerField(default=1)
     datetime = models.DateTimeField(blank=True)
 
-    class Meta:
+    class Meta(SubscriptionsMeta):
         indexes = [
             Index(fields=["user", "resource"]),
         ]
@@ -513,7 +523,7 @@ class AbstractTransaction(models.Model):
     created = models.DateTimeField(blank=True, editable=False)
     updated = models.DateTimeField(blank=True, editable=False)
 
-    class Meta:
+    class Meta(SubscriptionsMeta):
         abstract = True
         indexes = [
             Index(fields=("provider_codename", "provider_transaction_id")),
@@ -643,6 +653,9 @@ class SubscriptionPaymentRefund(AbstractTransaction):
 class Tax(models.Model):
     subscription_payment = models.ForeignKey(SubscriptionPayment, on_delete=models.PROTECT, related_name="taxes")
     amount = MoneyField()
+
+    class Meta(SubscriptionsMeta):
+        pass
 
     def __str__(self) -> str:
         return f"{self.id} {self.amount}"

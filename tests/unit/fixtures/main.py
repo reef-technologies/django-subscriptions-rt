@@ -13,12 +13,12 @@ from django.test import Client
 from django.utils.timezone import now
 from djmoney.money import Money
 
-from subscriptions.functions import (
+from subscriptions.v0.functions import (
     get_remaining_amount,
     get_remaining_chunks,
     get_resource_refresh_moments,
 )
-from subscriptions.models import (
+from subscriptions.v0.models import (
     INFINITY,
     Plan,
     Quota,
@@ -28,9 +28,9 @@ from subscriptions.models import (
     SubscriptionPayment,
     Usage,
 )
-from subscriptions.providers import get_provider, get_providers
-from subscriptions.providers.dummy import DummyProvider
-from subscriptions.tasks import charge_recurring_subscriptions
+from subscriptions.v0.providers import get_provider, get_providers
+from subscriptions.v0.providers.dummy import DummyProvider
+from subscriptions.v0.tasks import charge_recurring_subscriptions
 
 from ..helpers import days, usd
 

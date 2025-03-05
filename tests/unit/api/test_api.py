@@ -8,11 +8,11 @@ from django.utils.timezone import now
 from freezegun import freeze_time
 from more_itertools import one
 
-from subscriptions.exceptions import PaymentError
-from subscriptions.fields import relativedelta_to_dict
-from subscriptions.functions import use_resource
-from subscriptions.models import Subscription, SubscriptionPayment, Usage
-from subscriptions.providers import get_providers
+from subscriptions.v0.exceptions import PaymentError
+from subscriptions.v0.fields import relativedelta_to_dict
+from subscriptions.v0.functions import use_resource
+from subscriptions.v0.models import Subscription, SubscriptionPayment, Usage
+from subscriptions.v0.providers import get_providers
 
 from ..helpers import datetime_to_api, days
 

@@ -8,8 +8,10 @@ import jwt.utils
 import pytest
 from OpenSSL import crypto
 
-from subscriptions.providers.apple_in_app.app_store import (
+from subscriptions.v0.providers.apple_in_app.exceptions import (
     PayloadValidationError,
+)
+from subscriptions.v0.providers.apple_in_app.app_store import (
     validate_and_fetch_apple_signed_payload,
 )
 

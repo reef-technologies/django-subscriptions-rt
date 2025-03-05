@@ -10,17 +10,17 @@ from django.utils.timezone import now
 from freezegun import freeze_time
 from more_itertools import one
 
-from subscriptions.models import Plan, Subscription, SubscriptionPayment
-from subscriptions.providers.google_in_app.schemas import (
+from subscriptions.v0.models import Plan, Subscription, SubscriptionPayment
+from subscriptions.v0.providers.google_in_app.schemas import (
     GoogleAcknowledgementState,
     GoogleSubscription,
     GoogleSubscriptionNotificationType,
     GoogleSubscriptionPurchaseV2,
     GoogleSubscriptionState,
 )
-from subscriptions.utils import fromisoformat
+from subscriptions.v0.utils import fromisoformat
 
-from .helpers import days
+from ..helpers import days
 
 
 def test__google__iter_subscriptions(google_in_app):

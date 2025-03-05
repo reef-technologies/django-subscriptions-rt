@@ -5,11 +5,13 @@ from datetime import datetime
 import pytest
 import requests
 
-from subscriptions.providers.apple_in_app.api import (
+from subscriptions.v0.providers.apple_in_app.api import (
     AppleAppStoreAPI,
+    AppleVerifyReceiptResponse,
+)
+from subscriptions.v0.providers.apple_in_app.enums import (
     AppleEnvironment,
     AppleValidationStatus,
-    AppleVerifyReceiptResponse,
 )
 
 

@@ -6,16 +6,15 @@ from django.utils.timezone import now
 from freezegun import freeze_time
 from more_itertools import partition
 
-from subscriptions.models import SubscriptionPayment
-from subscriptions.reports import (
+from subscriptions.v0.models import SubscriptionPayment
+from subscriptions.v0.reports import (
     MONTHLY,
-    NO_MONEY,
     WEEKLY,
     SubscriptionsReport,
     TransactionsReport,
 )
-
-from .helpers import days, usd
+from subscriptions.v0.utils import NO_MONEY
+from ..helpers import days, usd
 
 
 def test__reports__subscriptions__iter_periods__microseconds():

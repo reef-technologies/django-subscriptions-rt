@@ -5,8 +5,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import pytest
 from more_itertools import one
 
-from subscriptions.models import SubscriptionPayment
-from subscriptions.providers.apple_in_app import AppleInAppProvider
+from subscriptions.v0.models import SubscriptionPayment
+from subscriptions.v0.providers.apple_in_app import AppleInAppProvider
 
 
 @pytest.mark.django_db(transaction=True, databases=["actual_db"])

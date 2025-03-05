@@ -27,11 +27,25 @@ dependencies = [
     "django-money>=3.0",
     "more-itertools>=10.6.0",
     "python-dateutil>=2.9.0.post0",
-    "djangorestframework>=3.15.2",
+    "djangorestframework>=3.14",
     "requests>=2.32.3",
     "tenacity>=9.0.0",
-    "pydantic>=2.10.6",
+    "pydantic>=1.10,<1.11",
     "environs>=14.1.1",
+]
+
+[project.optional-dependencies]
+apple_in_app = [
+    "PyJWT>=2.6,<3",
+    "pyOpenSSL>=23.2,<24",
+    "cryptography>=41.0.1",
+]
+google_in_app = [
+    "google-api-python-client>=2.88.0,<3",
+    "oauth2client==4.1.3",
+]
+default_plan = [
+    "django-constance[database]>=2.9.0,<3",
 ]
 
 [project.urls]
@@ -56,6 +70,7 @@ test = [
     "pytest-asyncio",
     "pytest-django",
     "pytest-xdist",
+    "ipdb",
 ]
 lint = [
     "codespell[toml]",
@@ -73,7 +88,7 @@ release = [
 
 [tool.pytest.ini_options]
 pythonpath = ["."]  # allow for `import tests` in test files
-target_package_name = "django_subscriptions_rt"  # required by pytest-apiver
+target_package_name = "subscriptions"  # required by pytest-apiver
 DJANGO_SETTINGS_MODULE="tests.settings"
 
 [tool.ruff]

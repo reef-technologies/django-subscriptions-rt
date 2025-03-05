@@ -5,10 +5,10 @@ from collections.abc import Callable
 import pytest
 from django.utils.timezone import now
 
-from subscriptions.models import Plan, Subscription, SubscriptionPayment
-from subscriptions.providers import get_provider, get_providers
-from subscriptions.providers.google_in_app import GoogleInAppProvider
-from subscriptions.providers.google_in_app.schemas import (
+from subscriptions.v0.models import Plan, Subscription, SubscriptionPayment
+from subscriptions.v0.providers import get_provider, get_providers
+from subscriptions.v0.providers.google_in_app import GoogleInAppProvider
+from subscriptions.v0.providers.google_in_app.schemas import (
     GoogleAcknowledgementState,
     GoogleAutoRenewingPlan,
     GoogleOfferDetails,

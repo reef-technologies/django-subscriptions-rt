@@ -16,8 +16,8 @@ from django.utils.timezone import now
 from djmoney.money import Money
 from freezegun import freeze_time
 
-from subscriptions.exceptions import InconsistentQuotaCache, QuotaLimitExceeded
-from subscriptions.functions import (
+from subscriptions.v0.exceptions import InconsistentQuotaCache, QuotaLimitExceeded
+from subscriptions.v0.functions import (
     cache,
     get_cache_name,
     get_default_features,
@@ -26,7 +26,7 @@ from subscriptions.functions import (
     merge_feature_sets,
     use_resource,
 )
-from subscriptions.models import (
+from subscriptions.v0.models import (
     INFINITY,
     Feature,
     Plan,
@@ -38,7 +38,7 @@ from subscriptions.models import (
     Usage,
 )
 
-from .helpers import days
+from ..helpers import days
 
 
 @pytest.mark.django_db(databases=["actual_db"])

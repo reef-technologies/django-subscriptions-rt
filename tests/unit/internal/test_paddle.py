@@ -15,12 +15,12 @@ from more_itertools import one
 from requests import Response
 from tenacity import Retrying, TryAgain, stop_after_attempt, wait_incrementing
 
-from subscriptions.exceptions import BadReferencePayment, PaymentError
-from subscriptions.models import Plan, Subscription, SubscriptionPayment
-from subscriptions.providers import get_provider
-from subscriptions.providers.paddle import PaddleProvider
-from subscriptions.tasks import check_unfinished_payments
-from subscriptions.utils import fromisoformat
+from subscriptions.v0.exceptions import BadReferencePayment, PaymentError
+from subscriptions.v0.models import Plan, Subscription, SubscriptionPayment
+from subscriptions.v0.providers import get_provider
+from subscriptions.v0.providers.paddle import PaddleProvider
+from subscriptions.v0.tasks import check_unfinished_payments
+from subscriptions.v0.utils import fromisoformat
 
 
 def automate_payment(url: str, card: str, email: str):

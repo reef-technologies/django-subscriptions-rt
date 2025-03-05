@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 from django.utils.timezone import now
 
-from subscriptions.models import (
+from subscriptions.v0.models import (
     Subscription,
     SubscriptionPayment,
     SubscriptionPaymentRefund,

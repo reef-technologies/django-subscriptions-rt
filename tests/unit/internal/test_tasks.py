@@ -10,15 +10,15 @@ from django.utils.timezone import now
 from freezegun import freeze_time
 from more_itertools import spy
 
-from subscriptions.exceptions import PaymentError
-from subscriptions.models import Subscription, SubscriptionPayment
-from subscriptions.tasks import (
+from subscriptions.v0.exceptions import PaymentError
+from subscriptions.v0.models import Subscription, SubscriptionPayment
+from subscriptions.v0.tasks import (
     charge_recurring_subscriptions,
     notify_stuck_pending_payments,
 )
-from subscriptions.utils import HardDBLock
+from subscriptions.v0.utils import HardDBLock
 
-from .helpers import days
+from ..helpers import days
 
 
 def middle(period: list[timedelta]) -> timedelta:

@@ -1,7 +1,7 @@
 import pytest
 
-from subscriptions.models import Subscription, SubscriptionPayment
-from subscriptions.tasks import check_duplicated_payments
+from subscriptions.v0.models import Subscription, SubscriptionPayment
+from subscriptions.v0.tasks import check_duplicated_payments
 
 
 @pytest.mark.django_db(databases=["actual_db"])

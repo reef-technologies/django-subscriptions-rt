@@ -18,7 +18,7 @@ from pydantic import (
     Field,
 )
 
-from subscriptions.providers.apple_in_app.exceptions import ConfigurationError
+from subscriptions.v0.providers.apple_in_app.exceptions import ConfigurationError
 
 from .enums import AppleEnvironment
 from .exceptions import PayloadValidationError

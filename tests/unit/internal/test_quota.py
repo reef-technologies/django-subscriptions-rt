@@ -3,9 +3,9 @@ from datetime import timedelta
 import pytest
 from django.utils.timezone import now
 
-from subscriptions.models import INFINITY, Quota
+from subscriptions.v0.models import INFINITY, Quota
 
-from .helpers import days
+from ..helpers import days
 
 
 @pytest.mark.django_db(databases=["actual_db"])

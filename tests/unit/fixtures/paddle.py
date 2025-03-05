@@ -1,8 +1,8 @@
 import pytest
 
-from subscriptions.models import SubscriptionPayment
-from subscriptions.providers import get_provider, get_providers
-from subscriptions.providers.paddle import PaddleProvider
+from subscriptions.v0.models import SubscriptionPayment
+from subscriptions.v0.providers import get_provider, get_providers
+from subscriptions.v0.providers.paddle import PaddleProvider
 
 from ..helpers import usd
 

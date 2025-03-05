@@ -11,7 +11,7 @@ log = logging.getLogger(__name__)
 
 
 def fix_default_subscriptions(apps, schema_editor):
-    from subscriptions.models import MAX_DATETIME
+    from subscriptions.v0.models import MAX_DATETIME
 
     db_alias = schema_editor.connection.alias
     User = apps.get_model(*settings.AUTH_USER_MODEL.rsplit(".", maxsplit=1))

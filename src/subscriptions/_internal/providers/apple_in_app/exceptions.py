@@ -1,9 +1,9 @@
-from subscriptions.exceptions import (
+from subscriptions.v0.exceptions import (
     InvalidOperation,
     PaymentError,
     SubscriptionError,
 )
-from subscriptions.providers.apple_in_app.enums import AppleValidationStatus
+from subscriptions.v0.providers.apple_in_app.enums import AppleValidationStatus
 
 
 class AppleInvalidOperation(SubscriptionError):

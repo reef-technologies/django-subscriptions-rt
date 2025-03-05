@@ -6,10 +6,10 @@ from dateutil.relativedelta import relativedelta
 from django.db import connections
 from django.utils.timezone import now
 
-from subscriptions.exceptions import PaymentError, ProlongationImpossible
-from subscriptions.models import Quota, QuotaChunk, Subscription, SubscriptionPayment
+from subscriptions.v0.exceptions import PaymentError, ProlongationImpossible
+from subscriptions.v0.models import Quota, QuotaChunk, Subscription, SubscriptionPayment
 
-from .helpers import days
+from ..helpers import days
 
 
 @pytest.mark.django_db(databases=["actual_db"])

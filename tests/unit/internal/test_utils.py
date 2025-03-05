@@ -1,6 +1,6 @@
 import pytest
 
-from subscriptions.utils import NonMonothonicSequence, merge_iter
+from subscriptions.v0.utils import NonMonothonicSequence, merge_iter
 
 
 def test__utils__merge_iter():

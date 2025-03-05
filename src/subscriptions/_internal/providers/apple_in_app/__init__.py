@@ -23,7 +23,7 @@ from rest_framework.status import (
     HTTP_401_UNAUTHORIZED,
 )
 
-from subscriptions.models import (
+from subscriptions.v0.models import (
     Plan,
     Subscription,
     SubscriptionPayment,
