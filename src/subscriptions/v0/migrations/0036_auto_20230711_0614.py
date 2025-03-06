@@ -15,7 +15,7 @@ def fix_default_subscriptions(apps, schema_editor):
 
     db_alias = schema_editor.connection.alias
     User = apps.get_model(*settings.AUTH_USER_MODEL.rsplit(".", maxsplit=1))
-    Plan = apps.get_model("subscriptions", "Plan")
+    Plan = apps.get_model("subscriptions_v0", "Plan")
 
     try:
         from constance import config
@@ -78,7 +78,7 @@ def noop(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("subscriptions", "0035_alter_subscription_auto_prolong"),
+        ("subscriptions_v0", "0035_alter_subscription_auto_prolong"),
     ]
 
     operations = [

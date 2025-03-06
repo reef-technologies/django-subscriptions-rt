@@ -8,7 +8,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("subscriptions", "0017_alter_subscriptionpayment_subscription_uid_and_more"),
+        ("subscriptions_v0", "0017_alter_subscriptionpayment_subscription_uid_and_more"),
     ]
 
     operations = [
@@ -37,7 +37,7 @@ class Migration(migrations.Migration):
                 db_constraint=False,
                 null=True,
                 on_delete=django.db.models.deletion.PROTECT,
-                to="subscriptions.subscription",
+                to="subscriptions_v0.subscription",
             ),
         ),
         migrations.AlterField(
@@ -53,7 +53,7 @@ class Migration(migrations.Migration):
                 db_constraint=False,
                 null=True,
                 on_delete=django.db.models.deletion.PROTECT,
-                to="subscriptions.subscriptionpayment",
+                to="subscriptions_v0.subscriptionpayment",
             ),
         ),
         migrations.AlterField(
@@ -69,7 +69,7 @@ class Migration(migrations.Migration):
                 db_constraint=False,
                 null=True,
                 on_delete=django.db.models.deletion.PROTECT,
-                to="subscriptions.subscriptionpayment",
+                to="subscriptions_v0.subscriptionpayment",
             ),
         ),
     ]

@@ -6,7 +6,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("subscriptions", "0013_alter_subscription_uid_alter_subscriptionpayment_uid_and_more"),
+        ("subscriptions_v0", "0013_alter_subscription_uid_alter_subscriptionpayment_uid_and_more"),
     ]
 
     operations = [
@@ -17,7 +17,7 @@ class Migration(migrations.Migration):
                 blank=True,
                 null=True,
                 on_delete=django.db.models.deletion.PROTECT,
-                to="subscriptions.subscription",
+                to="subscriptions_v0.subscription",
                 to_field="uid",
             ),
         ),
@@ -28,7 +28,7 @@ class Migration(migrations.Migration):
                 blank=True,
                 null=True,
                 on_delete=django.db.models.deletion.PROTECT,
-                to="subscriptions.subscriptionpayment",
+                to="subscriptions_v0.subscriptionpayment",
                 to_field="uid",
             ),
         ),
@@ -39,7 +39,7 @@ class Migration(migrations.Migration):
                 blank=True,
                 null=True,
                 on_delete=django.db.models.deletion.PROTECT,
-                to="subscriptions.subscriptionpayment",
+                to="subscriptions_v0.subscriptionpayment",
                 to_field="uid",
             ),
         ),

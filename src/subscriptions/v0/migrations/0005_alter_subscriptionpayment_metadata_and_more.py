@@ -6,7 +6,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("subscriptions", "0004_remove_plan_unique_plan_slug_remove_plan_slug"),
+        ("subscriptions_v0", "0004_remove_plan_unique_plan_slug_remove_plan_slug"),
     ]
 
     operations = [

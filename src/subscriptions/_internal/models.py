@@ -55,6 +55,7 @@ class Resource(models.Model):
     units = models.CharField(max_length=255, blank=True)
 
     class Meta(SubscriptionsMeta):
+        db_table = "subscriptions_v0_resource"
         constraints = [
             UniqueConstraint(fields=["codename"], name="unique_resource"),
         ]
@@ -69,7 +70,7 @@ class Feature(models.Model):
     is_negative = models.BooleanField(default=False)
 
     class Meta(SubscriptionsMeta):
-        pass
+        db_table = "subscriptions_v0_feature"
 
     def __str__(self) -> str:
         return self.codename
@@ -84,7 +85,7 @@ class Tier(models.Model):
     features = models.ManyToManyField(Feature)
 
     class Meta(SubscriptionsMeta):
-        pass
+        db_table = "subscriptions_v0_tier"
 
     def __str__(self) -> str:
         return self.codename
@@ -108,6 +109,7 @@ class Plan(models.Model):
     is_enabled = models.BooleanField(default=True)
 
     class Meta(SubscriptionsMeta):
+        db_table = "subscriptions_v0_plan"
         constraints = [
             UniqueConstraint(fields=["codename"], name="unique_plan_codename"),
         ]
@@ -247,6 +249,7 @@ class Subscription(models.Model):
     objects = SubscriptionQuerySet.as_manager()
 
     class Meta(SubscriptionsMeta):
+        db_table = "subscriptions_v0_subscription"
         get_latest_by = "start"
 
     @property
@@ -460,6 +463,7 @@ class Quota(models.Model):
     burns_in = RelativeDurationField(blank=True, help_text="leave blank to burn each recharge period")
 
     class Meta(SubscriptionsMeta):
+        db_table = "subscriptions_v0_quota"
         constraints = [
             UniqueConstraint(fields=["plan", "resource"], name="unique_quota"),
         ]
@@ -484,6 +488,7 @@ class Usage(models.Model):
     datetime = models.DateTimeField(blank=True)
 
     class Meta(SubscriptionsMeta):
+        db_table = "subscriptions_v0_usage"
         indexes = [
             Index(fields=["user", "resource"]),
         ]
@@ -576,9 +581,10 @@ class SubscriptionPayment(AbstractTransaction):
         super().__init__(*args, **kwargs)
         self._initial_status = self.uid and self.status
 
-    # TODO: changing latest() to `subscription_end` may not work well when subscription_end is None
-    # class Meta:
-    #     get_latest_by = 'subscription_end'
+    class Meta(AbstractTransaction.Meta):
+        db_table = "subscriptions_v0_subscriptionpayment"
+        # TODO: changing latest() to `subscription_end` may not work well when subscription_end is None
+        # get_latest_by = 'subscription_end'
 
     def __str__(self) -> str:
         return (
@@ -649,13 +655,16 @@ class SubscriptionPaymentRefund(AbstractTransaction):
     original_payment = models.ForeignKey(SubscriptionPayment, on_delete=models.PROTECT, related_name="refunds")
     # TODO: add support by providers
 
+    class Meta(AbstractTransaction.Meta):
+        db_table = "subscriptions_v0_subscriptionpaymentrefund"
+
 
 class Tax(models.Model):
     subscription_payment = models.ForeignKey(SubscriptionPayment, on_delete=models.PROTECT, related_name="taxes")
     amount = MoneyField()
 
     class Meta(SubscriptionsMeta):
-        pass
+        db_table = "subscriptions_v0_tax"
 
     def __str__(self) -> str:
         return f"{self.id} {self.amount}"

@@ -6,7 +6,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("subscriptions", "0030_feature_is_negative"),
+        ("subscriptions_v0", "0030_feature_is_negative"),
     ]
 
     operations = [
@@ -19,7 +19,7 @@ class Migration(migrations.Migration):
                 null=True,
                 on_delete=django.db.models.deletion.PROTECT,
                 related_name="plans",
-                to="subscriptions.tier",
+                to="subscriptions_v0.tier",
             ),
         ),
     ]

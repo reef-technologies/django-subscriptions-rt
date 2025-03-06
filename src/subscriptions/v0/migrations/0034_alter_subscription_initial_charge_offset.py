@@ -2,23 +2,23 @@
 
 from django.db import migrations
 
-import subscriptions.fields
-import subscriptions.models
+import subscriptions.v0.fields
+import subscriptions.v0.models
 
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("subscriptions", "0033_auto_20230706_1116"),
+        ("subscriptions_v0", "0033_auto_20230706_1116"),
     ]
 
     operations = [
         migrations.AlterField(
             model_name="subscription",
             name="initial_charge_offset",
-            field=subscriptions.fields.RelativeDurationField(
+            field=subscriptions.v0.fields.RelativeDurationField(
                 blank=True,
-                default=subscriptions.models.default_initial_charge,
-                encoder=subscriptions.fields.RelativedeltaEncoder,
+                default=subscriptions.v0.models.default_initial_charge,
+                encoder=subscriptions.v0.fields.RelativedeltaEncoder,
             ),
         ),
     ]

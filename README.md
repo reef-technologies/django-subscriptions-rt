@@ -25,6 +25,13 @@ See [noxfile.py](noxfile.py) for list of Python and Django versions supported (v
 > [!IMPORTANT]
 > This package uses [ApiVer](#versioning), make sure to import `subscriptions.v0`.
 
+```python
+# settings.py
+INSTALLED_APPS = [
+   ...,
+   'subscriptions.v0',
+]
+
 ### Subscriptions
 
 ```

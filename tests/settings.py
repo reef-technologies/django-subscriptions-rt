@@ -5,18 +5,61 @@ Django settings used in tests.
 from os import environ
 
 DEBUG = True
-SECRET_KEY = "DUMMY"
+SECRET_KEY = "DUMMY"  # noqa: S105
 
 INSTALLED_APPS = [
+    # "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
+    "django.contrib.sessions",
+    # "django.contrib.messages",
+    # "django.contrib.staticfiles",
+    "rest_framework",
+    "constance",
+    "subscriptions.v0",
+]
+
+MIDDLEWARE = [
+    "django.middleware.security.SecurityMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
+    "django.middleware.common.CommonMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django.contrib.messages.middleware.MessageMiddleware",
+    "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "subscriptions.v0.middleware.SubscriptionsMiddleware",
 ]
 
 DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": ":memory:",
+    # "default": {
+    #     "ENGINE": "django.db.backends.sqlite3",
+    #     "NAME": ":memory:",
+    # }
+    "default": {},
+    # Set to check whether everything related to routing will be properly handled.
+    "actual_db": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": environ["POSTGRES_DB"],
+        "USER": environ["POSTGRES_USER"],
+        "PASSWORD": environ["POSTGRES_PASSWORD"],
+        "HOST": "localhost",
+        "PORT": environ["POSTGRES_PORT"],
+        "ATOMIC_REQUESTS": False,
+    },
+}
+CACHES = {
+    "subscriptions": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
     }
+}
+DATABASE_ROUTERS = [
+    "tests.db_router.DBRouter",
+]
+# AUTHENTICATION_BACKENDS =
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework.authentication.SessionAuthentication",
+    ]
 }
 
 CONSTANCE_BACKEND = "constance.backends.database.DatabaseBackend"
@@ -47,5 +90,4 @@ APPLE_SHARED_SECRET = environ.get("APPLE_SHARED_SECRET")
 # Current certificate is also embedded into the application.
 # APPLE_ROOT_CERTIFICATE_PATH = environ.get('APPLE_ROOT_CERTIFICATE_PATH')
 
-ROOT_URLCONF = __name__
-urlpatterns = []  # type: ignore
+ROOT_URLCONF = "tests.urls"

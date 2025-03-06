@@ -148,7 +148,7 @@ def test__google__webhook_for_app_notification(
     assert not SubscriptionPayment.objects.exists()
 
     with mock.patch(
-        "subscriptions.providers.google_in_app.GoogleInAppProvider.get_purchase",
+        "subscriptions.v0.providers.google_in_app.GoogleInAppProvider.get_purchase",
         return_value=google_subscription_purchase,
     ):
         response = user_client.post("/api/webhook/google_in_app/", app_notification, content_type="application/json")
@@ -177,7 +177,7 @@ def test__google__webhook_for_app_notification_duplicate(
     assert not Subscription.objects.exists()
 
     with mock.patch(
-        "subscriptions.providers.google_in_app.GoogleInAppProvider.get_purchase",
+        "subscriptions.v0.providers.google_in_app.GoogleInAppProvider.get_purchase",
         return_value=google_subscription_purchase,
     ):
         for _ in range(3):
@@ -208,7 +208,7 @@ def test__google__webhook_linked_token_dismissing(
 
     google_subscription_purchase.linkedPurchaseToken = linked_token
     with mock.patch(
-        "subscriptions.providers.google_in_app.GoogleInAppProvider.get_purchase",
+        "subscriptions.v0.providers.google_in_app.GoogleInAppProvider.get_purchase",
         return_value=google_subscription_purchase,
     ):
         response = user_client.post("/api/webhook/google_in_app/", app_notification, content_type="application/json")
@@ -227,7 +227,7 @@ def test__google__google_notification_without_app_notification(
     google_in_app, client, google_subscription_purchase, google_rtdn_notification
 ):
     with mock.patch(
-        "subscriptions.providers.google_in_app.GoogleInAppProvider.get_purchase",
+        "subscriptions.v0.providers.google_in_app.GoogleInAppProvider.get_purchase",
         return_value=google_subscription_purchase,
     ):
         response = client.post("/api/webhook/google_in_app/", google_rtdn_notification, content_type="application/json")
@@ -255,7 +255,7 @@ def test__google__event_status_check(
     # TODO: not all cases covered
     with mock.patch.object(google_subscription_purchase, "subscriptionState", GoogleSubscriptionState.PAUSED):
         with mock.patch(
-            "subscriptions.providers.google_in_app.GoogleInAppProvider.get_purchase",
+            "subscriptions.v0.providers.google_in_app.GoogleInAppProvider.get_purchase",
             return_value=google_subscription_purchase,
         ):
             response = client.post(
@@ -273,11 +273,11 @@ def test__google__purchase_acknowledgement(
     with mock.patch.object(google_subscription_purchase, "acknowledgementState", GoogleAcknowledgementState.PENDING):
         with (
             mock.patch(
-                "subscriptions.providers.google_in_app.GoogleInAppProvider.get_purchase",
+                "subscriptions.v0.providers.google_in_app.GoogleInAppProvider.get_purchase",
                 return_value=google_subscription_purchase,
             ),
             mock.patch(
-                "subscriptions.providers.google_in_app.GoogleInAppProvider.acknowledge",
+                "subscriptions.v0.providers.google_in_app.GoogleInAppProvider.acknowledge",
                 return_value=Executable(),
             ),
         ):
@@ -312,7 +312,7 @@ def test__google__purchase_flow(
     """Test initial purchase and renewal"""
 
     with mock.patch(
-        "subscriptions.providers.google_in_app.GoogleInAppProvider.get_purchase",
+        "subscriptions.v0.providers.google_in_app.GoogleInAppProvider.get_purchase",
         return_value=google_subscription_purchase,
     ):
         response = user_client.post("/api/webhook/google_in_app/", app_notification, content_type="application/json")
@@ -321,7 +321,7 @@ def test__google__purchase_flow(
     assert SubscriptionPayment.objects.exists()
 
     with mock.patch(
-        "subscriptions.providers.google_in_app.GoogleInAppProvider.get_purchase",
+        "subscriptions.v0.providers.google_in_app.GoogleInAppProvider.get_purchase",
         return_value=google_subscription_purchase,
     ):
         response = client.post(
@@ -338,7 +338,7 @@ def test__google__purchase_flow(
 
     google_subscription_purchase.lineItems[0].expiryTime = (now() + days(10)).isoformat()
     with mock.patch(
-        "subscriptions.providers.google_in_app.GoogleInAppProvider.get_purchase",
+        "subscriptions.v0.providers.google_in_app.GoogleInAppProvider.get_purchase",
         return_value=google_subscription_purchase,
     ):
         response = client.post(
@@ -373,7 +373,7 @@ def test__google__expiration_notification(
     google_subscription_purchase.subscriptionState = GoogleSubscriptionState.EXPIRED
 
     with mock.patch(
-        "subscriptions.providers.google_in_app.GoogleInAppProvider.get_purchase",
+        "subscriptions.v0.providers.google_in_app.GoogleInAppProvider.get_purchase",
         return_value=google_subscription_purchase,
     ):
         response = client.post(
@@ -437,7 +437,7 @@ def test__google__subscriptions__cancel__google(
     # google play store cancellation works
     google_subscription_purchase.subscriptionState = GoogleSubscriptionState.CANCELED
     with mock.patch(
-        "subscriptions.providers.google_in_app.GoogleInAppProvider.get_purchase",
+        "subscriptions.v0.providers.google_in_app.GoogleInAppProvider.get_purchase",
         return_value=google_subscription_purchase,
     ):
         notification = google_rtdn_notification_factory(GoogleSubscriptionNotificationType.CANCELED)

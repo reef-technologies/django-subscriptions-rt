@@ -8,7 +8,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
     dependencies = [
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
-        ("subscriptions", "0001_initial"),
+        ("subscriptions_v0", "0001_initial"),
     ]
 
     operations = [
@@ -21,7 +21,7 @@ class Migration(migrations.Migration):
             model_name="subscriptionpayment",
             name="plan",
             field=models.ForeignKey(
-                default=1, on_delete=django.db.models.deletion.PROTECT, related_name="payments", to="subscriptions.plan"
+                default=1, on_delete=django.db.models.deletion.PROTECT, related_name="payments", to="subscriptions_v0.plan"
             ),
             preserve_default=False,
         ),
@@ -38,7 +38,7 @@ class Migration(migrations.Migration):
                 null=True,
                 on_delete=django.db.models.deletion.PROTECT,
                 related_name="payments",
-                to="subscriptions.subscription",
+                to="subscriptions_v0.subscription",
             ),
         ),
         migrations.AlterField(

@@ -1,6 +1,6 @@
 from django.http import HttpResponse
 
-from subscriptions.v0 import ResourceHeadersMixin
+from subscriptions.v0.api.views import ResourceHeadersMixin
 
 
 class ResourceHeadersMixinTestView(ResourceHeadersMixin):

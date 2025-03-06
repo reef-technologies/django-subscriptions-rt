@@ -3,22 +3,22 @@
 import djmoney.models.fields
 from django.db import migrations
 
-import subscriptions.fields
-import subscriptions.models
+import subscriptions.v0.fields
+import subscriptions.v0.models
 
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("subscriptions", "0031_alter_plan_tier"),
+        ("subscriptions_v0", "0031_alter_plan_tier"),
     ]
 
     operations = [
         migrations.AddField(
             model_name="subscription",
             name="initial_charge_offset",
-            field=subscriptions.fields.RelativeDurationField(
-                default=subscriptions.models.default_initial_charge,
-                encoder=subscriptions.fields.RelativedeltaEncoder,
+            field=subscriptions.v0.fields.RelativeDurationField(
+                default=subscriptions.v0.models.default_initial_charge,
+                encoder=subscriptions.v0.fields.RelativedeltaEncoder,
             ),
         ),
         migrations.AlterField(

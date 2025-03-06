@@ -12,7 +12,7 @@ log = getLogger(__name__)
 
 def remove_apple_in_app_subscription_duplicates(apps, schema_editor):
     db_alias = schema_editor.connection.alias
-    subscription_payment_model = apps.get_model("subscriptions", "SubscriptionPayment")
+    subscription_payment_model = apps.get_model("subscriptions_v0", "SubscriptionPayment")
 
     # We need to find all the entries that share the same provider_transaction_id for provider_codename `apple_in_app`.
     # Also, we need to remove duplicated subscriptions objects.
@@ -81,7 +81,7 @@ def no_op(apps, scheme_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("subscriptions", "0026_alter_subscriptionpayment_status_and_more"),
+        ("subscriptions_v0", "0026_alter_subscriptionpayment_status_and_more"),
     ]
 
     operations = [

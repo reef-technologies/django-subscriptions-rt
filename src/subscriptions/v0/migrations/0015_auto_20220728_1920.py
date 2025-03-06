@@ -5,17 +5,17 @@ from django.db import migrations
 
 def fill_in_uid_fks(apps, schema_editor):
     db_alias = schema_editor.connection.alias
-    SubscriptionPayment = apps.get_model("subscriptions", "SubscriptionPayment")
+    SubscriptionPayment = apps.get_model("subscriptions_v0", "SubscriptionPayment")
     for payment in SubscriptionPayment.objects.using(db_alias).exclude(subscription=None):
         payment.subscription_uid = payment.subscription
         payment.save()
 
-    SubscriptionPaymentRefund = apps.get_model("subscriptions", "SubscriptionPaymentRefund")
+    SubscriptionPaymentRefund = apps.get_model("subscriptions_v0", "SubscriptionPaymentRefund")
     for refund in SubscriptionPaymentRefund.objects.using(db_alias).all():
         refund.original_payment_uid = refund.original_payment.uid
         refund.save()
 
-    Tax = apps.get_model("subscriptions", "Tax")
+    Tax = apps.get_model("subscriptions_v0", "Tax")
     for tax in Tax.objects.using(db_alias).all():
         tax.subscription_payment_uid = tax.subscription_payment.uid
         tax.save()
@@ -23,7 +23,7 @@ def fill_in_uid_fks(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("subscriptions", "0014_subscriptionpayment_subscription_uid_and_more"),
+        ("subscriptions_v0", "0014_subscriptionpayment_subscription_uid_and_more"),
     ]
 
     operations = [

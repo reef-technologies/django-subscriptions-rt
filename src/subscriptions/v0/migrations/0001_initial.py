@@ -5,7 +5,7 @@ import djmoney.models.fields
 from django.conf import settings
 from django.db import migrations, models
 
-import subscriptions.fields
+import subscriptions.v0.fields
 
 
 class Migration(migrations.Migration):
@@ -347,17 +347,17 @@ class Migration(migrations.Migration):
                 ),
                 (
                     "charge_period",
-                    subscriptions.fields.RelativeDurationField(
+                    subscriptions.v0.fields.RelativeDurationField(
                         blank=True,
-                        encoder=subscriptions.fields.RelativedeltaEncoder,
+                        encoder=subscriptions.v0.fields.RelativedeltaEncoder,
                         help_text="leave blank for one-time charge",
                     ),
                 ),
                 (
                     "max_duration",
-                    subscriptions.fields.RelativeDurationField(
+                    subscriptions.v0.fields.RelativeDurationField(
                         blank=True,
-                        encoder=subscriptions.fields.RelativedeltaEncoder,
+                        encoder=subscriptions.v0.fields.RelativedeltaEncoder,
                         help_text="leave blank to make it an infinite subscription",
                     ),
                 ),
@@ -371,17 +371,17 @@ class Migration(migrations.Migration):
                 ("limit", models.PositiveIntegerField()),
                 (
                     "recharge_period",
-                    subscriptions.fields.RelativeDurationField(
+                    subscriptions.v0.fields.RelativeDurationField(
                         blank=True,
-                        encoder=subscriptions.fields.RelativedeltaEncoder,
+                        encoder=subscriptions.v0.fields.RelativedeltaEncoder,
                         help_text="leave blank for recharging only after each subscription prolongation (charge)",
                     ),
                 ),
                 (
                     "burns_in",
-                    subscriptions.fields.RelativeDurationField(
+                    subscriptions.v0.fields.RelativeDurationField(
                         blank=True,
-                        encoder=subscriptions.fields.RelativedeltaEncoder,
+                        encoder=subscriptions.v0.fields.RelativedeltaEncoder,
                         help_text="leave blank to burn each recharge period",
                     ),
                 ),
@@ -406,7 +406,7 @@ class Migration(migrations.Migration):
                     models.ForeignKey(
                         on_delete=django.db.models.deletion.PROTECT,
                         related_name="subscriptions",
-                        to="subscriptions.plan",
+                        to="subscriptions_v0.plan",
                     ),
                 ),
                 (
@@ -759,7 +759,7 @@ class Migration(migrations.Migration):
                         null=True,
                         on_delete=django.db.models.deletion.PROTECT,
                         related_name="%(class)ss",
-                        to="subscriptions.subscription",
+                        to="subscriptions_v0.subscription",
                     ),
                 ),
                 (
@@ -784,7 +784,7 @@ class Migration(migrations.Migration):
                 (
                     "resource",
                     models.ForeignKey(
-                        on_delete=django.db.models.deletion.PROTECT, related_name="usages", to="subscriptions.resource"
+                        on_delete=django.db.models.deletion.PROTECT, related_name="usages", to="subscriptions_v0.resource"
                     ),
                 ),
                 (
@@ -1121,7 +1121,7 @@ class Migration(migrations.Migration):
                     models.ForeignKey(
                         on_delete=django.db.models.deletion.PROTECT,
                         related_name="taxes",
-                        to="subscriptions.subscriptionpayment",
+                        to="subscriptions_v0.subscriptionpayment",
                     ),
                 ),
             ],
@@ -1463,7 +1463,7 @@ class Migration(migrations.Migration):
                     models.ForeignKey(
                         on_delete=django.db.models.deletion.PROTECT,
                         related_name="refunds",
-                        to="subscriptions.subscriptionpayment",
+                        to="subscriptions_v0.subscriptionpayment",
                     ),
                 ),
             ],
@@ -1479,14 +1479,14 @@ class Migration(migrations.Migration):
             model_name="quota",
             name="plan",
             field=models.ForeignKey(
-                on_delete=django.db.models.deletion.CASCADE, related_name="quotas", to="subscriptions.plan"
+                on_delete=django.db.models.deletion.CASCADE, related_name="quotas", to="subscriptions_v0.plan"
             ),
         ),
         migrations.AddField(
             model_name="quota",
             name="resource",
             field=models.ForeignKey(
-                on_delete=django.db.models.deletion.CASCADE, related_name="quotas", to="subscriptions.resource"
+                on_delete=django.db.models.deletion.CASCADE, related_name="quotas", to="subscriptions_v0.resource"
             ),
         ),
         migrations.AddConstraint(

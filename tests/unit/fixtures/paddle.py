@@ -10,7 +10,7 @@ from ..helpers import usd
 @pytest.fixture
 def paddle(settings) -> str:
     settings.SUBSCRIPTIONS_PAYMENT_PROVIDERS = [
-        "subscriptions.providers.paddle.PaddleProvider",
+        "subscriptions.v0.providers.paddle.PaddleProvider",
     ]
     get_provider.cache_clear()
     get_providers.cache_clear()

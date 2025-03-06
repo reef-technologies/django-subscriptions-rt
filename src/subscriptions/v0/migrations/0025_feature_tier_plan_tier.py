@@ -6,7 +6,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("subscriptions", "0024_alter_subscriptionpayment_amount_and_more"),
+        ("subscriptions_v0", "0024_alter_subscriptionpayment_amount_and_more"),
     ]
 
     operations = [
@@ -25,7 +25,7 @@ class Migration(migrations.Migration):
                 ("codename", models.CharField(max_length=255, unique=True)),
                 ("description", models.TextField(blank=True)),
                 ("is_default", models.BooleanField(db_index=True, default=False)),
-                ("features", models.ManyToManyField(to="subscriptions.feature")),
+                ("features", models.ManyToManyField(to="subscriptions_v0.feature")),
             ],
         ),
         migrations.AddField(
@@ -38,7 +38,7 @@ class Migration(migrations.Migration):
                 null=True,
                 on_delete=django.db.models.deletion.PROTECT,
                 related_name="plans",
-                to="subscriptions.tier",
+                to="subscriptions_v0.tier",
             ),
         ),
     ]

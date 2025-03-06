@@ -5,8 +5,8 @@ from django.db import migrations
 
 def disable_default_plan_auto_prolong(apps, schema_editor):
     db_alias = schema_editor.connection.alias
-    Plan = apps.get_model("subscriptions", "Plan")
-    Subscription = apps.get_model("subscriptions", "Subscription")
+    Plan = apps.get_model("subscriptions_v0", "Plan")
+    Subscription = apps.get_model("subscriptions_v0", "Subscription")
 
     try:
         from constance import config
@@ -23,7 +23,8 @@ def disable_default_plan_auto_prolong(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("subscriptions", "0032_subscription_initial_charge_offset_and_more"),
+        ("subscriptions_v0", "0032_subscription_initial_charge_offset_and_more"),
+        ("constance", "0003_drop_pickle"),
     ]
 
     operations = [

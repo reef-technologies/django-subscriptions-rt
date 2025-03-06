@@ -25,7 +25,7 @@ from ..helpers import days
 @pytest.fixture
 def google_in_app(settings) -> str:
     settings.SUBSCRIPTIONS_PAYMENT_PROVIDERS = [
-        "subscriptions.providers.google_in_app.GoogleInAppProvider",
+        "subscriptions.v0.providers.google_in_app.GoogleInAppProvider",
     ]
     get_provider.cache_clear()
     get_providers.cache_clear()

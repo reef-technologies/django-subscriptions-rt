@@ -76,7 +76,7 @@ def root_certificate_group() -> CertificateGroup:
     certificate_group = make_cert_group(serial=1, is_ca=True)
     # Assign is as a root apple certificate.
     with unittest.mock.patch(
-        "subscriptions.providers.apple_in_app.app_store.get_original_apple_certificate"
+        "subscriptions.v0.providers.apple_in_app.app_store.get_original_apple_certificate"
     ) as mock_get_original_apple_certificate:
         mock_get_original_apple_certificate.return_value = certificate_group.certificate
         yield certificate_group

@@ -9,7 +9,7 @@ from django.db import migrations, models
 def populate_uuids(apps, schema_editor):
     db_alias = schema_editor.connection.alias
     for model in {"Subscription", "SubscriptionPayment", "SubscriptionPaymentRefund"}:
-        cls = apps.get_model("subscriptions", model)
+        cls = apps.get_model("subscriptions_v0", model)
         for instance in cls.objects.using(db_alias).all():
             instance.uid = uuid4()
             instance.save()
@@ -17,7 +17,7 @@ def populate_uuids(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("subscriptions", "0011_alter_plan_charge_amount_currency_alter_plan_id_and_more"),
+        ("subscriptions_v0", "0011_alter_plan_charge_amount_currency_alter_plan_id_and_more"),
     ]
 
     operations = [

@@ -6,7 +6,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("subscriptions", "0019_rename_subscription_uid_subscriptionpayment_subscription_and_more"),
+        ("subscriptions_v0", "0019_rename_subscription_uid_subscriptionpayment_subscription_and_more"),
     ]
 
     operations = [
@@ -14,14 +14,14 @@ class Migration(migrations.Migration):
             model_name="subscriptionpaymentrefund",
             name="original_payment",
             field=models.ForeignKey(
-                db_constraint=False, on_delete=django.db.models.deletion.PROTECT, to="subscriptions.subscriptionpayment"
+                db_constraint=False, on_delete=django.db.models.deletion.PROTECT, to="subscriptions_v0.subscriptionpayment"
             ),
         ),
         migrations.AlterField(
             model_name="tax",
             name="subscription_payment",
             field=models.ForeignKey(
-                db_constraint=False, on_delete=django.db.models.deletion.PROTECT, to="subscriptions.subscriptionpayment"
+                db_constraint=False, on_delete=django.db.models.deletion.PROTECT, to="subscriptions_v0.subscriptionpayment"
             ),
         ),
     ]

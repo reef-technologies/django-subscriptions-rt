@@ -5,7 +5,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("subscriptions", "0034_alter_subscription_initial_charge_offset"),
+        ("subscriptions_v0", "0034_alter_subscription_initial_charge_offset"),
     ]
 
     operations = [

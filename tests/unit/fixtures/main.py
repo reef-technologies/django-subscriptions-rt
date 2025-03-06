@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 from datetime import datetime, timedelta
 from functools import wraps
 
@@ -9,7 +8,6 @@ from constance import config
 from dateutil.relativedelta import relativedelta
 from django.contrib.auth import get_user_model
 from django.core.cache import caches
-from django.test import Client
 from django.utils.timezone import now
 from djmoney.money import Money
 
@@ -33,6 +31,11 @@ from subscriptions.v0.providers.dummy import DummyProvider
 from subscriptions.v0.tasks import charge_recurring_subscriptions
 
 from ..helpers import days, usd
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from django.test import Client
 
 
 @pytest.fixture
@@ -40,7 +43,6 @@ def eps() -> timedelta:
     return timedelta(microseconds=1)
 
 
-@pytest.mark.django_db(databases=["actual_db"])
 @pytest.fixture
 def user():
     return get_user_model().objects.create(
@@ -48,7 +50,6 @@ def user():
     )
 
 
-@pytest.mark.django_db(databases=["actual_db"])
 @pytest.fixture
 def other_user():
     return get_user_model().objects.create(
@@ -56,7 +57,6 @@ def other_user():
     )
 
 
-@pytest.mark.django_db(databases=["actual_db"])
 @pytest.fixture
 def resource() -> Resource:
     return Resource.objects.create(
@@ -64,7 +64,6 @@ def resource() -> Resource:
     )
 
 
-@pytest.mark.django_db(databases=["actual_db"])
 @pytest.fixture
 def plan(resource) -> Plan:
     return Plan.objects.create(
@@ -79,7 +78,6 @@ def plan(resource) -> Plan:
     )
 
 
-@pytest.mark.django_db(databases=["actual_db"])
 @pytest.fixture
 def quota(plan, resource) -> Quota:
     return Quota.objects.create(
@@ -89,7 +87,6 @@ def quota(plan, resource) -> Quota:
     )
 
 
-@pytest.mark.django_db(databases=["actual_db"])
 @pytest.fixture
 def bigger_plan(resource) -> Plan:
     return Plan.objects.create(
@@ -100,7 +97,6 @@ def bigger_plan(resource) -> Plan:
     )
 
 
-@pytest.mark.django_db(databases=["actual_db"])
 @pytest.fixture
 def bigger_quota(bigger_plan, resource) -> Quota:
     return Quota.objects.create(
@@ -110,7 +106,6 @@ def bigger_quota(bigger_plan, resource) -> Quota:
     )
 
 
-@pytest.mark.django_db(databases=["actual_db"])
 @pytest.fixture
 def recharge_plan(resource) -> Plan:
     # $10 for 10 resources, expires in 14 days
@@ -123,7 +118,6 @@ def recharge_plan(resource) -> Plan:
     )
 
 
-@pytest.mark.django_db(databases=["actual_db"])
 @pytest.fixture
 def recharge_quota(recharge_plan, resource) -> Quota:
     return Quota.objects.create(
@@ -133,7 +127,6 @@ def recharge_quota(recharge_plan, resource) -> Quota:
     )
 
 
-@pytest.mark.django_db(databases=["actual_db"])
 @pytest.fixture
 def subscription(user, plan) -> Subscription:
     return Subscription.objects.create(
@@ -251,7 +244,6 @@ def two_subscriptions(user, resource) -> list[Subscription]:
     return [subscription1, subscription2]
 
 
-@pytest.mark.django_db(databases=["actual_db"])
 @pytest.fixture
 def five_subscriptions(plan, user) -> list[Subscription]:
     """
@@ -283,7 +275,7 @@ def user_client(settings, client, user) -> Client:
 @pytest.fixture
 def dummy(settings) -> str:
     settings.SUBSCRIPTIONS_PAYMENT_PROVIDERS = [
-        "subscriptions.providers.dummy.DummyProvider",
+        "subscriptions.v0.providers.dummy.DummyProvider",
     ]
     get_provider.cache_clear()
     get_providers.cache_clear()
@@ -341,7 +333,7 @@ def charge_expiring(charge_schedule, monkeypatch):
         with monkeypatch.context() as monkey:
             # here we don't allow setting any status except `payment_status` to SubscriptionPayment
             monkey.setattr(
-                "subscriptions.models.SubscriptionPayment.__setattr__",
+                "subscriptions.v0.models.SubscriptionPayment.__setattr__",
                 lambda obj, name, value: super(SubscriptionPayment, obj).__setattr__(
                     name, payment_status if name == "status" else value
                 ),
@@ -364,7 +356,6 @@ def cache_backend(settings):
     caches["subscriptions"].clear()
 
 
-@pytest.mark.django_db(databases=["actual_db"])
 @pytest.fixture
 def default_plan(settings) -> Plan:
     plan = Plan.objects.create(
@@ -375,7 +366,6 @@ def default_plan(settings) -> Plan:
     return plan
 
 
-@pytest.mark.django_db(databases=["actual_db"])
 @pytest.fixture
 def trial_period(settings) -> relativedelta:
     settings.SUBSCRIPTIONS_TRIAL_PERIOD = trial_period = relativedelta(days=7)
