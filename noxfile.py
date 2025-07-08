@@ -21,7 +21,7 @@ PYTHON_VERSIONS = ["3.9", "3.10", "3.11", "3.12"]
 PYTHON_DEFAULT_VERSION = PYTHON_VERSIONS[-1]
 DJANGO_VERSIONS = ["3.2", "4.0", "4.1", "4.2", "5.0", "5.1", "5.2"]
 
-nox.options.default_venv_backend = "venv"
+nox.options.default_venv_backend = "uv"
 nox.options.stop_on_first_error = True
 nox.options.reuse_existing_virtualenvs = not CI
 
@@ -31,19 +31,8 @@ if CI:
     PYTHON_VERSIONS = [sys.executable]
 
 
-def install(session: nox.Session, *groups, dev: bool = True, editable: bool = False, no_self=False, no_default=False):
-    other_args = []
-    if not dev:
-        other_args.append("--prod")
-    if not editable:
-        other_args.append("--no-editable")
-    if no_self:
-        other_args.append("--no-self")
-    if no_default:
-        other_args.append("--no-default")
-    for group in groups:
-        other_args.extend(["--group", group])
-    session.run("pdm", "install", "--check", *other_args, external=True)
+def get_dependency_groups() -> dict[str, list[str]]:
+    return nox.project.load_toml("pyproject.toml")["dependency-groups"]
 
 
 @functools.lru_cache
@@ -131,7 +120,7 @@ def run_shellcheck(session, mode="check"):
 @nox.session(name="format", python=PYTHON_DEFAULT_VERSION, tags=["format", "check"])
 def format_(session):
     """Lint the code and apply fixes in-place whenever possible."""
-    install(session, "lint", no_self=True, no_default=True)
+    session.install(*get_dependency_groups()["lint"])
     session.run("ruff", "check", "--fix", ".")
     run_shellcheck(session, mode="fmt")
     run_readable(session, mode="fmt")
@@ -141,8 +130,7 @@ def format_(session):
 @nox.session(python=PYTHON_DEFAULT_VERSION, tags=["lint", "check"])
 def lint(session):
     """Run linters in readonly mode."""
-    # "test" group is required for mypy to work against test files
-    install(session, "lint", "test")
+    session.install(*get_dependency_groups()["lint"])
     session.run("ruff", "check", "--diff", "--unsafe-fixes", ".")
     session.run("ruff", "format", "--diff", ".")
     session.run("mypy", ".")
@@ -154,14 +142,22 @@ def lint(session):
 @nox.session(python=PYTHON_VERSIONS, tags=["test", "check"])
 @nox.parametrize("django", DJANGO_VERSIONS)
 def test(session, django: str):
-    install(session, "test")
-    session.run("pip", "install", f"django~={django}.0")
-    session.run("pytest", "-vv", "-n", "auto", *session.posargs)
+    groups = get_dependency_groups()
+    session.install(
+        *groups["test"],
+        ".[apple_in_app, google_in_app, default_plan]",
+        f"django~={django}.0",
+    )
+    if django == "3.2":
+        # we cannot specify this rule in pyproject's dependencies section so
+        # instead we don't pin djangorestframework version there
+        session.install("djangorestframework<3.15")
+    session.run("pytest", "-vv", *session.posargs)  # "-n", "auto", *session.posargs)
 
 
 @nox.session(python=PYTHON_DEFAULT_VERSION)
 def make_release(session):
-    install(session, "release", no_self=True, no_default=True)
+    session.install(*get_dependency_groups()['release'])
     parser = argparse.ArgumentParser()
 
     def version(value):

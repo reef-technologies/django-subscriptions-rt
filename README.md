@@ -313,24 +313,35 @@ Internal packages, i.e. prefixed by `subscriptions._` do not share these guarant
 
 ## Development
 
+### Pre-requisites
 
-Pre-requisites:
-- [pdm](https://pdm.fming.dev/)
-- [nox](https://nox.thea.codes/en/stable/)
-- [docker](https://www.docker.com/) and [docker compose plugin](https://docs.docker.com/compose/)
+- [uv](https://docs.astral.sh/uv/)
+- [nox](https://nox.thea.codes/en/stable/) - install globally with `uvx install nox`
+- [docker](https://www.docker.com/) and [docker compose](https://docs.docker.com/compose/)
 
-
-Ideally, you should run `nox -t format lint` before every commit to ensure that the code is properly formatted and linted.
-Before submitting a PR, make sure that tests pass as well, you can do so using:
-```
-nox -t check # equivalent to `nox -t format lint test`
+To install required and optional dependencies into `.venv`, run:
+```bash
+uv sync --all-groups
 ```
 
-If you wish to install dependencies into `.venv` so your IDE can pick them up, you can do so using:
+### Running tests
+
+To fix formatting issues before committing, run:
+```bash
+uvx nox -s format
 ```
-pdm install --dev
+
+To run tests:
+```bash
+sudo docker compose -f tests/docker-compose.yml up  # start postgres database in docker
+
+uvx nox -s lint
+uvx nox -s test
 ```
 
 ### Release process
 
-Run `nox -s make_release -- X.Y.Z` where `X.Y.Z` is the version you're releasing and follow the printed instructions.
+```bash
+uvx nox -s make_release -- X.Y.Z
+```
+where `X.Y.Z` is the version you're releasing and follow the printed instructions.
