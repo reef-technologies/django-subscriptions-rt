@@ -8,11 +8,11 @@ import jwt.utils
 import pytest
 from OpenSSL import crypto
 
-from subscriptions.v0.providers.apple_in_app.exceptions import (
-    PayloadValidationError,
-)
 from subscriptions.v0.providers.apple_in_app.app_store import (
     validate_and_fetch_apple_signed_payload,
+)
+from subscriptions.v0.providers.apple_in_app.exceptions import (
+    PayloadValidationError,
 )
 
 # TODO(kkalinowski): replace with the actual algorithm obtained from a request from Apple.

@@ -21,7 +21,10 @@ class Migration(migrations.Migration):
             model_name="subscriptionpayment",
             name="plan",
             field=models.ForeignKey(
-                default=1, on_delete=django.db.models.deletion.PROTECT, related_name="payments", to="subscriptions_v0.plan"
+                default=1,
+                on_delete=django.db.models.deletion.PROTECT,
+                related_name="payments",
+                to="subscriptions_v0.plan",
             ),
             preserve_default=False,
         ),

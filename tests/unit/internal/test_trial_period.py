@@ -148,8 +148,8 @@ def test__trial_period__only_once__simultaneous(
 ):
     get_validators.cache_clear()
     settings.SUBSCRIPTIONS_VALIDATORS = [
-        "subscriptions.validators.OnlyEnabledPlans",
-        "subscriptions.validators.AtLeastOneRecurringSubscription",
+        "subscriptions.v0.validators.OnlyEnabledPlans",
+        "subscriptions.v0.validators.AtLeastOneRecurringSubscription",
     ]
 
     assert user.subscriptions.active().count() == 0
@@ -255,7 +255,7 @@ def test__get_trial_period__not_cheating__multiacc(
     assert payments[1].subscription.user == other_user
 
 
-@pytest.mark.django_db(databases=["actual_db"])
+@pytest.mark.django_db(databases=["actual_db"], transaction=True)
 def test__trial_period__full_charge_after_trial(
     dummy, plan, charge_expiring, charge_schedule, user_client, user, trial_period
 ):

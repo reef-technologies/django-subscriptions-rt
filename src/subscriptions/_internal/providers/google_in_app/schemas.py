@@ -147,6 +147,7 @@ class GoogleAutoRenewingBasePlanType(BaseModel):
     prorationMode: GoogleSubscriptionProrationMode
     legacyCompatible: bool
     legacyCompatibleSubscriptionOfferId: str
+    accountHoldDuration: str | None = None
 
     class Config:
         extra = Extra.forbid

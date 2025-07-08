@@ -52,11 +52,6 @@ DATABASES = {
         "ATOMIC_REQUESTS": False,
     },
 }
-CACHES = {
-    "subscriptions": {
-        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
-    }
-}
 DATABASE_ROUTERS = [
     "tests.db_router.DBRouter",
 ]
@@ -96,3 +91,8 @@ APPLE_SHARED_SECRET = environ.get("APPLE_SHARED_SECRET")
 # APPLE_ROOT_CERTIFICATE_PATH = environ.get('APPLE_ROOT_CERTIFICATE_PATH')
 
 ROOT_URLCONF = "tests.urls"
+
+LANGUAGE_CODE = "en-us"
+TIME_ZONE = "UTC"
+USE_I18N = True
+USE_TZ = True

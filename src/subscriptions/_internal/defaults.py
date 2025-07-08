@@ -4,14 +4,14 @@ from dateutil.relativedelta import relativedelta
 from django.urls import reverse_lazy
 
 DEFAULT_SUBSCRIPTIONS_PAYMENT_PROVIDERS = [
-    "subscriptions.providers.dummy.DummyProvider",
+    "subscriptions._internal.providers.dummy.DummyProvider",
 ]
 DEFAULT_SUBSCRIPTIONS_SUCCESS_URL = reverse_lazy("plan_subscription_success")
 
 DEFAULT_SUBSCRIPTIONS_VALIDATORS = [
-    "subscriptions.validators.OnlyEnabledPlans",
-    "subscriptions.validators.AtLeastOneRecurringSubscription",
-    "subscriptions.validators.SingleRecurringSubscription",
+    "subscriptions._internal.validators.OnlyEnabledPlans",
+    "subscriptions._internal.validators.AtLeastOneRecurringSubscription",
+    "subscriptions._internal.validators.SingleRecurringSubscription",
 ]
 
 DEFAULT_SUBSCRIPTIONS_OFFLINE_CHARGE_ATTEMPTS_SCHEDULE = (

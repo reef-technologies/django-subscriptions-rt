@@ -14,14 +14,18 @@ class Migration(migrations.Migration):
             model_name="subscriptionpaymentrefund",
             name="original_payment",
             field=models.ForeignKey(
-                db_constraint=False, on_delete=django.db.models.deletion.PROTECT, to="subscriptions_v0.subscriptionpayment"
+                db_constraint=False,
+                on_delete=django.db.models.deletion.PROTECT,
+                to="subscriptions_v0.subscriptionpayment",
             ),
         ),
         migrations.AlterField(
             model_name="tax",
             name="subscription_payment",
             field=models.ForeignKey(
-                db_constraint=False, on_delete=django.db.models.deletion.PROTECT, to="subscriptions_v0.subscriptionpayment"
+                db_constraint=False,
+                on_delete=django.db.models.deletion.PROTECT,
+                to="subscriptions_v0.subscriptionpayment",
             ),
         ),
     ]

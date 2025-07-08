@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 from functools import wraps
+from typing import TYPE_CHECKING
 
 import pytest
 from constance import config
@@ -31,10 +32,10 @@ from subscriptions.v0.providers.dummy import DummyProvider
 from subscriptions.v0.tasks import charge_recurring_subscriptions
 
 from ..helpers import days, usd
-from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
     from django.test import Client
 
 

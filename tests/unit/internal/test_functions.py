@@ -307,7 +307,7 @@ def test__functions__multiple_subscriptions__refreshes(two_subscriptions, user, 
 
 
 @pytest.mark.django_db(databases=["actual_db"])
-def test__functions__cache(two_subscriptions, remaining_chunks, get_cache):
+def test__functions__cache__functional(two_subscriptions, remaining_chunks, get_cache):
     now_ = two_subscriptions[0].start
 
     for cache_day, test_day in product(range(13), range(13)):
@@ -327,8 +327,17 @@ def test__functions__cache(two_subscriptions, remaining_chunks, get_cache):
 
 
 @pytest.mark.django_db(databases=["actual_db"])
-def test__function__use_resource(user, subscription, quota, resource, remains):
-    with freeze_time(subscription.start):
+@pytest.mark.parametrize(
+    "use_cache",
+    [
+        pytest.param(True, id="cache:ON"),
+        pytest.param(False, id="cache:OFF"),
+    ],
+)
+def test__function__use_resource(request, use_cache, user, subscription, quota, resource, remains):
+    request.getfixturevalue("cache_backend") if use_cache else None
+
+    with freeze_time(subscription.start, tick=True):
         assert remains() == 100
         with use_resource(user, resource, 10) as left:
             assert left == 90
@@ -336,21 +345,19 @@ def test__function__use_resource(user, subscription, quota, resource, remains):
 
         assert remains() == 90
 
-    with freeze_time(subscription.start + days(1)):
+    with freeze_time(subscription.start + days(1), tick=True):
         try:
             with use_resource(user, resource, 10) as left:
                 assert remains() == left == 80
-                raise ValueError()
         except ValueError:
-            pass
-        assert remains() == 90
+            assert remains() == 90
 
-    with freeze_time(subscription.start + days(2)):
+    with freeze_time(subscription.start + days(2), tick=True):
         with pytest.raises(QuotaLimitExceeded):
             with use_resource(user, resource, 100):
                 pass
 
-    with freeze_time(subscription.start + days(2)):
+    with freeze_time(subscription.start + days(2), tick=True):
         with use_resource(user, resource, 100, raises=False):
             pass
 

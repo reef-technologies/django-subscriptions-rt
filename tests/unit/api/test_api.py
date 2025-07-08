@@ -18,6 +18,13 @@ from ..helpers import datetime_to_api, days
 
 
 @pytest.mark.django_db(databases=["actual_db"])
+def test__migrations():
+    from django.core.management import call_command
+
+    print(call_command("showmigrations", "--database", "actual_db"))
+
+
+@pytest.mark.django_db(databases=["actual_db"])
 def test__api__plans(plan, client):
     response = client.get("/api/plans/")
     assert response.status_code == 200
@@ -124,13 +131,13 @@ def test__api__subscriptions__next_charge_date__not_prolong(user_client, subscri
         assert response.json()[0]["next_charge_date"] is None
 
 
-@pytest.mark.django_db(databases=["actual_db"])
+@pytest.mark.django_db(databases=["actual_db"], transaction=True)
 def test__api__subscribe__unauthorized(client, plan):
     response = client.post("/api/subscribe/", {"plan": plan.id})
     assert response.status_code == 403
 
 
-@pytest.mark.django_db(databases=["actual_db"])
+@pytest.mark.django_db(databases=["actual_db"], transaction=True)
 def test__api__subscribe__authorized(client, user_client, plan, dummy):
     response = user_client.post("/api/subscribe/", {"plan": plan.id, "quantity": 2})
     assert response.status_code == 200, response.content
@@ -174,30 +181,55 @@ def test__api__webhook_logging(client, caplog):
 
 
 @pytest.mark.django_db(databases=["actual_db"])
-def test__api__resources__initial(user_client, subscription, resource, quota):
-    with freeze_time(subscription.start):
+@pytest.mark.parametrize(
+    "use_cache",
+    [
+        pytest.param(True, id="cache:ON"),
+        pytest.param(False, id="cache:OFF"),
+    ],
+)
+def test__api__resources__initial(request, use_cache, user_client, subscription, resource, quota):
+    request.getfixturevalue("cache_backend") if use_cache else None
+    with freeze_time(subscription.start, tick=True):
         response = user_client.get("/api/resources/")
         assert response.status_code == 200, response.content
         assert response.json() == {resource.codename: quota.limit * subscription.quantity}
 
 
 @pytest.mark.django_db(databases=["actual_db"])
-def test__api__resources__usage(user, user_client, subscription, resource, quota):
-    with freeze_time(subscription.start + days(1)):
+@pytest.mark.parametrize(
+    "use_cache",
+    [
+        pytest.param(True, id="cache:ON"),
+        pytest.param(False, id="cache:OFF"),
+    ],
+)
+def test__api__resources__usage(request, use_cache, user, user_client, subscription, resource, quota):
+    request.getfixturevalue("cache_backend") if use_cache else None
+    with freeze_time(subscription.start + days(1), tick=True):
         Usage.objects.create(
             user=user,
             resource=resource,
             amount=20,
         )
 
-    with freeze_time(subscription.start + days(2)):
+    with freeze_time(subscription.start + days(2), tick=True):
         response = user_client.get("/api/resources")
         assert response.status_code == 200, response.content
         assert response.json() == {resource.codename: quota.limit * subscription.quantity - 20}
 
 
 @pytest.mark.django_db(databases=["actual_db"])
-def test__api__resources__expiration(user_client, subscription, resource, quota):
+@pytest.mark.parametrize(
+    "use_cache",
+    [
+        pytest.param(True, id="cache:ON"),
+        pytest.param(False, id="cache:OFF"),
+    ],
+)
+def test__api__resources__expiration(request, use_cache, user_client, subscription, resource, quota):
+    request.getfixturevalue("cache_backend") if use_cache else None
+
     with freeze_time(subscription.start + quota.burns_in - days(1)):
         response = user_client.get("/api/resources")
         assert response.status_code == 200, response.content
@@ -209,24 +241,31 @@ def test__api__resources__expiration(user_client, subscription, resource, quota)
         assert response.json() == {}
 
 
-@pytest.mark.django_db(databases=["actual_db"])
+@pytest.mark.django_db(databases=["actual_db"], transaction=True)
 def test__api__recurring_plan_switch(user, user_client, subscription, payment, bigger_plan):
     with freeze_time(subscription.start):
         assert one(user.subscriptions.active()).plan == subscription.plan
 
-    with freeze_time(subscription.start + days(2)):
+    with freeze_time(subscription.start + days(2), tick=True):
         response = user_client.post("/api/subscribe/", {"plan": bigger_plan.id})
         assert response.status_code == 200, response.content
-
-    with freeze_time(subscription.start + days(2) + timedelta(seconds=1)):
         assert one(user.subscriptions.active()).plan == bigger_plan
 
 
-@pytest.mark.django_db(databases=["actual_db"])
+@pytest.mark.django_db(databases=["actual_db"], transaction=True)
+@pytest.mark.parametrize(
+    "use_cache",
+    [
+        pytest.param(True, id="cache:ON"),
+        pytest.param(False, id="cache:OFF"),
+    ],
+)
 def test__api__recharge_plan_subscription(
-    client, user_client, subscription, quota, recharge_plan, recharge_quota, resource
+    request, use_cache, client, user_client, subscription, quota, recharge_plan, recharge_quota, resource
 ):
-    with freeze_time(subscription.start + days(2)):
+    request.getfixturevalue("cache_backend") if use_cache else None
+
+    with freeze_time(subscription.start + days(2), tick=True):
         response = user_client.post("/api/subscribe/", {"plan": recharge_plan.id})
         assert response.status_code == 200, response.content
         result = response.json()
@@ -240,7 +279,7 @@ def test__api__recharge_plan_subscription(
         response = client.post("/api/webhook/dummy/", {"transaction_id": transaction_id})
         assert response.status_code == 200, response.content
 
-    with freeze_time(subscription.start + days(3)):
+    with freeze_time(subscription.start + days(3), tick=True):
         response = user_client.get("/api/resources/")
         assert response.status_code == 200, response.content
         assert response.json() == {
@@ -308,29 +347,56 @@ def test__api__payment(user_client, payment):
 
 
 @pytest.mark.django_db(databases=["actual_db"])
-def test__api__resource_headers_mixin__anonymous(client, resource):
+@pytest.mark.parametrize(
+    "use_cache",
+    [
+        pytest.param(True, id="cache:ON"),
+        pytest.param(False, id="cache:OFF"),
+    ],
+)
+def test__api__resource_headers_mixin__anonymous(request, use_cache, client, resource):
+    request.getfixturevalue("cache_backend") if use_cache else None
+
     response = client.get("/api/headers_mixin/")
     assert response.status_code == 200
     assert not any(header.startswith("X-Resource-") for header in response.headers)
 
 
 @pytest.mark.django_db(databases=["actual_db"])
-def test__api__resource_headers_mixin__empty(user_client, resource):
+@pytest.mark.parametrize(
+    "use_cache",
+    [
+        pytest.param(True, id="cache:ON"),
+        pytest.param(False, id="cache:OFF"),
+    ],
+)
+def test__api__resource_headers_mixin__empty(request, use_cache, user_client, resource):
+    request.getfixturevalue("cache_backend") if use_cache else None
+
     response = user_client.get("/api/headers_mixin/")
     assert response.status_code == 200
     assert f"X-Resource-{resource.codename}" not in response.headers
 
 
 @pytest.mark.django_db(databases=["actual_db"])
-def test__api__resource_headers_mixin__exists(user, user_client, resource, subscription, quota):
+@pytest.mark.parametrize(
+    "use_cache",
+    [
+        pytest.param(True, id="cache:ON"),
+        pytest.param(False, id="cache:OFF"),
+    ],
+)
+def test__api__resource_headers_mixin__exists(request, use_cache, user, user_client, resource, subscription, quota):
+    request.getfixturevalue("cache_backend") if use_cache else None
+
     available = quota.limit * subscription.quantity
 
-    with freeze_time(subscription.start):
+    with freeze_time(subscription.start, tick=True):
         response = user_client.get("/api/headers_mixin/")
         assert response.status_code == 200
         assert response.headers[f"X-Resource-{resource.codename}"] == str(available)
 
-    with freeze_time(subscription.start + days(1)):
+    with freeze_time(subscription.start + days(1), tick=True):
         with use_resource(user, resource, 10):
             response = user_client.get("/api/headers_mixin/")
             assert response.status_code == 200

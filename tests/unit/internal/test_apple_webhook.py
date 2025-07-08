@@ -13,16 +13,10 @@ from subscriptions.v0.models import (
     SubscriptionPayment,
     SubscriptionPaymentRefund,
 )
-from subscriptions.v0.providers.apple_in_app.exceptions import (
-    AppleReceiptValidationError,
-)
 from subscriptions.v0.providers.apple_in_app.api import (
+    AppleReceiptRequest,
     AppleVerifyReceiptResponse,
 )
-from subscriptions.v0.providers.apple_in_app.exceptions import (
-    InvalidAppleReceiptError,
-)
-from subscriptions.v0.providers.apple_in_app.api import AppleReceiptRequest
 from subscriptions.v0.providers.apple_in_app.app_store import (
     AppStoreNotification,
     AppStoreNotificationTypeV2,
@@ -33,11 +27,15 @@ from subscriptions.v0.providers.apple_in_app.enums import (
     AppleEnvironment,
     AppleValidationStatus,
 )
+from subscriptions.v0.providers.apple_in_app.exceptions import (
+    AppleReceiptValidationError,
+    InvalidAppleReceiptError,
+)
 
 APPLE_API_WEBHOOK = "/api/webhook/apple_in_app/"
 RECEIPT_FETCH_FUNCTION = "subscriptions.v0.providers.apple_in_app.api.AppleAppStoreAPI._fetch_receipt_from_endpoint"
-NOTIFICATION_PARSER = "subscriptions.v0.providers.apple_in_app.AppStoreNotification.from_signed_payload"
-TRANSACTION_INFO = "subscriptions.v0.providers.apple_in_app.AppStoreNotification.transaction_info"
+NOTIFICATION_PARSER = "subscriptions.v0.providers.apple_in_app.app_store.AppStoreNotification.from_signed_payload"
+TRANSACTION_INFO = "subscriptions.v0.providers.apple_in_app.app_store.AppStoreNotification.transaction_info"
 
 
 @pytest.fixture
@@ -120,7 +118,8 @@ def make_receipt_query() -> dict:
 @pytest.fixture(autouse=True)
 def patched_notification():
     with mock.patch(
-        "subscriptions.v0.providers.apple_in_app.AppStoreNotification.transaction_info", new_callable=mock.PropertyMock
+        "subscriptions.v0.providers.apple_in_app.app_store.AppStoreNotification.transaction_info",
+        new_callable=mock.PropertyMock,
     ):
         yield
 

@@ -47,7 +47,7 @@ MAX_DATETIME = datetime.max.replace(tzinfo=UTC)
 
 
 class SubscriptionsMeta:
-    app_label = 'subscriptions'
+    app_label = "subscriptions_v0"
 
 
 class Resource(models.Model):
