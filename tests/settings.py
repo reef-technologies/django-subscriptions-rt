@@ -1,8 +1,13 @@
 """
 Django settings used in tests.
 """
+
 # cookiecutter-rt-pkg macro: requires cookiecutter.is_django_package
 from os import environ
+
+from dotenv import load_dotenv
+
+load_dotenv()
 
 DEBUG = True
 SECRET_KEY = "DUMMY"  # noqa: S105
