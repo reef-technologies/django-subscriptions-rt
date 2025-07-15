@@ -30,6 +30,7 @@ from subscriptions.v0.models import (
 from subscriptions.v0.providers import get_provider, get_providers
 from subscriptions.v0.providers.dummy import DummyProvider
 from subscriptions.v0.tasks import charge_recurring_subscriptions
+from subscriptions.v0.validators import get_validators
 
 from ..helpers import days, usd
 
@@ -37,6 +38,13 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from django.test import Client
+
+
+@pytest.fixture(autouse=True)
+def clear_lru_cache():
+    get_validators.cache_clear()
+    get_provider.cache_clear()
+    get_providers.cache_clear()
 
 
 @pytest.fixture

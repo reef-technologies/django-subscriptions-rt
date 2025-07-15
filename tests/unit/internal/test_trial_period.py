@@ -146,7 +146,6 @@ def test__trial_period__only_once__subsequent(trial_period, dummy, plan, user, u
 def test__trial_period__only_once__simultaneous(
     settings, trial_period, dummy, plan, bigger_plan, recharge_plan, user, user_client
 ):
-    get_validators.cache_clear()
     settings.SUBSCRIPTIONS_VALIDATORS = [
         "subscriptions.v0.validators.OnlyEnabledPlans",
         "subscriptions.v0.validators.AtLeastOneRecurringSubscription",
