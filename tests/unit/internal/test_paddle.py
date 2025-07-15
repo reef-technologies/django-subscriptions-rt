@@ -171,7 +171,7 @@ def test__paddle__payment_flow__regular(
 
     assert "payment_url" in payment.metadata
 
-    input(f"Use card {card_number} to pay here: {redirect_url}\nThen press Enter")
+    input(f"Use card {card_number} to pay here: {redirect_url} - Then press Enter")
     # automate_payment(redirect_url, card_number, paddle_test_email)
 
     # ensure that status didn't change because webhook didn't go through
