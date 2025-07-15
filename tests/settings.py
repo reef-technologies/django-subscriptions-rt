@@ -50,6 +50,9 @@ DATABASES = {
         "HOST": "localhost",
         "PORT": environ["POSTGRES_PORT"],
         "ATOMIC_REQUESTS": False,
+        "TEST": {
+            "DEPENDENCIES": [],
+        },
     },
 }
 DATABASE_ROUTERS = [
