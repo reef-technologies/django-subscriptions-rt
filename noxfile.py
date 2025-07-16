@@ -5,12 +5,11 @@ import functools
 import os
 import re
 import subprocess
-import sys
 import tempfile
 from pathlib import Path
-import yaml
 
 import nox
+import yaml
 
 CI = os.environ.get("CI") is not None
 
@@ -19,8 +18,9 @@ CI_WORKFLOW_PATH = ROOT / ".github" / "workflows" / "ci.yml"
 with CI_WORKFLOW_PATH.open() as f:
     ci = yaml.safe_load(f)
 
-PYTHON_VERSIONS = ci['jobs']['test']['strategy']['matrix']['python-version']
-DJANGO_VERSIONS = ci['jobs']['test']['strategy']['matrix']['django-version']
+MAIN_BRANCH_NAME = "master"
+PYTHON_VERSIONS = ci["jobs"]["test"]["strategy"]["matrix"]["python-version"]
+DJANGO_VERSIONS = ci["jobs"]["test"]["strategy"]["matrix"]["django-version"]
 PYTHON_DEFAULT_VERSION = PYTHON_VERSIONS[-1]
 nox.options.default_venv_backend = "uv"
 nox.options.stop_on_first_error = True
@@ -158,7 +158,7 @@ def test(session, django: str):
 
 @nox.session(python=PYTHON_DEFAULT_VERSION)
 def make_release(session):
-    session.install(*get_dependency_groups()['release'])
+    session.install(*get_dependency_groups()["release"])
     parser = argparse.ArgumentParser()
 
     def version(value):
