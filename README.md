@@ -316,7 +316,7 @@ Internal packages, i.e. prefixed by `subscriptions._` do not share these guarant
 ### Pre-requisites
 
 - [uv](https://docs.astral.sh/uv/)
-- [nox](https://nox.thea.codes/en/stable/) - install globally with `uvx install nox`
+- [nox](https://nox.thea.codes/en/stable/) - install globally with `uv tool install --with pyyaml nox`
 - [docker](https://www.docker.com/) and [docker compose](https://docs.docker.com/compose/)
 
 To install required and optional dependencies into `.venv`, run:

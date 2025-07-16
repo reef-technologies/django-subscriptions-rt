@@ -8,19 +8,20 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+import yaml
 
 import nox
-
-os.environ["PDM_IGNORE_SAVED_PYTHON"] = "1"
 
 CI = os.environ.get("CI") is not None
 
 ROOT = Path(".")
-MAIN_BRANCH_NAME = "master"
-PYTHON_VERSIONS = ["3.9", "3.10", "3.11", "3.12"]
-PYTHON_DEFAULT_VERSION = PYTHON_VERSIONS[-1]
-DJANGO_VERSIONS = ["3.2", "4.0", "4.1", "4.2", "5.0", "5.1", "5.2"]
+CI_WORKFLOW_PATH = ROOT / ".github" / "workflows" / "ci.yml"
+with CI_WORKFLOW_PATH.open() as f:
+    ci = yaml.safe_load(f)
 
+PYTHON_VERSIONS = ci['jobs']['test']['strategy']['matrix']['python-version']
+DJANGO_VERSIONS = ci['jobs']['test']['strategy']['matrix']['django-version']
+PYTHON_DEFAULT_VERSION = PYTHON_VERSIONS[-1]
 nox.options.default_venv_backend = "uv"
 nox.options.stop_on_first_error = True
 nox.options.reuse_existing_virtualenvs = not CI
@@ -28,7 +29,7 @@ nox.options.reuse_existing_virtualenvs = not CI
 
 if CI:
     # In CI, use Python interpreter provided by GitHub Actions
-    PYTHON_VERSIONS = [sys.executable]
+    PYTHON_VERSIONS = None
 
 
 def get_dependency_groups() -> dict[str, list[str]]:

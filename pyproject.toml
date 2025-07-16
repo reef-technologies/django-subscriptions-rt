@@ -20,10 +20,9 @@ classifiers = [
     "Topic :: Software Development :: Libraries",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
 ]
 dynamic = [
     "version",
@@ -92,6 +91,7 @@ build-backend = "pdm.backend"
 pythonpath = ["."]  # allow for `import tests` in test files
 target_package_name = "subscriptions"  # required by pytest-apiver
 DJANGO_SETTINGS_MODULE="tests.settings"
+addopts = "--pdbcls=IPython.terminal.debugger:TerminalPdb"
 
 [tool.ruff]
 line-length = 120

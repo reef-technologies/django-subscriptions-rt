@@ -1,4 +1,5 @@
 import json
+from os import environ
 import re
 from datetime import date, timedelta
 from unittest import mock
@@ -141,6 +142,7 @@ def automate_payment(url: str, card: str, email: str):
     final_three_d_s.raise_for_status()
 
 
+@pytest.mark.skipif(environ.get("CI"), reason="This test requires manual interaction")
 @pytest.mark.django_db(databases=["actual_db"])
 def test__paddle__payment_flow__regular(
     paddle,
@@ -291,6 +293,7 @@ def test__paddle__payment_flow__regular(
     assert Subscription.objects.count() == 2
 
 
+@pytest.mark.skipif(environ.get("CI"), reason="This test requires manual interaction")
 @pytest.mark.django_db(databases=["actual_db"])
 def test__paddle__payment_flow__trial_period(
     trial_period,
