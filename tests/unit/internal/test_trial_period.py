@@ -102,7 +102,7 @@ def test__get_trial_period__cheating__multiacc__paddle(
     assert payment.subscription.start == payment.subscription_start
 
 
-@pytest.mark.django_db(databases=["actual_db"])
+@pytest.mark.django_db(databases=["actual_db"], transaction=True)
 def test__trial_period__only_once__subsequent(trial_period, dummy, plan, user, user_client):
     assert user.subscriptions.active().count() == 0
 
@@ -141,7 +141,7 @@ def test__trial_period__only_once__subsequent(trial_period, dummy, plan, user, u
     assert payment.subscription_start + plan.charge_period == payment.subscription_end
 
 
-@pytest.mark.django_db(databases=["actual_db"])
+@pytest.mark.django_db(databases=["actual_db"], transaction=True)
 def test__trial_period__only_once__simultaneous(
     settings, trial_period, dummy, plan, bigger_plan, recharge_plan, user, user_client
 ):
@@ -193,7 +193,7 @@ def test__trial_period__only_once__simultaneous(
     assert payment.subscription_start + bigger_plan.charge_period == payment.subscription_end
 
 
-@pytest.mark.django_db(databases=["actual_db"])
+@pytest.mark.django_db(databases=["actual_db"], transaction=True)
 def test__get_trial_period__cheating__simultaneous_payments(
     trial_period,
     plan,
@@ -221,7 +221,7 @@ def test__get_trial_period__cheating__simultaneous_payments(
     assert payments[1].subscription.initial_charge_offset == relativedelta(0)
 
 
-@pytest.mark.django_db(databases=["actual_db"])
+@pytest.mark.django_db(databases=["actual_db"], transaction=True)
 def test__get_trial_period__not_cheating__multiacc(
     trial_period,
     plan,

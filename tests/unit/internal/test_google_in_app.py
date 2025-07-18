@@ -140,7 +140,7 @@ def test__google__webhook_for_app_notification_unauthorized(google_in_app, app_n
     assert response.status_code == 403, response.content
 
 
-@pytest.mark.django_db(databases=["actual_db"])
+@pytest.mark.django_db(databases=["actual_db"], transaction=True)
 def test__google__webhook_for_app_notification(
     google_in_app, app_notification, user_client, google_subscription_purchase, plan_with_google
 ):
@@ -169,7 +169,7 @@ def test__google__webhook_for_app_notification(
     assert payment.provider_transaction_id == app_notification["purchase_token"]
 
 
-@pytest.mark.django_db(databases=["actual_db"])
+@pytest.mark.django_db(databases=["actual_db"], transaction=True)
 def test__google__webhook_for_app_notification_duplicate(
     google_in_app, app_notification, user_client, google_subscription_purchase, plan_with_google
 ):
@@ -190,7 +190,7 @@ def test__google__webhook_for_app_notification_duplicate(
             assert Subscription.objects.count() == 1
 
 
-@pytest.mark.django_db(databases=["actual_db"])
+@pytest.mark.django_db(databases=["actual_db"], transaction=True)
 def test__google__webhook_linked_token_dismissing(
     google_in_app, app_notification, user_client, google_subscription_purchase, user, plan_with_google
 ):
@@ -266,7 +266,7 @@ def test__google__event_status_check(
             assert response.status_code == 400, response.content
 
 
-@pytest.mark.django_db(databases=["actual_db"])
+@pytest.mark.django_db(databases=["actual_db"], transaction=True)
 def test__google__purchase_acknowledgement(
     google_in_app, user_client, google_subscription_purchase, app_notification, plan_with_google
 ):
@@ -297,7 +297,7 @@ def test__google__purchase_acknowledgement(
 def test__google__check_event(): ...  # TODO
 
 
-@pytest.mark.django_db(databases=["actual_db"])
+@pytest.mark.django_db(databases=["actual_db"], transaction=True)
 def test__google__purchase_flow(
     google_in_app,
     purchase_token,
@@ -353,7 +353,7 @@ def test__google__purchase_flow(
     assert payment2.subscription.end == payment2.subscription_end
 
 
-@pytest.mark.django_db(databases=["actual_db"])
+@pytest.mark.django_db(databases=["actual_db"], transaction=True)
 def test__google__expiration_notification(
     google_in_app,
     purchase_token,
@@ -402,7 +402,7 @@ def test__google__subscription_notification_models(google_in_app__subscription_p
     GoogleSubscriptionPurchaseV2.parse_obj(google_in_app__subscription_purchase_dict)
 
 
-@pytest.mark.django_db(databases=["actual_db"])
+@pytest.mark.django_db(databases=["actual_db"], transaction=True)
 def test__google__subscriptions__cancel__google(
     user,
     client,

@@ -143,7 +143,7 @@ def automate_payment(url: str, card: str, email: str):
 
 
 @pytest.mark.skipif(environ.get("CI") is not None, reason="This test requires manual interaction")
-@pytest.mark.django_db(databases=["actual_db"])
+@pytest.mark.django_db(databases=["actual_db"], transaction=True)
 def test__paddle__payment_flow__regular(
     paddle,
     user,
@@ -294,7 +294,7 @@ def test__paddle__payment_flow__regular(
 
 
 @pytest.mark.skipif(environ.get("CI") is not None, reason="This test requires manual interaction")
-@pytest.mark.django_db(databases=["actual_db"])
+@pytest.mark.django_db(databases=["actual_db"], transaction=True)
 def test__paddle__payment_flow__trial_period(
     trial_period,
     paddle,
@@ -442,7 +442,7 @@ def test__paddle__webhook_non_existing_payment(
     assert response.status_code == 200, response.content
 
 
-@pytest.mark.django_db(databases=["actual_db"])
+@pytest.mark.django_db(databases=["actual_db"], transaction=True)
 def test__paddle__subscription_charge_online_avoid_duplicates(paddle, user_client, plan):
     assert not SubscriptionPayment.objects.all().exists()
 
@@ -458,7 +458,7 @@ def test__paddle__subscription_charge_online_avoid_duplicates(paddle, user_clien
     assert SubscriptionPayment.objects.last().metadata["payment_url"] == payment_url  # url hasn't changed
 
 
-@pytest.mark.django_db(databases=["actual_db"])
+@pytest.mark.django_db(databases=["actual_db"], transaction=True)
 def test__paddle__subscription_charge_online_new_payment_after_duplicate_lookup_time(paddle, user_client, plan):
     assert not SubscriptionPayment.objects.all().exists()
 
@@ -475,7 +475,7 @@ def test__paddle__subscription_charge_online_new_payment_after_duplicate_lookup_
     assert SubscriptionPayment.objects.count() == 2
 
 
-@pytest.mark.django_db(databases=["actual_db"])
+@pytest.mark.django_db(databases=["actual_db"], transaction=True)
 def test__paddle__subscription_charge_online_new_payment_if_no_pending(paddle, user_client, plan):
     assert not SubscriptionPayment.objects.all().exists()
 
@@ -492,7 +492,7 @@ def test__paddle__subscription_charge_online_new_payment_if_no_pending(paddle, u
     assert SubscriptionPayment.objects.count() == 2
 
 
-@pytest.mark.django_db(databases=["actual_db"])
+@pytest.mark.django_db(databases=["actual_db"], transaction=True)
 def test__paddle__subscription_charge_online_new_payment_if_no_payment_url(paddle, user_client, plan):
     assert not SubscriptionPayment.objects.all().exists()
 
