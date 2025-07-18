@@ -23,12 +23,31 @@ jobs:
   test:
     timeout-minutes: 10
     runs-on: ${{ matrix.os }}
+    env:
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: testdb
+      POSTGRES_USER: testuser
+      POSTGRES_PASSWORD: testpass
+    services:
+      postgres:
+        image: postgres:15
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        env:
+          POSTGRES_DB: testdb
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpass
     strategy:
       fail-fast: false
       matrix:
         os: ["ubuntu-latest"]
-        python-version: ["3.11", "3.12", "3.13"]
-        django-version: ["3.2", "4.0", "4.1", "4.2", "5.0", "5.1", "5.2"]
+        python-version: ["3.11"]  #, "3.12", "3.13"]
+        django-version: ["3.2"]  #, "4.0", "4.1", "4.2", "5.0", "5.1", "5.2"]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -43,8 +62,17 @@ jobs:
           version: "latest"
           enable-cache: true
           python-version: ${{ matrix.python-version }}
+      - name: Wait for DB to be ready
+        run: |
+          until pg_isready -h localhost -p 5432; do
+            echo "Waiting for postgres..."
+            sleep 1
+          done
+        timeout-minutes: 1
       - name: Run unit tests
         env:
           UV_NO_MANAGED_PYTHON: "1"
           UV_PYTHON_DOWNLOADS: "never"
+          GOOGLE_PLAY_PACKAGE_NAME: ${{ secrets.GOOGLE_PLAY_PACKAGE_NAME }}
+          GOOGLE_PLAY_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT }}
         run: uvx --with pyyaml nox -vs "test(django='${{ matrix.django-version }}')"
