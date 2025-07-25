@@ -25,22 +25,22 @@ BASIC_PAYMENT_KWARGS = {
 
 
 def run_migration(app: str, migrate_from: str, migrate_to: str, pre_migration_run: Callable[[Apps], None]) -> Apps:
-    migrate_from = [(app, migrate_from)]
-    migrate_to = [(app, migrate_to)]
+    migrate_from_ = [(app, migrate_from)]
+    migrate_to_ = [(app, migrate_to)]
     executor = MigrationExecutor(connection)
-    old_apps = executor.loader.project_state(migrate_from).apps
+    old_apps = executor.loader.project_state(migrate_from_).apps
 
     # Reverse to the original migration
-    executor.migrate(migrate_from)
+    executor.migrate(migrate_from_)
 
     pre_migration_run(old_apps)
 
     # Run the migration to test
     executor = MigrationExecutor(connection)
     executor.loader.build_graph()  # reload.
-    executor.migrate(migrate_to)
+    executor.migrate(migrate_to_)
 
-    return executor.loader.project_state(migrate_to).apps
+    return executor.loader.project_state(migrate_to_).apps
 
 
 def make_user_plans_and_subscriptions(

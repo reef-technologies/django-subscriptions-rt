@@ -54,7 +54,7 @@ def make_mock_response(code: int, data_json: str) -> unittest.mock.MagicMock:
 
 def make_api_call(
     service_responses: list[tuple[int, str]],
-) -> tuple[AppleVerifyReceiptResponse, list[unittest.mock.call]]:
+) -> tuple[AppleVerifyReceiptResponse, list[unittest.mock._Call]]:
     api = AppleAppStoreAPI("shared-secret")
 
     responses = [make_mock_response(code, data) for code, data in service_responses]

@@ -36,7 +36,7 @@ log = logging.getLogger(__name__)
 
 
 class ResourceHeadersMixin(APIView):
-    def finalize_response(self, request, *args, **kwargs):
+    def finalize_response(self, request, *args, **kwargs) -> Response:
         response = super().finalize_response(request, *args, **kwargs)
         if request.user.is_authenticated:
             for resource, remains in get_remaining_amount(request.user).items():
@@ -207,6 +207,7 @@ class PaymentWebhookView(GenericAPIView):
     permission_classes = (AllowAny,)
     schema = AutoSchema()
     serializer_class = WebhookSerializer
+    provider: Provider
 
     def post(self, request, *args, **kwargs) -> Response:
         payload = request.data
@@ -216,7 +217,7 @@ class PaymentWebhookView(GenericAPIView):
         return self.provider.webhook(request=request, payload=payload)
 
 
-def build_payment_webhook_view(provider: Provider) -> GenericAPIView:
+def build_payment_webhook_view(provider: Provider) -> type[GenericAPIView]:
     codename = provider.codename
 
     class _PaymentWebhookView(PaymentWebhookView):

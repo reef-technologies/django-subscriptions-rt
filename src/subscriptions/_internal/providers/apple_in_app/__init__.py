@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import datetime
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from logging import getLogger
-from typing import ClassVar
+from typing import ClassVar, Protocol, TypeVar
 
 from django.conf import settings
 from django.contrib.auth.models import User
@@ -61,17 +61,23 @@ class AppleInAppMetadata(BaseModel):
     original_transaction_id: str
 
 
+def get_setting_or_raise(name: str) -> str:
+    value = getattr(settings, name)
+    if not value:
+        raise ValueError(f"Setting {name} is not set or is empty.")
+    return value
+
+
 @dataclass
 class AppleInAppProvider(Provider):
     # This is also name of the field in metadata of the Plan, that stores Apple App Store product id.
     codename: ClassVar[str] = "apple_in_app"
     is_external: ClassVar[bool] = True
-    bundle_id: ClassVar[str] = settings.APPLE_BUNDLE_ID
-    api: AppleAppStoreAPI = None
+    bundle_id: ClassVar[str] = get_setting_or_raise("APPLE_BUNDLE_ID")
+    api: AppleAppStoreAPI = field(default_factory=lambda: AppleAppStoreAPI(get_setting_or_raise("APPLE_SHARED_SECRET")))
     metadata_class = AppleInAppMetadata
 
     def __post_init__(self):
-        self.api = AppleAppStoreAPI(settings.APPLE_SHARED_SECRET)
         # Check whether the Apple certificate is provided and is a valid certificate.
         get_original_apple_certificate()
 
@@ -86,7 +92,7 @@ class AppleInAppProvider(Provider):
 
     def webhook(self, request: Request, payload: dict) -> Response:
         handlers = {
-            AppleReceiptRequest: self._handle_receipt,
+            AppleReceiptRequest: self._handle_receipt,  # type: ignore
             AppleAppStoreNotification: self._handle_app_store,
         }
 
@@ -95,7 +101,6 @@ class AppleInAppProvider(Provider):
         for request_class, handler in handlers.items():
             try:
                 instance = request_class.parse_obj(payload)
-                run_handler = handler
                 # If we find a matching object, stop performing operations in context of this try-except.
                 break
             except ValidationError as validation_error:
@@ -107,20 +112,20 @@ class AppleInAppProvider(Provider):
             )
             return Response(status=HTTP_400_BAD_REQUEST)
 
-        return run_handler(request, instance)
+        return handler(request, instance)  # type: ignore
 
     def check_payments(self, payments: Iterable[SubscriptionPayment]):
         for payment in payments:
             if payment.status != SubscriptionPayment.Status.COMPLETED:
                 # All the operations that we care about should be completed before they reach us.
-                raise AppleSubscriptionNotCompletedError(payment.provider_transaction_id)
+                raise AppleSubscriptionNotCompletedError(str(payment.provider_transaction_id))
 
     @classmethod
     def _raise_if_invalid(cls, response: AppleVerifyReceiptResponse) -> None:
-        if not response.is_valid or response.receipt.bundle_id != cls.bundle_id:
+        if not response.is_valid or (response.receipt and response.receipt.bundle_id != cls.bundle_id):
             raise AppleReceiptValidationError(
                 server_response_code=response.status,
-                received_bundle_id=response.receipt and response.receipt.bundle_id,
+                received_bundle_id=response.receipt.bundle_id if response.receipt else None,
                 expected_bundle_id=cls.bundle_id,
             )
 
@@ -130,9 +135,9 @@ class AppleInAppProvider(Provider):
         }
         return Plan.objects.get(**search_kwargs)
 
-    def _get_latest_transaction(self, original_transaction_id: str) -> SubscriptionPayment | None:
+    def _get_latest_transaction(self, original_transaction_id: str) -> SubscriptionPayment:
         # We assume that the user has a single subscription active for this app on the Apple platform.
-        return (
+        payment = (
             SubscriptionPayment.objects.filter(
                 provider_codename=self.codename,
                 metadata__original_transaction_id=original_transaction_id,
@@ -140,6 +145,9 @@ class AppleInAppProvider(Provider):
             .order_by("subscription_end")
             .last()
         )
+        if not payment:
+            raise SubscriptionPayment.DoesNotExist
+        return payment
 
     def _get_active_transaction(self, transaction_id: str, original_transaction_id: str) -> SubscriptionPayment:
         kwargs = dict(
@@ -159,7 +167,7 @@ class AppleInAppProvider(Provider):
                 "Consider cleaning it up. Returning first of them.",
                 transaction_id,
             )
-            return SubscriptionPayment.objects.filter(**kwargs).first()
+            return SubscriptionPayment.objects.filter(**kwargs)[0]
 
     def _get_or_create_payment(
         self,
@@ -197,7 +205,7 @@ class AppleInAppProvider(Provider):
                     },
                     **kwargs,
                 )
-                if was_created:
+                if was_created and payment.subscription:
                     payment.subscription.auto_prolong = False
                     payment.subscription.save()
             except SubscriptionPayment.MultipleObjectsReturned:
@@ -209,7 +217,7 @@ class AppleInAppProvider(Provider):
                     "Consider cleaning it up. Returning first of them.",
                     transaction_id,
                 )
-                payment = SubscriptionPayment.objects.filter(**kwargs).first()
+                payment = SubscriptionPayment.objects.filter(**kwargs)[0]
 
         return payment
 
@@ -252,13 +260,22 @@ class AppleInAppProvider(Provider):
 
         latest_payment = None
         for receipt_info in receipt_data.latest_receipt_info:
-            # We receive all the elements and check whether we've actually activated them.
+            # We receive all the elements and check whether we've actually activated them
+            if not receipt_info:
+                continue
+
             payment = self._handle_single_receipt_info(request.user, receipt_info)
             if payment is None:
                 continue
 
-            if latest_payment is None or payment.subscription_end > latest_payment.subscription_end:
+            # TODO: collapse this block when `subscription_end` is required field
+            if latest_payment is None:
                 latest_payment = payment
+            else:
+                assert payment.subscription_end
+                assert latest_payment.subscription_end
+                if payment.subscription_end > latest_payment.subscription_end:
+                    latest_payment = payment
 
         if latest_payment is None:
             logger.warning("No subscription information provided in the payload receipt.")
@@ -280,18 +297,21 @@ class AppleInAppProvider(Provider):
             # we could start searching.
             return
 
-        latest_payment = self._get_latest_transaction(transaction_info.original_transaction_id)
-        assert latest_payment, f"Renewal received for {transaction_info=} where no payments exist."
+        try:
+            latest_payment = self._get_latest_transaction(transaction_info.original_transaction_id)
+        except SubscriptionPayment.DoesNotExist:
+            assert False, f"Renewal received for {transaction_info=} where no payments exist."
 
         current_plan = latest_payment.plan
         subscription = latest_payment.subscription
         if current_plan.metadata.get(self.codename) != transaction_info.product_id:
             current_plan = self._get_plan_for_product_id(transaction_info.product_id)
-            # Stopping old subscription, so that the user won't benefit from both of them.
-            subscription.end = timezone.now()
-            subscription.save()
-            # New subscription will be created with a new payment object.
-            subscription = None
+            if subscription:
+                # Stopping old subscription, so that the user won't benefit from both of them.
+                subscription.end = timezone.now()
+                subscription.save()
+                # New subscription will be created with a new payment object.
+                subscription = None
 
         self._get_or_create_payment(
             transaction_info.transaction_id,
@@ -324,13 +344,16 @@ class AppleInAppProvider(Provider):
         # 1. We shorten the current subscription and subscription payment to current start of the period.
         # 2. We add a new subscription with a new plan.
 
-        latest_payment = self._get_latest_transaction(transaction_info.original_transaction_id)
-        assert latest_payment, f"Change received for {transaction_info=} where no payments exist."
+        try:
+            latest_payment = self._get_latest_transaction(transaction_info.original_transaction_id)
+        except SubscriptionPayment.DoesNotExist:
+            assert False, f"Change received for {transaction_info=} where no payments exist."
 
         # Ensuring that subscription ends earlier before making the payment end earlier.
         now = timezone.now()
-        latest_payment.subscription.end = now
-        latest_payment.subscription.save()
+        if latest_payment.subscription:
+            latest_payment.subscription.end = now
+            latest_payment.subscription.save()
         latest_payment.subscription_end = now
 
         latest_payment.save()
@@ -355,12 +378,14 @@ class AppleInAppProvider(Provider):
                 transaction_info.transaction_id,
                 transaction_info.original_transaction_id,
             )
-            refunded_payment = self._get_latest_transaction(transaction_info.original_transaction_id)
+            try:
+                refunded_payment = self._get_latest_transaction(transaction_info.original_transaction_id)
+            except SubscriptionPayment.DoesNotExist:
+                assert False, f"Refund received for {transaction_info=} where no payments exist."
 
-        assert refunded_payment, f"Refund received for {transaction_info=} where no payments exist."
-
-        refunded_payment.subscription.end = transaction_info.revocation_date
-        refunded_payment.subscription.save()
+        if refunded_payment.subscription:
+            refunded_payment.subscription.end = transaction_info.revocation_date
+            refunded_payment.subscription.save()
         refunded_payment.subscription_end = transaction_info.revocation_date
         refunded_payment.status = SubscriptionPayment.Status.CANCELLED
 

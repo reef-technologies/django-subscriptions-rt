@@ -21,7 +21,7 @@ from .forms import DummyForm
 class DummyProvider(Provider):
     codename: ClassVar[str] = "dummy"
     is_external: ClassVar[bool] = False
-    form: ClassVar[Form] = DummyForm
+    form: ClassVar[type[Form] | None] = DummyForm
 
     _payment_url: ClassVar[str] = "/payment/{}/"
 
@@ -44,7 +44,7 @@ class DummyProvider(Provider):
             provider_transaction_id=transaction_id,
             amount=amount,
             quantity=quantity,
-            user=user,
+            user=user,  # type: ignore
             plan=plan,
             subscription=subscription,
             subscription_start=subscription_start,
@@ -61,7 +61,7 @@ class DummyProvider(Provider):
         quantity: int = 1,
         reference_payment: SubscriptionPayment | None = None,
     ) -> SubscriptionPayment:
-        if not user.payments.filter(
+        if not user.payments.filter(  # type: ignore[attr-defined]
             provider_codename=self.codename,
             status=SubscriptionPayment.Status.COMPLETED,
         ).exists():
@@ -75,7 +75,7 @@ class DummyProvider(Provider):
             provider_transaction_id=get_random_string(8),
             amount=self.get_amount(user=user, plan=plan),
             quantity=quantity,
-            user=user,
+            user=user,  # type: ignore
             plan=plan,
             subscription=subscription,
             status=SubscriptionPayment.Status.COMPLETED,

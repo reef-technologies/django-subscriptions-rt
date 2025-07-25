@@ -34,11 +34,9 @@ class PaddleProvider(Provider):
     codename: ClassVar[str] = "paddle"
     is_external: ClassVar[bool] = False
 
-    vendor_id: ClassVar[str] = settings.PADDLE_VENDOR_ID
-    vendor_auth_code: ClassVar[str] = settings.PADDLE_VENDOR_AUTH_CODE
-    endpoint: ClassVar[str] = settings.PADDLE_ENDPOINT
-
-    _api: Paddle = None
+    vendor_id: ClassVar[int] = int(str(settings.PADDLE_VENDOR_ID))
+    vendor_auth_code: ClassVar[str] = str(settings.PADDLE_VENDOR_AUTH_CODE)
+    endpoint: ClassVar[str] = str(settings.PADDLE_ENDPOINT)
 
     # we assume that first webhook will arrive within this period after payment
     WEBHOOK_LOOKUP_PERIOD = timedelta(hours=6)
@@ -49,8 +47,9 @@ class PaddleProvider(Provider):
     # make staff members pay ~1<currency> instead of real charge amount
     STAFF_DISCOUNT = True
 
-    def __post_init__(self):
-        self._api = Paddle(
+    @cached_property
+    def _api(self) -> Paddle:
+        return Paddle(
             vendor_id=self.vendor_id,
             vendor_auth_code=self.vendor_auth_code,
             endpoint=self.endpoint,
@@ -65,7 +64,7 @@ class PaddleProvider(Provider):
         return plans[0]
 
     def get_amount(self, user: AbstractBaseUser, plan: Plan) -> Money | None:
-        if self.STAFF_DISCOUNT and user.is_staff:
+        if self.STAFF_DISCOUNT and getattr(user, "is_staff", False):
             return Money(
                 amount=Decimal("1.0") + Decimal("0.01") * plan.id,
                 currency=plan.charge_amount.currency,
@@ -104,10 +103,11 @@ class PaddleProvider(Provider):
         )
 
         if is_new:
+            assert payment.id
             payment_link = self._api.generate_payment_link(
                 product_id=self._plan["id"],
                 prices=[amount * quantity] if amount else [],
-                email=user.email,
+                email=getattr(user, "email", ""),
                 metadata=Passthrough(
                     subscription_payment_id=payment.id,
                 ).dict(),
@@ -138,7 +138,7 @@ class PaddleProvider(Provider):
             return SubscriptionPayment.objects.create(
                 provider_codename=self.codename,
                 provider_transaction_id=None,  # paddle doesn't return anything
-                amount=amount,
+                amount=amount,  # type: ignore[misc]
                 quantity=quantity,
                 status=SubscriptionPayment.Status.COMPLETED,
                 user=user,
@@ -158,7 +158,7 @@ class PaddleProvider(Provider):
             # successful payment by same provider
             with suppress(SubscriptionPayment.DoesNotExist):
                 reference_payment = SubscriptionPayment.objects.filter(
-                    user=user,
+                    user=user,  # type: ignore[misc]
                     provider_codename=self.codename,
                     status=SubscriptionPayment.Status.COMPLETED,
                 ).latest()
@@ -177,6 +177,7 @@ class PaddleProvider(Provider):
             ) from exc
 
         # paddle doesn't allow one-off charges with different currencies
+        assert reference_payment.subscription
         if reference_payment.subscription.plan.charge_amount.currency != plan.charge_amount.currency:
             raise BadReferencePayment("Reference payment has different currency than current plan")
 
@@ -218,7 +219,7 @@ class PaddleProvider(Provider):
         return SubscriptionPayment.objects.create(
             provider_codename=self.codename,
             provider_transaction_id=None,  # paddle doesn't return anything
-            amount=amount,
+            amount=amount,  # type: ignore[misc]
             status=status,
             user=user,
             plan=plan,

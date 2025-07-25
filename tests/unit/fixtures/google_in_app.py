@@ -5,7 +5,7 @@ from collections.abc import Callable
 import pytest
 from django.utils.timezone import now
 
-from subscriptions.v0.models import Plan, Subscription, SubscriptionPayment
+from subscriptions.v0.models import Plan, SubscriptionPayment
 from subscriptions.v0.providers import get_provider, get_providers
 from subscriptions.v0.providers.google_in_app import GoogleInAppProvider
 from subscriptions.v0.providers.google_in_app.schemas import (
@@ -23,7 +23,7 @@ from ..helpers import days
 
 
 @pytest.fixture
-def google_in_app(settings) -> str:
+def google_in_app(settings) -> GoogleInAppProvider:
     settings.SUBSCRIPTIONS_PAYMENT_PROVIDERS = [
         "subscriptions.v0.providers.google_in_app.GoogleInAppProvider",
     ]
@@ -156,7 +156,7 @@ def google_test_notification() -> dict:
 
 
 @pytest.fixture
-def google_in_app_payment(google_in_app, purchase_token, plan_with_google, user) -> Subscription:
+def google_in_app_payment(google_in_app, purchase_token, plan_with_google, user) -> SubscriptionPayment:
     now_ = now()
     return SubscriptionPayment.objects.create(
         provider_codename=google_in_app.codename,

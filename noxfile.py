@@ -131,7 +131,10 @@ def format_(session):
 @nox.session(python=PYTHON_DEFAULT_VERSION, tags=["lint", "check"])
 def lint(session):
     """Run linters in readonly mode."""
-    session.install(*get_dependency_groups()["lint"])
+    session.install(
+        *get_dependency_groups()["lint"],
+        ".[apple_in_app, google_in_app, default_plan]",
+    )
     session.run("ruff", "check", "--diff", "--unsafe-fixes", ".")
     session.run("ruff", "format", "--diff", ".")
     session.run("mypy", ".")

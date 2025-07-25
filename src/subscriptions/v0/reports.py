@@ -6,7 +6,6 @@ from .._internal.reports import (  # noqa: F401
     SECONDLY,
     WEEKLY,
     YEARLY,
-    IterPeriodsMixin,
     SubscriptionsReport,
     TransactionsReport,
 )

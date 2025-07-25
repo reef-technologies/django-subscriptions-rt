@@ -118,14 +118,13 @@ def validate_and_fetch_apple_signed_payload(signed_payload: str) -> dict[str, An
     certificate_store = crypto.X509Store()
     certificate_store.add_cert(apple_root_certificate)
 
-    current_certificate: crypto.X509 | None = None
-
     # Go from the back, excluding the one that we've already validated.
     # NOTE(kkalinowski): While it could be done with a single X509StoreContext
     # using untrusted cert list, I'm unsure about safety of this method (and far from understanding it enough
     # to be able to determine this myself). The one presented below is said to be secure by someone smarter than me.
+    assert len(certificates_chain) > 1, "There should be at least two certificates in the chain"
     for certificate_x5c in reversed(certificates_chain[:-1]):
-        current_certificate = load_certificate_from_x5c(certificate_x5c)
+        current_certificate: crypto.X509 = load_certificate_from_x5c(certificate_x5c)
 
         # Verify whether this certificate is valid.
         context = crypto.X509StoreContext(certificate_store, current_certificate)
@@ -140,7 +139,6 @@ def validate_and_fetch_apple_signed_payload(signed_payload: str) -> dict[str, An
 
     # Fetch public key from the last certificate and validate the payload.
     algorithm = header["alg"]
-
     try:
         payload = jwt.decode(signed_payload, current_certificate.get_pubkey().to_cryptography_key(), algorithm)
     except jwt.PyJWTError as ex:
@@ -212,6 +210,8 @@ class AppStoreTransactionInfo(BaseModel):
     product_id: str = Field(alias="productId")
     transaction_id: str = Field(alias="transactionId")
     original_transaction_id: str = Field(alias="originalTransactionId")
+
+    web_order_line_item_id: str = Field(alias="webOrderLineItemId")
 
     @classmethod
     def from_signed_payload(cls, signed_payload_data: str) -> AppStoreTransactionInfo:

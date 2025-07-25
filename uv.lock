@@ -256,6 +256,11 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/e2/10/c9020f6e5b293e4c24aa72cab7966bcd7f03b1196da9c5cf916da9873c48/django_stubs-5.2.1-py3-none-any.whl", hash = "sha256:c0e170d70329c27e737a5b80c5518fb6161d0c4792321d11a4a93dcda120f4ef", size = 484761, upload-time = "2025-06-17T18:07:34.554Z" },
 ]
 
+[package.optional-dependencies]
+compatible-mypy = [
+    { name = "mypy" },
+]
+
 [[package]]
 name = "django-stubs-ext"
 version = "5.2.1"
@@ -301,11 +306,13 @@ google-in-app = [
 [package.dev-dependencies]
 lint = [
     { name = "codespell" },
-    { name = "django-stubs" },
+    { name = "django-stubs", extra = ["compatible-mypy"] },
     { name = "djangorestframework-stubs" },
     { name = "mypy" },
     { name = "ruff" },
     { name = "types-freezegun" },
+    { name = "types-httplib2" },
+    { name = "types-pyopenssl" },
     { name = "types-python-dateutil" },
     { name = "types-requests" },
 ]
@@ -347,11 +354,13 @@ provides-extras = ["apple-in-app", "google-in-app", "default-plan"]
 [package.metadata.requires-dev]
 lint = [
     { name = "codespell", extras = ["toml"], specifier = ">=2.4.1" },
-    { name = "django-stubs", specifier = ">=5.2.1" },
+    { name = "django-stubs", extras = ["compatible-mypy"], specifier = ">=5.2.1" },
     { name = "djangorestframework-stubs", specifier = ">=3.16.0" },
     { name = "mypy", specifier = ">=1.16.1" },
     { name = "ruff", specifier = ">=0.12.2" },
     { name = "types-freezegun", specifier = ">=1.1.10" },
+    { name = "types-httplib2", specifier = ">=0.22.0.20250622" },
+    { name = "types-pyopenssl", specifier = ">=24.1.0.20240722" },
     { name = "types-python-dateutil", specifier = ">=2.9.0.20250708" },
     { name = "types-requests", specifier = ">=2.32.4.20250611" },
 ]
@@ -1219,12 +1228,46 @@ wheels = [
 ]
 
 [[package]]
+name = "types-cffi"
+version = "1.17.0.20250523"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "types-setuptools" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/f7/5f/ac80a2f55757019e5d4809d17544569c47a623565258ca1a836ba951d53f/types_cffi-1.17.0.20250523.tar.gz", hash = "sha256:e7110f314c65590533adae1b30763be08ca71ad856a1ae3fe9b9d8664d49ec22", size = 16858, upload-time = "2025-05-23T03:05:40.983Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f1/86/e26e6ae4dfcbf6031b8422c22cf3a9eb2b6d127770406e7645b6248d8091/types_cffi-1.17.0.20250523-py3-none-any.whl", hash = "sha256:e98c549d8e191f6220e440f9f14315d6775a21a0e588c32c20476be885b2fad9", size = 20010, upload-time = "2025-05-23T03:05:39.136Z" },
+]
+
+[[package]]
 name = "types-freezegun"
 version = "1.1.10"
 source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/31/0d/2a0485b7f693437570da1b005cbc06748252d24a5a24e521a0bcf4f8912e/types-freezegun-1.1.10.tar.gz", hash = "sha256:cb3a2d2eee950eacbaac0673ab50499823365ceb8c655babb1544a41446409ec", size = 2861, upload-time = "2022-06-09T09:19:19.568Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/96/48/3380ecdafe5646f4e9e31814297073aeb6929c474212377189cbee228b50/types_freezegun-1.1.10-py3-none-any.whl", hash = "sha256:fadebe72213e0674036153366205038e1f95c8ca96deb4ef9b71ddc15413543e", size = 2904, upload-time = "2022-06-09T09:19:17.892Z" },
+]
+
+[[package]]
+name = "types-httplib2"
+version = "0.22.0.20250622"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/92/ac/dc2681bc0899d2a94215450d711b6164bcc6590ffa6a4f992baf3873b5b5/types_httplib2-0.22.0.20250622.tar.gz", hash = "sha256:2ee2f3fecc5d14b028d9ca0665e34cc312beb6970219c4b25961f9f6db953c1b", size = 11054, upload-time = "2025-06-22T03:19:13.001Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/69/79/dbae2e36993d19c22a834191f4a0f5ed3427948bc70c339f860fe88327af/types_httplib2-0.22.0.20250622-py3-none-any.whl", hash = "sha256:a597eeafb9f56a33a2bba4687af6f56417a9bc1bdd70c61ac44a9c3c48ee53d5", size = 11463, upload-time = "2025-06-22T03:19:12.286Z" },
+]
+
+[[package]]
+name = "types-pyopenssl"
+version = "24.1.0.20240722"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cryptography" },
+    { name = "types-cffi" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/93/29/47a346550fd2020dac9a7a6d033ea03fccb92fa47c726056618cc889745e/types-pyOpenSSL-24.1.0.20240722.tar.gz", hash = "sha256:47913b4678a01d879f503a12044468221ed8576263c1540dcb0484ca21b08c39", size = 8458, upload-time = "2024-07-22T02:32:22.558Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/98/05/c868a850b6fbb79c26f5f299b768ee0adc1f9816d3461dcf4287916f655b/types_pyOpenSSL-24.1.0.20240722-py3-none-any.whl", hash = "sha256:6a7a5d2ec042537934cfb4c9d4deb0e16c4c6250b09358df1f083682fe6fda54", size = 7499, upload-time = "2024-07-22T02:32:21.232Z" },
 ]
 
 [[package]]
@@ -1255,6 +1298,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/6d/7f/73b3a04a53b0fd2a911d4ec517940ecd6600630b559e4505cc7b68beb5a0/types_requests-2.32.4.20250611.tar.gz", hash = "sha256:741c8777ed6425830bf51e54d6abe245f79b4dcb9019f1622b773463946bf826", size = 23118, upload-time = "2025-06-11T03:11:41.272Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/3d/ea/0be9258c5a4fa1ba2300111aa5a0767ee6d18eb3fd20e91616c12082284d/types_requests-2.32.4.20250611-py3-none-any.whl", hash = "sha256:ad2fe5d3b0cb3c2c902c8815a70e7fb2302c4b8c1f77bdcd738192cdb3878072", size = 20643, upload-time = "2025-06-11T03:11:40.186Z" },
+]
+
+[[package]]
+name = "types-setuptools"
+version = "80.9.0.20250529"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/79/66/1b276526aad4696a9519919e637801f2c103419d2c248a6feb2729e034d1/types_setuptools-80.9.0.20250529.tar.gz", hash = "sha256:79e088ba0cba2186c8d6499cbd3e143abb142d28a44b042c28d3148b1e353c91", size = 41337, upload-time = "2025-05-29T03:07:34.487Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1b/d8/83790d67ec771bf029a45ff1bd1aedbb738d8aa58c09dd0cc3033eea0e69/types_setuptools-80.9.0.20250529-py3-none-any.whl", hash = "sha256:00dfcedd73e333a430e10db096e4d46af93faf9314f832f13b6bbe3d6757e95f", size = 63263, upload-time = "2025-05-29T03:07:33.064Z" },
 ]
 
 [[package]]

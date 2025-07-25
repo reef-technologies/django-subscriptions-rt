@@ -9,7 +9,7 @@ from logging import getLogger
 
 from django.conf import settings
 from django.db import transaction
-from django.db.models import Q, QuerySet
+from django.db.models import Q
 from django.utils.timezone import now
 from more_itertools import first, pairwise
 
@@ -18,7 +18,7 @@ from .defaults import (
     DEFAULT_SUBSCRIPTIONS_OFFLINE_CHARGE_ATTEMPTS_SCHEDULE,
 )
 from .exceptions import PaymentError, ProlongationImpossible
-from .models import Subscription, SubscriptionPayment
+from .models import Subscription, SubscriptionPayment, SubscriptionQuerySet
 from .providers import get_provider
 
 log = getLogger(__name__)
@@ -148,7 +148,7 @@ def notify_stuck_pending_payments(older_than: timedelta = DEFAULT_NOTIFY_PENDING
 
 
 def charge_recurring_subscriptions(
-    subscriptions: QuerySet | None = None,
+    subscriptions: SubscriptionQuerySet | None = None,
     schedule: Iterable[timedelta] = DEFAULT_CHARGE_ATTEMPTS_SCHEDULE,
     num_threads: int | None = None,
     lock: bool = True,
@@ -245,6 +245,7 @@ def check_duplicated_payments() -> dict[tuple[str, str], list[SubscriptionPaymen
         )
 
         for idx, entry in enumerate(transaction_id_entries):
+            assert entry.subscription
             log.info("\t%s: Subscription UID: %s, payment UID: %s", (idx + 1), entry.subscription.uid, entry.uid)
 
         result[(provider_codename, transaction_id)] = transaction_id_entries

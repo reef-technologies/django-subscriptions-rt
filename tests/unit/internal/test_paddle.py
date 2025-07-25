@@ -42,9 +42,9 @@ def automate_payment(url: str, card: str, email: str):
     checkout_id = payment_page_query["checkout_id"][0]
 
     # parse the react configuration to get the needed urls
-    checkout_api_url = re.search(r"REACT_APP_CHECKOUT_API_URL: '(.+)',", payment_page.text)[1]
-    ld_proxy_domain = re.search(r"REACT_APP_LD_PROXY_URL: '(.+)',", payment_page.text)[1]
-    spreedly_api_url = re.search(r"REACT_APP_SPREEDLY_API_URL: '(.+)',", payment_page.text)[1]
+    checkout_api_url = re.search(r"REACT_APP_CHECKOUT_API_URL: '(.+)',", payment_page.text).group(1)
+    ld_proxy_domain = re.search(r"REACT_APP_LD_PROXY_URL: '(.+)',", payment_page.text).group(1)
+    spreedly_api_url = re.search(r"REACT_APP_SPREEDLY_API_URL: '(.+)',", payment_page.text).group(1)
 
     # Sanity checks on the variables
     assert "paddle" in checkout_api_url

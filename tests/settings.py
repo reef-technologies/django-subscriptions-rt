@@ -4,10 +4,11 @@ Django settings used in tests.
 
 # cookiecutter-rt-pkg macro: requires cookiecutter.is_django_package
 from os import environ
+from pathlib import Path
 
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(Path(__file__).parent / ".env", override=True)
 
 DEBUG = True
 SECRET_KEY = "DUMMY"  # noqa: S105

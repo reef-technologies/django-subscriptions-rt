@@ -5,8 +5,12 @@ from django.db import models
 from djmoney.models.fields import MoneyField as DjMoneyField
 
 
-def MoneyField(**kwargs) -> DjMoneyField:
-    return DjMoneyField(max_digits=14, decimal_places=2, default_currency="USD", **kwargs)
+class MoneyField(DjMoneyField):
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault("max_digits", 14)
+        kwargs.setdefault("decimal_places", 2)
+        kwargs.setdefault("default_currency", "USD")
+        super().__init__(*args, **kwargs)
 
 
 def relativedelta_to_dict(value: relativedelta) -> dict:

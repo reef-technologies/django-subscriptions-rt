@@ -29,10 +29,10 @@ class Provider:
     codename: ClassVar[str]
     is_external: ClassVar[bool]
     is_enabled: ClassVar[bool] = True
-    form: ClassVar[Form | None] = None
-    metadata_class: ClassVar[BaseModel] = BaseModel
+    form: ClassVar[type[Form] | None] = None
+    metadata_class: ClassVar[type[BaseModel]] = BaseModel
 
-    def get_amount(self, user: AbstractBaseUser, plan: Plan) -> Money:
+    def get_amount(self, user: AbstractBaseUser, plan: Plan) -> Money | None:
         return plan.charge_amount
 
     def charge_online(

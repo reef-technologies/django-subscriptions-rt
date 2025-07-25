@@ -78,7 +78,7 @@ def plan(resource) -> Plan:
     return Plan.objects.create(
         codename="plan",
         name="Plan",
-        charge_amount=usd(100),
+        charge_amount=usd(100),  # type: ignore[misc]
         charge_period=days(30),
         max_duration=days(120),
         metadata={
@@ -101,7 +101,7 @@ def bigger_plan(resource) -> Plan:
     return Plan.objects.create(
         codename="bigger-plan",
         name="Bigger plan",
-        charge_amount=usd(200),
+        charge_amount=usd(200),  # type: ignore[misc]
         charge_period=days(30),
     )
 
@@ -121,7 +121,7 @@ def recharge_plan(resource) -> Plan:
     return Plan.objects.create(
         codename="recharge-plan",
         name="Recharge plan",
-        charge_amount=usd(10),
+        charge_amount=usd(10),  # type: ignore[misc]
         charge_period=INFINITY,
         max_duration=days(14),
     )
@@ -227,7 +227,7 @@ def two_subscriptions(user, resource) -> list[Subscription]:
         burns_in=days(7),
     )
 
-    plan2 = Plan.objects.create(codename="plan2", name="Plan 2", charge_amount=Money(10, "EUR"))
+    plan2 = Plan.objects.create(codename="plan2", name="Plan 2", charge_amount=Money(10, "EUR"))  # type: ignore[misc]
     subscription2 = Subscription.objects.create(
         user=user,
         plan=plan2,
@@ -282,7 +282,7 @@ def user_client(settings, client, user) -> Client:
 
 
 @pytest.fixture
-def dummy(settings) -> str:
+def dummy(settings) -> DummyProvider:
     settings.SUBSCRIPTIONS_PAYMENT_PROVIDERS = [
         "subscriptions.v0.providers.dummy.DummyProvider",
     ]
@@ -369,7 +369,7 @@ def cache_backend(settings):
 def default_plan(settings) -> Plan:
     plan = Plan.objects.create(
         name="Default Plan",
-        charge_amount=usd(0),
+        charge_amount=usd(0),  # type: ignore[misc]
     )
     config.SUBSCRIPTIONS_DEFAULT_PLAN_ID = plan.id
     return plan

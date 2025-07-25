@@ -108,6 +108,7 @@ class HardDBLock:
         try:
             out_value = int(in_value)
         except ValueError:
+            assert isinstance(in_value, str)
             out_value = int(hashlib.sha1(in_value.encode("utf-8")).hexdigest(), 16)
         return out_value % self.PSQL_MAX_LOCK_VALUE
 

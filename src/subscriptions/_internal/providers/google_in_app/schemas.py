@@ -175,7 +175,7 @@ class GoogleBasePlan(BaseModel):
     state: GoogleBasePlanState
     regionalConfigs: list[GoogleRegionalBasePlanConfig]
     autoRenewingBasePlanType: GoogleAutoRenewingBasePlanType | None
-    prepaidBasePlanType: GooglePrepaidBasePlanType | None
+    prepaidBasePlanType: GooglePrepaidBasePlanType | None = None
 
     class Config:
         extra = Extra.ignore

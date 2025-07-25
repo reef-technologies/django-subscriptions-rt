@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 from itertools import count, islice
 from logging import getLogger
 from operator import attrgetter
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Self
 from uuid import uuid4
 
 from dateutil.relativedelta import relativedelta
@@ -20,7 +20,6 @@ from django.db.models import (
     F,
     Index,
     Q,
-    QuerySet,
     UniqueConstraint,
 )
 from django.db.models.functions import Least
@@ -175,7 +174,7 @@ class QuotaCache:
 
 
 class SubscriptionQuerySet(models.QuerySet):
-    def overlap(self, since: datetime, until: datetime, include_until: bool = False) -> QuerySet:
+    def overlap(self, since: datetime, until: datetime, include_until: bool = False) -> Self:
         """
         Filter subscriptions that overlap with
         - [since, until) period (include_until==False) or
@@ -188,11 +187,11 @@ class SubscriptionQuerySet(models.QuerySet):
             }
         )
 
-    def active(self, at: datetime | None = None) -> QuerySet:
+    def active(self, at: datetime | None = None) -> Self:
         at = at or now()
         return self.overlap(at, at, include_until=True)
 
-    def inactive(self, at: datetime | None = None) -> QuerySet:
+    def inactive(self, at: datetime | None = None) -> Self:
         """
         Lists all subscriptions that are not currently active.
         This is the equivalent of "ended" part of "ended_or_ending".
@@ -200,11 +199,11 @@ class SubscriptionQuerySet(models.QuerySet):
         at = at or now()
         return self.filter(end__lte=at)
 
-    def expiring(self, within: datetime, since: datetime | None = None) -> QuerySet:
+    def expiring(self, within: datetime, since: datetime | None = None) -> Self:
         since = since or now()
         return self.filter(end__gte=since, end__lte=since + within)
 
-    def recurring(self, predicate: bool = True) -> QuerySet:
+    def recurring(self, predicate: bool = True) -> Self:
         subscriptions = self.select_related("plan")
         return (
             subscriptions.exclude(plan__charge_period=INFINITY)
@@ -212,22 +211,22 @@ class SubscriptionQuerySet(models.QuerySet):
             else subscriptions.filter(plan__charge_period=INFINITY)
         )
 
-    def charged(self) -> QuerySet:
+    def charged(self) -> Self:
         """
         Checking for subscriptions that have completed payments with amount more than zero.
         """
         return self.filter(payments__status=SubscriptionPayment.Status.COMPLETED, payments__amount__gt=0)
 
-    def with_ages(self, at: datetime | None = None) -> QuerySet:
+    def with_ages(self, at: datetime | None = None) -> Self:
         return self.annotate(
             age=ExpressionWrapper(Least(at or now(), F("end")) - F("start"), output_field=DateTimeField()),
         )
 
-    def ended_or_ending(self) -> QuerySet:
+    def ended_or_ending(self) -> Self:
         now_ = now()
         return self.filter(Q(end__lte=now_) | Q(end__gt=now_, auto_prolong=False))
 
-    def new(self, since: datetime, until: datetime) -> QuerySet:
+    def new(self, since: datetime, until: datetime) -> Self:
         """Newly created subscriptions within selected period."""
         return self.filter(start__gte=since, start__lte=until)
 
@@ -565,7 +564,11 @@ class SubscriptionPayment(AbstractTransaction):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="payments")
     plan = models.ForeignKey(Plan, on_delete=models.PROTECT, related_name="payments")
     subscription = models.ForeignKey(
-        Subscription, on_delete=models.PROTECT, blank=True, null=True, related_name="payments"
+        Subscription,
+        on_delete=models.PROTECT,
+        blank=True,
+        null=True,  # TODO: make this field required?
+        related_name="payments",
     )
     quantity = models.PositiveIntegerField(default=1)
 
@@ -574,6 +577,7 @@ class SubscriptionPayment(AbstractTransaction):
     # are set, their values will be used to adjust subscription duration; this is handy
     # when payment and subscription info comes from external source and is out of control
     # of the application.
+    # TODO: make these fields required?
     subscription_start = models.DateTimeField(blank=True, null=True)  # TODO: paid from
     subscription_end = models.DateTimeField(blank=True, null=True)  # TODO: paid until
 

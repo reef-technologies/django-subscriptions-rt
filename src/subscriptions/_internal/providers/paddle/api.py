@@ -5,7 +5,7 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
-from functools import partialmethod, wraps
+from functools import cached_property, partialmethod, wraps
 from logging import getLogger
 from typing import ClassVar
 from urllib.parse import urlencode
@@ -15,7 +15,6 @@ from djmoney.money import Money
 from requests.auth import AuthBase
 from tenacity import (
     retry,
-    retry_base,
     retry_if_result,
     stop_after_attempt,
     wait_incrementing,
@@ -32,12 +31,12 @@ class PaddleError(Exception):
 
 @dataclass
 class PaddleAuth(AuthBase):
-    vendor_id: str
+    vendor_id: int
     vendor_auth_code: str
 
     def __call__(self, request: requests.PreparedRequest):
         params = {
-            "vendor_id": self.vendor_id,
+            "vendor_id": str(self.vendor_id),
             "vendor_auth_code": self.vendor_auth_code,
         }
         if request.method == "GET":
@@ -78,10 +77,9 @@ class Paddle:
     endpoint: str = "https://vendors.paddle.com/api/2.0"
     # TODO: replace response `dict` type with pydantic
 
-    _session: requests.Session = None
     TIMEOUT: ClassVar[timedelta] = timedelta(seconds=30)
 
-    _retry: retry_base = retry(
+    _retry = retry(
         retry=retry_if_result(
             lambda response: response.status_code
             in {
@@ -96,9 +94,13 @@ class Paddle:
         wait=wait_incrementing(start=1, increment=2),
     )
 
+    @cached_property
+    def _session(self) -> requests.Session:
+        session = requests.Session()
+        session.auth = PaddleAuth(self.vendor_id, self.vendor_auth_code)
+        return session
+
     def __post_init__(self):
-        self._session = requests.Session()
-        self._session.auth = PaddleAuth(self.vendor_id, self.vendor_auth_code)
         self.request = self._retry(self.request)
 
     def request(self, method, endpoint, *args, **kwargs) -> requests.Response:
@@ -161,22 +163,22 @@ class Paddle:
     def get_payments(
         self,
         subscription_id: int | None = None,
-        plans: list[int] = None,
+        plans: list[int] = [],
         is_paid: bool | None = None,
         from_: date | None = None,
         to: date | None = None,
         is_one_off_charge: bool | None = None,
     ) -> list[dict]:
-        params = {}
+        params: dict[str, str] = {}
 
         if subscription_id is not None:
-            params["subscription_id"] = subscription_id
+            params["subscription_id"] = str(subscription_id)
 
-        if plans is not None:
+        if plans:
             params["plan"] = ",".join(map(str, plans))
 
         if is_paid is not None:
-            params["is_paid"] = int(is_paid)
+            params["is_paid"] = str(int(is_paid))
 
         if from_:
             params["from"] = from_.strftime("%Y-%m-%d")
@@ -185,7 +187,7 @@ class Paddle:
             params["to"] = to.strftime("%Y-%m-%d")
 
         if is_one_off_charge is not None:
-            params["is_one_off_charge"] = int(is_one_off_charge)
+            params["is_one_off_charge"] = str(int(is_one_off_charge))
 
         return self.post("/subscription/payments", json=params)
 
@@ -197,15 +199,15 @@ class Paddle:
         start_date: datetime | None = None,
         end_date: datetime | None = None,
     ) -> dict:
-        params = {}
+        params: dict[str, str] = {}
 
         if page is not None:
             assert page > 0
-            params["page"] = page
+            params["page"] = str(page)
 
         if alerts_per_page is not None:
             assert alerts_per_page > 0
-            params["alerts_per_page"] = alerts_per_page
+            params["alerts_per_page"] = str(alerts_per_page)
 
         if start_date:
             params["query_tail"] = start_date.astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S")

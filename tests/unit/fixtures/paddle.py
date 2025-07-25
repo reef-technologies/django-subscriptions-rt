@@ -27,7 +27,7 @@ def paddle_unconfirmed_payment(db, paddle, plan, user) -> SubscriptionPayment:
         subscription=None,
         provider_codename=paddle.codename,
         provider_transaction_id="12345",
-        amount=usd(100),
+        amount=usd(100),  # type: ignore[misc]
         metadata={"subscription_id": "888999"},
     )
 

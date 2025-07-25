@@ -71,7 +71,7 @@ class SubscriptionSerializer(ModelSerializer):
 
     def get_next_charge_date(self, obj) -> datetime | None:
         if not obj.auto_prolong:
-            return
+            return None
 
         with suppress(StopIteration):
             return next(obj.iter_charge_dates(since=now()))
@@ -92,7 +92,7 @@ class PaymentProviderListSerializer(Serializer):
 
 
 class SubscriptionSelectSerializer(Serializer):
-    plan = PrimaryKeyRelatedField(queryset=Plan.objects.all())
+    plan = PrimaryKeyRelatedField(queryset=Plan.objects.all())  # type: ignore[var-annotated]
     quantity = IntegerField(default=1)
     redirect_url = CharField(read_only=True)
     background_charge_succeeded = BooleanField(default=False)

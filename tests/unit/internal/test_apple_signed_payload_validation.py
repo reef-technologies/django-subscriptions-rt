@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import unittest.mock
+from collections.abc import Generator
 from typing import NamedTuple
 
 import jwt.utils
@@ -72,7 +73,7 @@ def make_cert_group(
 
 
 @pytest.fixture(scope="function")
-def root_certificate_group() -> CertificateGroup:
+def root_certificate_group() -> Generator[CertificateGroup, None, None]:
     certificate_group = make_cert_group(serial=1, is_ca=True)
     # Assign is as a root apple certificate.
     with unittest.mock.patch(
