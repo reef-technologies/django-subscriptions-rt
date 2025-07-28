@@ -135,7 +135,7 @@ def test__default_plan__enable__old_subscription(user, subscription, settings):
         default_plan = Plan.objects.create(codename="default", charge_amount=0)
         now_ = now()
 
-        config.SUBSCRIPTIONS_DEFAULT_PLAN_ID = default_plan.id
+        config.SUBSCRIPTIONS_DEFAULT_PLAN_ID = default_plan.pk
         subscriptions = user.subscriptions.order_by("end")
         assert subscriptions.count() == 2
         assert subscriptions[0] == subscription
@@ -158,7 +158,7 @@ def test__default_plan__enable__active_subscription(user, subscription, settings
     subscription.save()
 
     default_plan = Plan.objects.create(codename="default", charge_amount=0)
-    config.SUBSCRIPTIONS_DEFAULT_PLAN_ID = default_plan.id
+    config.SUBSCRIPTIONS_DEFAULT_PLAN_ID = default_plan.pk
 
     subscriptions = user.subscriptions.order_by("end")
     assert subscriptions.count() == 2
@@ -232,7 +232,7 @@ def test__default_plan__switch__active(user, default_plan):
     assert subscription.end > now() + days(365)
 
     new_default_plan = Plan.objects.create(codename="new default", charge_amount=0)
-    config.SUBSCRIPTIONS_DEFAULT_PLAN_ID = new_default_plan.id
+    config.SUBSCRIPTIONS_DEFAULT_PLAN_ID = new_default_plan.pk
 
     assert user.subscriptions.count() == 2
 
@@ -262,7 +262,7 @@ def test__default_plan__switch__future(user, subscription, default_plan):
         assert default_subscription.plan == default_plan
 
         new_default_plan = Plan.objects.create(codename="new default", name="New default", charge_amount=0)
-        config.SUBSCRIPTIONS_DEFAULT_PLAN_ID = new_default_plan.id
+        config.SUBSCRIPTIONS_DEFAULT_PLAN_ID = new_default_plan.pk
 
         assert user.subscriptions.count() == 2
         new_subscription = user.subscriptions.order_by("end").last()
@@ -317,7 +317,7 @@ def test__default_plan__non_recurring__ignore_when_adding_default(user, recharge
     assert user.subscriptions.active().count() == 1
 
     new_default_plan = Plan.objects.create(codename="new default", charge_amount=0)
-    config.SUBSCRIPTIONS_DEFAULT_PLAN_ID = new_default_plan.id
+    config.SUBSCRIPTIONS_DEFAULT_PLAN_ID = new_default_plan.pk
 
     assert user.subscriptions.active().count() == 2
 

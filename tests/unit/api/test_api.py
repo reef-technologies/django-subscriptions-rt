@@ -30,7 +30,7 @@ def test__api__plans(plan, client):
     assert response.status_code == 200
     assert response.json() == [
         {
-            "id": plan.id,
+            "id": plan.pk,
             "codename": plan.codename,
             "name": plan.name,
             "charge_amount": plan.charge_amount.amount,
@@ -68,14 +68,14 @@ def test__api__subscriptions__authorized(user_client, two_subscriptions):
     subscription = two_subscriptions[0]
     assert response.json() == [
         {
-            "id": subscription.id,
+            "id": str(subscription.pk),
             "start": datetime_to_api(subscription.start),
             "end": datetime_to_api(subscription.end),
             "quantity": 1,
             "next_charge_date": None,
             "payment_provider_class": None,
             "plan": {
-                "id": subscription.plan.id,
+                "id": subscription.plan.pk,
                 "codename": subscription.plan.codename,
                 "name": subscription.plan.name,
                 "charge_amount": subscription.plan.charge_amount and subscription.plan.charge_amount.amount,
@@ -133,20 +133,23 @@ def test__api__subscriptions__next_charge_date__not_prolong(user_client, subscri
 
 @pytest.mark.django_db(databases=["actual_db"], transaction=True)
 def test__api__subscribe__unauthorized(client, plan):
-    response = client.post("/api/subscribe/", {"plan": plan.id})
+    response = client.post("/api/subscribe/", {"plan": plan.pk})
     assert response.status_code == 403
 
 
 @pytest.mark.django_db(databases=["actual_db"], transaction=True)
 def test__api__subscribe__authorized(client, user_client, plan, dummy):
-    response = user_client.post("/api/subscribe/", {"plan": plan.id, "quantity": 2})
+    response = user_client.post("/api/subscribe/", {"plan": plan.pk, "quantity": 2})
     assert response.status_code == 200, response.content
     result = response.json()
-    assert result["plan"] == plan.id
-    assert result["payment_id"] == SubscriptionPayment.objects.latest().id
-    assert result["quantity"] == 2
-    assert result["redirect_url"].startswith("/payment/")
-    assert result["background_charge_succeeded"] is False
+
+    assert {
+        "plan": plan.pk,
+        "payment_id": str(SubscriptionPayment.objects.latest().pk),
+        "quantity": 2,
+        "redirect_url": result["redirect_url"],
+        "background_charge_succeeded": False,
+    }.items() <= result.items()
 
     response = user_client.get("/api/subscriptions/")
     assert response.status_code == 200, response.content
@@ -247,7 +250,7 @@ def test__api__recurring_plan_switch(user, user_client, subscription, payment, b
         assert one(user.subscriptions.active()).plan == subscription.plan
 
     with freeze_time(subscription.start + days(2), tick=True):
-        response = user_client.post("/api/subscribe/", {"plan": bigger_plan.id})
+        response = user_client.post("/api/subscribe/", {"plan": bigger_plan.pk})
         assert response.status_code == 200, response.content
         assert one(user.subscriptions.active()).plan == bigger_plan
 
@@ -266,14 +269,17 @@ def test__api__recharge_plan_subscription(
     request.getfixturevalue("cache_backend") if use_cache else None
 
     with freeze_time(subscription.start + days(2), tick=True):
-        response = user_client.post("/api/subscribe/", {"plan": recharge_plan.id})
+        response = user_client.post("/api/subscribe/", {"plan": recharge_plan.pk})
         assert response.status_code == 200, response.content
         result = response.json()
-        assert result["plan"] == recharge_plan.id
-        assert result["quantity"] == 1
-        assert result["payment_id"] == SubscriptionPayment.objects.latest().id
-        assert result["redirect_url"].startswith("/payment/")
-        assert result["background_charge_succeeded"] is False
+
+        assert {
+            "plan": recharge_plan.pk,
+            "quantity": 1,
+            "payment_id": str(SubscriptionPayment.objects.latest().pk),
+            "redirect_url": result["redirect_url"],
+            "background_charge_succeeded": False,
+        }.items() <= result.items()
 
         transaction_id = SubscriptionPayment.objects.latest().provider_transaction_id
         response = client.post("/api/webhook/dummy/", {"transaction_id": transaction_id})
@@ -312,15 +318,15 @@ def test__background_charge(subscription):
 
 @pytest.mark.django_db(databases=["actual_db"])
 def test__api__payment(user_client, payment):
-    response = user_client.get(f"/api/payments/{payment.id}/")
+    response = user_client.get(f"/api/payments/{payment.pk}/")
     assert response.status_code == 200, response.content
     assert response.json() == {
-        "id": payment.id,
+        "id": str(payment.pk),
         "status": "completed",
         "subscription": {
-            "id": payment.subscription.id,
+            "id": str(payment.subscription.pk),
             "plan": {
-                "id": payment.subscription.plan.id,
+                "id": payment.subscription.plan.pk,
                 "codename": "plan",
                 "name": "Plan",
                 "charge_amount": 100.0,

@@ -197,7 +197,7 @@ class SubscriptionSelectView(GenericAPIView):
                     "background_charge_succeeded": background_charge_succeeded,
                     "quantity": payment.quantity,
                     "plan": payment.plan,
-                    "payment_id": payment.id,
+                    "payment_id": payment.pk,
                 }
             ).data
         )

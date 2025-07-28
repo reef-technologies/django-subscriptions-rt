@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Generator, Iterable, Iterator
 from contextlib import contextmanager, suppress
 from datetime import UTC, datetime, timedelta
 from functools import cached_property
@@ -61,8 +61,8 @@ def iter_subscriptions_involved(user: AbstractUser, at: datetime) -> Iterator[Su
 
 def iter_subscriptions_quota_chunks(
     subscriptions: Iterable[Subscription],
-    since: datetime,
-    until: datetime,
+    since: datetime | None,
+    until: datetime | None,
     sort_by: Callable = attrgetter("start"),
 ) -> Iterator[QuotaChunk]:
     return merge_iter(
@@ -99,7 +99,7 @@ def get_remaining_chunks(
 
     quota_chunks = iter_subscriptions_quota_chunks(
         subscriptions_involved,
-        since=quota_cache and quota_cache.datetime,
+        since=quota_cache.datetime if quota_cache else None,
         until=at,
         sort_by=attrgetter("start", "end"),
     )
@@ -115,13 +115,13 @@ def get_remaining_chunks(
     # ---- for each usage, consume chunks ----
 
     usages = Usage.objects.filter(
-        user=user,
+        user_id=user.pk,
         **({"datetime__gt": quota_cache.datetime} if quota_cache else {"datetime__gte": first_quota_chunks[0].start}),
         datetime__lte=at,
     ).order_by("datetime")
 
-    active_chunks = []
-    for date, resource_id, amount in usages.values_list("datetime", "resource", "amount"):
+    active_chunks: list[QuotaChunk] = []
+    for date, resource_pk, amount in usages.values_list("datetime", "resource", "amount"):
         # add chunks to active_chunks until they bypass "date"
         if not active_chunks or active_chunks[-1].start <= date:
             for chunk in quota_chunks:
@@ -134,7 +134,7 @@ def get_remaining_chunks(
 
         # select & sort chunks to consume from
         chunks_to_consume = sorted(
-            (chunk for chunk in active_chunks if chunk.start <= date < chunk.end and chunk.resource.id == resource_id),
+            (chunk for chunk in active_chunks if chunk.start <= date < chunk.end and chunk.resource.pk == resource_pk),
             key=attrgetter("end"),
         )
 
@@ -186,12 +186,13 @@ def get_remaining_amount(
     at = at or now()
 
     cache = get_cache_or_none(get_cache_name())
-    quota_cache = cache and cache.get(user.pk, None)
+    quota_cache: QuotaCache | None = cache and cache.get(user.pk, None)  # type: ignore[assignment]
 
     try:
         remaining_chunks = get_remaining_chunks(user=user, at=at, quota_cache=quota_cache)
     except InconsistentQuotaCache:
         log.exception("Dropping inconsistent quota cache for user %s", user.pk)
+        assert cache
         cache.delete(user.pk)
         remaining_chunks = get_remaining_chunks(user=user, at=at)
 
@@ -204,7 +205,7 @@ def get_remaining_amount(
             ),
         )
 
-    amount = {}
+    amount: dict[Resource, int] = {}
     for chunk in remaining_chunks:
         amount[chunk.resource] = amount.setdefault(chunk.resource, 0) + chunk.remains
 
@@ -212,8 +213,13 @@ def get_remaining_amount(
 
 
 @contextmanager
-def use_resource(user: AbstractUser, resource: Resource, amount: int = 1, raises: bool = True) -> int:
-    with HardDBLock("use_resource", f"{user.id}00{resource.id}"):
+def use_resource(
+    user: AbstractUser,
+    resource: Resource,
+    amount: int = 1,
+    raises: bool = True,
+) -> Generator[int, None, None]:
+    with HardDBLock("use_resource", f"{user.pk}00{resource.pk}"):
         # Ensuring that all operations on the same user and resource are blocked.
         # Lock value will be a string-integer, for user id 12 and resource id 30 it will be 120030.
 
@@ -224,7 +230,7 @@ def use_resource(user: AbstractUser, resource: Resource, amount: int = 1, raises
             raise QuotaLimitExceeded(f"Not enough {resource}: tried to use {amount}, but only {available} is available")
 
         Usage.objects.create(
-            user=user,
+            user_id=user.pk,
             resource=resource,
             amount=amount,
         )
@@ -312,18 +318,19 @@ def get_default_plan() -> Plan | None:
     from .models import Plan
 
     if not (default_plan_id := get_default_plan_id()):
-        return
+        return None
 
     return Plan.objects.get(id=default_plan_id)
 
 
-def add_default_plan_to_users():
+def add_default_plan_to_users() -> None:
     User = get_user_model()
 
     try:
         default_plan = get_default_plan()
     except Plan.DoesNotExist:
         return
+    assert default_plan
 
     now_ = now()
     for user in User.objects.all():
@@ -354,7 +361,7 @@ def get_resource_refresh_moments(
     the recharge moments to be beyond the current subscription end.
     """
     at = at or now()
-    result = {}
+    result: dict[Resource, datetime] = {}
     datetime_max = datetime.max.replace(tzinfo=UTC)
 
     for subscription in iter_subscriptions_involved(user, at):

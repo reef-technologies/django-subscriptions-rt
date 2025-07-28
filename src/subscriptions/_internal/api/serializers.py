@@ -92,7 +92,7 @@ class PaymentProviderListSerializer(Serializer):
 
 
 class SubscriptionSelectSerializer(Serializer):
-    plan = PrimaryKeyRelatedField(queryset=Plan.objects.all())  # type: ignore[var-annotated]
+    plan = PrimaryKeyRelatedField(queryset=Plan.objects.all())
     quantity = IntegerField(default=1)
     redirect_url = CharField(read_only=True)
     background_charge_succeeded = BooleanField(default=False)

@@ -27,14 +27,18 @@ class NonMonothonicSequence(Exception):
     pass
 
 
+class ConfigurationError(Exception):
+    pass
+
+
 def merge_iter(*iterables: Iterable[T], key: Callable = lambda x: x) -> Iterator[T]:
-    values: dict[Iterable[T], T] = {}
+    values: dict[Iterator[T], T] = {}
 
     # accumulate first value from each iterable
     for iterable in iterables:
-        iterable = iter(iterable)
+        iterator = iter(iterable)
         try:
-            values[iterable] = next(iterable)
+            values[iterator] = next(iterator)
         except StopIteration:
             pass
 
@@ -45,11 +49,11 @@ def merge_iter(*iterables: Iterable[T], key: Callable = lambda x: x) -> Iterator
         if last_min_value is not None and key(last_min_value) > key(min_value):
             raise NonMonothonicSequence(f"{last_min_value=}, {min_value=}")
         yield (last_min_value := min_value)
-        iterable = next(it for it, val in values.items() if val == min_value)
+        iterator = next(it for it, val in values.items() if val == min_value)
         try:
-            values[iterable] = next(iterable)
+            values[iterator] = next(iterator)
         except StopIteration:
-            del values[iterable]
+            del values[iterator]
 
 
 def fromisoformat(value: str) -> datetime:
@@ -139,3 +143,9 @@ class HardDBLock:
             return
 
         self.transaction.__exit__(*args, **kwargs)
+
+
+def get_setting_or_raise(name: str) -> str:
+    if not (value := getattr(settings, name, None)):
+        raise ConfigurationError(f"Setting {name} is not set or is empty")
+    return value

@@ -42,6 +42,12 @@ def _iter_periods(frequency: int, since: datetime, until: datetime) -> Iterator[
         yield (end, until)
 
 
+def get_average(values: list[Money]) -> Money:
+    currency = one({value.currency for value in values})
+    average = median(value.amount for value in values)
+    return Money(average, currency) if values else NO_MONEY
+
+
 @dataclass
 class SubscriptionsReport:
     """
@@ -114,7 +120,7 @@ class SubscriptionsReport:
 
     def get_active_plans_and_quantities(self) -> list[tuple[Plan, int]]:
         """List of plan & quantity tuples per subscription."""
-        id_to_plan = {plan.id: plan for plan in Plan.objects.all()}
+        id_to_plan = {plan.pk: plan for plan in Plan.objects.all()}
         return [(id_to_plan[plan_id], quantity) for plan_id, quantity in self.active.values_list("plan", "quantity")]
 
     def get_active_plans_total(self) -> Counter[Plan]:
@@ -171,9 +177,7 @@ class TransactionsReport:
         """Median amount for completed payments."""
         amounts = [amount for amount in self.get_completed_payments_amounts() if amount is not None]
         if amounts:
-            currency = one(set(amount.currency for amount in amounts))
-            average = median(amount.amount for amount in amounts)
-            return Money(average, currency)
+            return get_average(amounts)
 
     def get_completed_payments_total(self) -> Money:
         """Total amount for completed payments."""
@@ -218,9 +222,7 @@ class TransactionsReport:
         """Median amount for refunds."""
         amounts = [amount for amount in self.get_refunds_amounts() if amount is not None]
         if amounts:
-            currency = one(set(amount.currency for amount in amounts))
-            average = median(amount.amount for amount in amounts)
-            return Money(average, currency)
+            return get_average(amounts)
 
     def get_refunds_total(self) -> Money | None:
         """Total amount for refunds."""

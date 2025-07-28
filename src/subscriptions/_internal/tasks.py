@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor, wait
 from datetime import datetime, timedelta
 from functools import partial
 from logging import getLogger
+from typing import TYPE_CHECKING
 
 from django.conf import settings
 from django.db import transaction
@@ -20,6 +20,9 @@ from .defaults import (
 from .exceptions import PaymentError, ProlongationImpossible
 from .models import Subscription, SubscriptionPayment, SubscriptionQuerySet
 from .providers import get_provider
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 log = getLogger(__name__)
 
@@ -72,12 +75,13 @@ def _charge_recurring_subscription(
     # 2) there is already any PENDING charge attempt; all charge attempts should end up
     # being in COMPLETED/ERROR/ABANDONED etc state, and PENDING payments will be garbage-collected
     # by a separate task
-    previous_payment_attempts = subscription.payments.filter(
-        Q(created__gte=charge_period[0], created__lt=charge_period[1])  # any attempt in this period
-        | Q(status=SubscriptionPayment.Status.PENDING)  # any pending attempt
+    previous_payment_attempts = list(
+        subscription.payments.filter(
+            Q(created__gte=charge_period[0], created__lt=charge_period[1])  # any attempt in this period
+            | Q(status=SubscriptionPayment.Status.PENDING)  # any pending attempt
+        )
     )
-    if previous_payment_attempts.exists():
-        previous_payment_attempts = list(previous_payment_attempts)
+    if previous_payment_attempts:
         log.debug(
             "Skipping this payment, because of already existing payment attempt(s): %s", previous_payment_attempts
         )

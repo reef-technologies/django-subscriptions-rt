@@ -71,7 +71,7 @@ def test__get_trial_period__cheating__multiacc__paddle(
 
     # ---- pay as "user" ----
     client.force_login(user)
-    response = client.post("/api/subscribe/", {"plan": plan.id})
+    response = client.post("/api/subscribe/", {"plan": plan.pk})
     assert response.status_code == 200, response.content
 
     result = response.json()
@@ -87,7 +87,7 @@ def test__get_trial_period__cheating__multiacc__paddle(
 
     # ---- pay as "other_user" with same credit card ----
     client.force_login(other_user)
-    response = client.post("/api/subscribe/", {"plan": plan.id})
+    response = client.post("/api/subscribe/", {"plan": plan.pk})
     assert response.status_code == 200, response.content
 
     result = response.json()
@@ -107,7 +107,7 @@ def test__trial_period__only_once__subsequent(trial_period, dummy, plan, user, u
     assert user.subscriptions.active().count() == 0
 
     # create new subscription
-    response = user_client.post("/api/subscribe/", {"plan": plan.id})
+    response = user_client.post("/api/subscribe/", {"plan": plan.pk})
     assert response.status_code == 200, response.content
     response = user_client.post(
         "/api/webhook/dummy/",
@@ -130,7 +130,7 @@ def test__trial_period__only_once__subsequent(trial_period, dummy, plan, user, u
     assert user.subscriptions.latest().auto_prolong is False
 
     # create another subscription and ensure no trial period is there
-    response = user_client.post("/api/subscribe/", {"plan": plan.id})
+    response = user_client.post("/api/subscribe/", {"plan": plan.pk})
     assert response.status_code == 200, response.content
     assert user.subscriptions.active().count() == 1
 
@@ -153,7 +153,7 @@ def test__trial_period__only_once__simultaneous(
     assert user.subscriptions.active().count() == 0
 
     # create new subscription
-    response = user_client.post("/api/subscribe/", {"plan": plan.id})
+    response = user_client.post("/api/subscribe/", {"plan": plan.pk})
     assert response.status_code == 200, response.content
     response = user_client.post(
         "/api/webhook/dummy/",
@@ -171,7 +171,7 @@ def test__trial_period__only_once__simultaneous(
     assert payment.subscription_start + trial_period == payment.subscription_end
 
     # add resources and ensure no trial period is there
-    response = user_client.post("/api/subscribe/", {"plan": recharge_plan.id})
+    response = user_client.post("/api/subscribe/", {"plan": recharge_plan.pk})
     assert response.status_code == 200, response.content
     assert user.subscriptions.active().count() == 2
 
@@ -182,7 +182,7 @@ def test__trial_period__only_once__simultaneous(
     assert payment.subscription_start + recharge_plan.max_duration == payment.subscription_end
 
     # create another subscription and ensure no trial period is there
-    response = user_client.post("/api/subscribe/", {"plan": bigger_plan.id})
+    response = user_client.post("/api/subscribe/", {"plan": bigger_plan.pk})
     assert response.status_code == 200, response.content
     assert user.subscriptions.active().count() == 3
 
@@ -203,10 +203,10 @@ def test__get_trial_period__cheating__simultaneous_payments(
 ):
     assert not SubscriptionPayment.objects.exists()
 
-    response = user_client.post("/api/subscribe/", {"plan": plan.id})
+    response = user_client.post("/api/subscribe/", {"plan": plan.pk})
     assert response.status_code == 200, response.content
 
-    response = user_client.post("/api/subscribe/", {"plan": plan.id})
+    response = user_client.post("/api/subscribe/", {"plan": plan.pk})
     assert response.status_code == 200, response.content
 
     payments = SubscriptionPayment.objects.all()
@@ -233,11 +233,11 @@ def test__get_trial_period__not_cheating__multiacc(
     assert not Subscription.objects.exists()
 
     client.force_login(user)
-    response = client.post("/api/subscribe/", {"plan": plan.id})
+    response = client.post("/api/subscribe/", {"plan": plan.pk})
     assert response.status_code == 200, response.content
 
     client.force_login(other_user)
-    response = client.post("/api/subscribe/", {"plan": plan.id})
+    response = client.post("/api/subscribe/", {"plan": plan.pk})
     assert response.status_code == 200, response.content
 
     payments = SubscriptionPayment.objects.all().order_by("subscription__user_id")
@@ -257,7 +257,7 @@ def test__get_trial_period__not_cheating__multiacc(
 def test__trial_period__full_charge_after_trial(
     dummy, plan, charge_expiring, charge_schedule, user_client, user, trial_period
 ):
-    response = user_client.post("/api/subscribe/", {"plan": plan.id})
+    response = user_client.post("/api/subscribe/", {"plan": plan.pk})
     assert response.status_code == 200, response.content
 
     assert user.subscriptions.count() == 1

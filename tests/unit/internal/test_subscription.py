@@ -289,7 +289,7 @@ def test__subscription__duration_set_by_payment(plan, user, dummy):
     payment.save()
     assert payment.subscription.end == payment.subscription_end
 
-    # check that subscription cannot be shrinked by shrinked payment
+    # check that subscription cannot be shrunk by shrunk payment
     payment.subscription_end = now_ + days(3)
     payment.save()
     assert payment.subscription.end == now_ + days(6)

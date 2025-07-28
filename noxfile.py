@@ -18,6 +18,8 @@ CI_WORKFLOW_PATH = ROOT / ".github" / "workflows" / "ci.yml"
 with CI_WORKFLOW_PATH.open() as f:
     ci = yaml.safe_load(f)
 
+PYPROJECT = nox.project.load_toml("pyproject.toml")
+
 MAIN_BRANCH_NAME = "master"
 PYTHON_VERSIONS = ci["jobs"]["test"]["strategy"]["matrix"]["python-version"]
 DJANGO_VERSIONS = ci["jobs"]["test"]["strategy"]["matrix"]["django-version"]
@@ -30,10 +32,6 @@ nox.options.reuse_existing_virtualenvs = not CI
 if CI:
     # In CI, use Python interpreter provided by GitHub Actions
     PYTHON_VERSIONS = None
-
-
-def get_dependency_groups() -> dict[str, list[str]]:
-    return nox.project.load_toml("pyproject.toml")["dependency-groups"]
 
 
 @functools.lru_cache
@@ -121,7 +119,7 @@ def run_shellcheck(session, mode="check"):
 @nox.session(name="format", python=PYTHON_DEFAULT_VERSION, tags=["format", "check"])
 def format_(session):
     """Lint the code and apply fixes in-place whenever possible."""
-    session.install(*get_dependency_groups()["lint"])
+    session.install(*PYPROJECT["dependency-groups"]["lint"])
     session.run("ruff", "check", "--fix", ".")
     run_shellcheck(session, mode="fmt")
     run_readable(session, mode="fmt")
@@ -132,8 +130,8 @@ def format_(session):
 def lint(session):
     """Run linters in readonly mode."""
     session.install(
-        *get_dependency_groups()["lint"],
-        ".[apple_in_app, google_in_app, default_plan]",
+        *PYPROJECT["dependency-groups"]["lint"],
+        ".[{}]".format(", ".join(PYPROJECT["project"]["optional-dependencies"].keys())),
     )
     session.run("ruff", "check", "--diff", "--unsafe-fixes", ".")
     session.run("ruff", "format", "--diff", ".")
@@ -146,10 +144,9 @@ def lint(session):
 @nox.session(python=PYTHON_VERSIONS, tags=["test", "check"])
 @nox.parametrize("django", DJANGO_VERSIONS)
 def test(session, django: str):
-    groups = get_dependency_groups()
     session.install(
-        *groups["test"],
-        ".[apple_in_app, google_in_app, default_plan]",
+        *PYPROJECT["dependency-groups"]["test"],
+        ".[{}]".format(", ".join(PYPROJECT["project"]["optional-dependencies"].keys())),
         f"django~={django}.0",
     )
     if django == "3.2":
@@ -161,7 +158,7 @@ def test(session, django: str):
 
 @nox.session(python=PYTHON_DEFAULT_VERSION)
 def make_release(session):
-    session.install(*get_dependency_groups()["release"])
+    session.install(*PYPROJECT["dependency-groups"]["release"])
     parser = argparse.ArgumentParser()
 
     def version(value):

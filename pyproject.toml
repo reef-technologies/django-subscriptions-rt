@@ -63,7 +63,6 @@ test = [
     "pytest-asyncio>=1.0.0",
     "pytest-django>=4.11.1",
     "pytest-xdist>=3.8.0",
-    "python-dotenv>=1.1.1",
 ]
 lint = [
     "codespell[toml]>=2.4.1",
@@ -115,7 +114,7 @@ ignore = [
 "test/**" = ["D", "F403", "F405"]
 
 [tool.codespell]
-skip = "*.min.js,pdm.lock"
+skip = "*.min.js,pdm.lock,*/migrations/*"
 ignore-words-list = "datas"
 
 [tool.towncrier]
@@ -178,9 +177,9 @@ module = [
     "nox",
     "pytest",
     "tests.*",
-    "dotenv",
     "constance.*",
     "oauth2client",
     "prometheus_client",
+    "googleapiclient.discovery",
 ]
 ignore_missing_imports = true

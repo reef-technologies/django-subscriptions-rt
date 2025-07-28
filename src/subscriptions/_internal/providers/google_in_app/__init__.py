@@ -235,7 +235,9 @@ class GoogleInAppProvider(Provider):
                 packageName=self.package_name,
                 productId=plan_subscription.productId,
                 body=plan_subscription_dict,
-                regionsVersion_version="2022/01",
+                regionsVersion={
+                    "version": "2022/01",
+                },
                 updateMask="",  # TODO
             )
 
@@ -448,7 +450,7 @@ class GoogleInAppProvider(Provider):
 
         with HardDBLock(
             lock_marker=self.__class__.__name__,
-            lock_value=user.id,  # type: ignore[attr-defined]
+            lock_value=user.pk,
             durable=True,
         ):
             if event in {
@@ -556,8 +558,8 @@ class GoogleInAppProvider(Provider):
                     body={
                         "developerPayload": json.dumps(
                             {
-                                "subscription.id": subscription and subscription.id,
-                                "user.id": user.id,  # type: ignore[attr-defined]
+                                "subscription.id": subscription and str(subscription.pk),
+                                "user.id": user.pk,
                             }
                         ),
                     },

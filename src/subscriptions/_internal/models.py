@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 from itertools import count, islice
 from logging import getLogger
 from operator import attrgetter
-from typing import TYPE_CHECKING, Self
+from typing import TYPE_CHECKING, ClassVar, Self
 from uuid import uuid4
 
 from dateutil.relativedelta import relativedelta
@@ -19,6 +19,7 @@ from django.db.models import (
     ExpressionWrapper,
     F,
     Index,
+    Manager,
     Q,
     UniqueConstraint,
 )
@@ -83,6 +84,8 @@ class Tier(models.Model):
 
     features = models.ManyToManyField(Feature)
 
+    objects: ClassVar[Manager[Tier]] = Manager()  # for mypy
+
     class Meta(SubscriptionsMeta):
         db_table = "subscriptions_v0_tier"
 
@@ -107,6 +110,8 @@ class Plan(models.Model):
     metadata = models.JSONField(blank=True, default=dict, encoder=AdvancedJSONEncoder)
     is_enabled = models.BooleanField(default=True)
 
+    objects: ClassVar[Manager[Plan]] = Manager()  # for mypy
+
     class Meta(SubscriptionsMeta):
         db_table = "subscriptions_v0_plan"
         constraints = [
@@ -114,10 +119,10 @@ class Plan(models.Model):
         ]
 
     def __str__(self) -> str:
-        return f"{self.id} {self.name}"
+        return f"{self.pk} {self.name}"
 
     def get_absolute_url(self) -> str:
-        return reverse("plan", kwargs={"plan_id": self.id})
+        return reverse("plan", kwargs={"plan_id": self.pk})
 
     def save(self, *args, **kwargs):
         self.charge_period = self.charge_period or INFINITY
@@ -199,7 +204,7 @@ class SubscriptionQuerySet(models.QuerySet):
         at = at or now()
         return self.filter(end__lte=at)
 
-    def expiring(self, within: datetime, since: datetime | None = None) -> Self:
+    def expiring(self, within: timedelta, since: datetime | None = None) -> Self:
         since = since or now()
         return self.filter(end__gte=since, end__lte=since + within)
 
@@ -253,12 +258,13 @@ class Subscription(models.Model):
 
     @property
     def id(self) -> str | None:
-        return self.uid and str(self.uid)
+        if self.uid:
+            return str(self.uid)
 
     @property
     def short_id(self) -> str | None:
         with suppress(TypeError):
-            return self.id[:8]
+            return str(self.pk)[:8]
 
     def __str__(self) -> str:
         return f"{self.short_id} {self.user} {self.plan}, {self.start} - {self.end}"
@@ -469,7 +475,7 @@ class Quota(models.Model):
 
     def __str__(self) -> str:
         return (
-            f"{self.id} {self.resource} {self.limit:,}"
+            f"{self.pk} {self.resource} {self.limit:,}"
             f"{self.resource.units}/{self.recharge_period}, "
             f"burns in {self.burns_in}"
         )
@@ -493,7 +499,7 @@ class Usage(models.Model):
         ]
 
     def __str__(self) -> str:
-        return f"{self.id} {self.amount:,}{self.resource.units} {self.resource} at {self.datetime}"
+        return f"{self.pk} {self.amount:,}{self.resource.units} {self.resource} at {self.datetime}"
 
     def save(self, *args, **kwargs):
         self.datetime = self.datetime or now()
@@ -543,12 +549,13 @@ class AbstractTransaction(models.Model):
 
     @property
     def id(self) -> str | None:
-        return self.uid and str(self.uid)
+        if self.uid:
+            return str(self.uid)
 
     @property
     def short_id(self) -> str | None:
         with suppress(TypeError):
-            return self.id[:8]
+            return str(self.pk)[:8]
 
     def __str__(self) -> str:
         return f"{self.short_id} {self.get_status_display()} {self.amount}"
@@ -580,6 +587,8 @@ class SubscriptionPayment(AbstractTransaction):
     # TODO: make these fields required?
     subscription_start = models.DateTimeField(blank=True, null=True)  # TODO: paid from
     subscription_end = models.DateTimeField(blank=True, null=True)  # TODO: paid until
+
+    objects: ClassVar[Manager[SubscriptionPayment]] = Manager()  # for mypy
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -659,6 +668,8 @@ class SubscriptionPaymentRefund(AbstractTransaction):
     original_payment = models.ForeignKey(SubscriptionPayment, on_delete=models.PROTECT, related_name="refunds")
     # TODO: add support by providers
 
+    objects: ClassVar[Manager[SubscriptionPaymentRefund]] = Manager()  # for mypy
+
     class Meta(AbstractTransaction.Meta):
         db_table = "subscriptions_v0_subscriptionpaymentrefund"
 
@@ -667,11 +678,13 @@ class Tax(models.Model):
     subscription_payment = models.ForeignKey(SubscriptionPayment, on_delete=models.PROTECT, related_name="taxes")
     amount = MoneyField()
 
+    objects: ClassVar[Manager[Tax]] = Manager()  # for mypy
+
     class Meta(SubscriptionsMeta):
         db_table = "subscriptions_v0_tax"
 
     def __str__(self) -> str:
-        return f"{self.id} {self.amount}"
+        return f"{self.pk} {self.amount}"
 
 
 from .signals import create_default_subscription_for_new_user  # noqa

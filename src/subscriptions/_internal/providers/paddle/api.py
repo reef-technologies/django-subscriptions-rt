@@ -41,13 +41,13 @@ class PaddleAuth(AuthBase):
         }
         if request.method == "GET":
             request.prepare_url(request.url, params)
+        elif isinstance(request.body, bytes):
+            payload = json.loads(request.body.decode("utf8")) if request.body else {}
+            payload.update(params)
+            request.body = json.dumps(payload).encode("utf8")
         else:
-            if isinstance(request.body, bytes):
-                payload = json.loads(request.body.decode("utf8")) if request.body else {}
-                payload.update(params)
-                request.body = json.dumps(payload).encode("utf8")
-            else:
-                request.body = (f"{request.body}&" if request.body else "") + urlencode(params, doseq=False)
+            request.body = (f"{request.body}&" if request.body else "") + urlencode(params, doseq=False)
+
         return request
 
 
@@ -79,7 +79,13 @@ class Paddle:
 
     TIMEOUT: ClassVar[timedelta] = timedelta(seconds=30)
 
-    _retry = retry(
+    @cached_property
+    def _session(self) -> requests.Session:
+        session = requests.Session()
+        session.auth = PaddleAuth(self.vendor_id, self.vendor_auth_code)
+        return session
+
+    @retry(
         retry=retry_if_result(
             lambda response: response.status_code
             in {
@@ -93,17 +99,7 @@ class Paddle:
         stop=stop_after_attempt(10),
         wait=wait_incrementing(start=1, increment=2),
     )
-
-    @cached_property
-    def _session(self) -> requests.Session:
-        session = requests.Session()
-        session.auth = PaddleAuth(self.vendor_id, self.vendor_auth_code)
-        return session
-
-    def __post_init__(self):
-        self.request = self._retry(self.request)
-
-    def request(self, method, endpoint, *args, **kwargs) -> requests.Response:
+    def request(self, method: str, endpoint: str, *args, **kwargs) -> requests.Response:
         assert endpoint.startswith("/")
         kwargs.setdefault("timeout", int(self.TIMEOUT.total_seconds()))
         return self._session.request(method, self.endpoint + endpoint, *args, **kwargs)

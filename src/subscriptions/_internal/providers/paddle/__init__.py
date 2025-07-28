@@ -66,7 +66,7 @@ class PaddleProvider(Provider):
     def get_amount(self, user: AbstractBaseUser, plan: Plan) -> Money | None:
         if self.STAFF_DISCOUNT and getattr(user, "is_staff", False):
             return Money(
-                amount=Decimal("1.0") + Decimal("0.01") * plan.id,
+                amount=Decimal("1.0") + Decimal("0.01") * plan.pk,
                 currency=plan.charge_amount.currency,
             )
 
@@ -103,13 +103,12 @@ class PaddleProvider(Provider):
         )
 
         if is_new:
-            assert payment.id
             payment_link = self._api.generate_payment_link(
                 product_id=self._plan["id"],
                 prices=[amount * quantity] if amount else [],
                 email=getattr(user, "email", ""),
                 metadata=Passthrough(
-                    subscription_payment_id=payment.id,
+                    subscription_payment_id=str(payment.pk),
                 ).dict(),
             )["url"]
 
@@ -158,7 +157,7 @@ class PaddleProvider(Provider):
             # successful payment by same provider
             with suppress(SubscriptionPayment.DoesNotExist):
                 reference_payment = SubscriptionPayment.objects.filter(
-                    user=user,  # type: ignore[misc]
+                    user_id=user.pk,
                     provider_codename=self.codename,
                     status=SubscriptionPayment.Status.COMPLETED,
                 ).latest()
@@ -267,7 +266,7 @@ class PaddleProvider(Provider):
     #     )
 
     def check_payments_using_webhook_history(self, payments: Iterable[SubscriptionPayment]):
-        payment_ids = {payment.id for payment in payments}
+        payment_ids = {payment.pk for payment in payments}
 
         alerts = self._api.iter_webhook_history(
             start_date=min(payment.created for payment in payments),

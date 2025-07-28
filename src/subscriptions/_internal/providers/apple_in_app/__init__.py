@@ -1,13 +1,9 @@
 from __future__ import annotations
 
-import datetime
-from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from logging import getLogger
-from typing import ClassVar, Protocol, TypeVar
+from typing import TYPE_CHECKING, ClassVar
 
-from django.conf import settings
-from django.contrib.auth.models import User
 from django.core.exceptions import SuspiciousOperation
 from django.db import transaction
 from django.utils import timezone
@@ -15,7 +11,6 @@ from pydantic import (
     BaseModel,
     ValidationError,
 )
-from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.status import (
     HTTP_200_OK,
@@ -23,15 +18,14 @@ from rest_framework.status import (
     HTTP_401_UNAUTHORIZED,
 )
 
-from subscriptions.v0.models import (
+from ...api.serializers import SubscriptionPaymentSerializer
+from ...models import (
     Plan,
     Subscription,
     SubscriptionPayment,
     SubscriptionPaymentRefund,
 )
-
-from ...api.serializers import SubscriptionPaymentSerializer
-from ...utils import HardDBLock
+from ...utils import HardDBLock, get_setting_or_raise
 from .. import Provider
 from .api import (
     AppleAppStoreAPI,
@@ -54,18 +48,18 @@ from .exceptions import (
     InvalidAppleReceiptError,
 )
 
+if TYPE_CHECKING:
+    import datetime
+    from collections.abc import Callable, Iterable
+
+    from django.contrib.auth.models import User
+    from rest_framework.request import Request
+
 logger = getLogger(__name__)
 
 
 class AppleInAppMetadata(BaseModel):
     original_transaction_id: str
-
-
-def get_setting_or_raise(name: str) -> str:
-    value = getattr(settings, name)
-    if not value:
-        raise ValueError(f"Setting {name} is not set or is empty.")
-    return value
 
 
 @dataclass
@@ -88,7 +82,7 @@ class AppleInAppProvider(Provider):
         raise AppleInvalidOperation()
 
     def charge_offline(self, *args, **kwargs) -> SubscriptionPayment:
-        raise AppleInvalidOperation()
+        raise AppleInvalidOperation
 
     def webhook(self, request: Request, payload: dict) -> Response:
         handlers = {
@@ -114,7 +108,7 @@ class AppleInAppProvider(Provider):
 
         return handler(request, instance)  # type: ignore
 
-    def check_payments(self, payments: Iterable[SubscriptionPayment]):
+    def check_payments(self, payments: Iterable[SubscriptionPayment]) -> None:
         for payment in payments:
             if payment.status != SubscriptionPayment.Status.COMPLETED:
                 # All the operations that we care about should be completed before they reach us.
@@ -122,7 +116,7 @@ class AppleInAppProvider(Provider):
 
     @classmethod
     def _raise_if_invalid(cls, response: AppleVerifyReceiptResponse) -> None:
-        if not response.is_valid or (response.receipt and response.receipt.bundle_id != cls.bundle_id):
+        if not response.is_valid or not response.receipt or response.receipt.bundle_id != cls.bundle_id:
             raise AppleReceiptValidationError(
                 server_response_code=response.status,
                 received_bundle_id=response.receipt.bundle_id if response.receipt else None,
@@ -408,7 +402,7 @@ class AppleInAppProvider(Provider):
             notification_object = AppStoreNotification.from_signed_payload(signed_payload)
         except PayloadValidationError as exception:
             logger.exception('Invalid payload received from the notification endpoint: "%s"', signed_payload)
-            raise SuspiciousOperation() from exception
+            raise SuspiciousOperation from exception
 
         notification_handling: dict[AppStoreNotificationTypeV2, Callable[[AppStoreNotification], None]] = {
             AppStoreNotificationTypeV2.DID_RENEW: self._handle_new_subscription,
@@ -418,7 +412,7 @@ class AppleInAppProvider(Provider):
 
         # We're only handling a handful of events. The rest means that,
         # for whatever reason, it failed, or we don't care about them for now.
-        # As for expirations – these are handled on our side anyway, that would be only an additional validation.
+        # As for expirations - these are handled on our side anyway, that would be only an additional validation.
         # In all other cases we're just returning "200 OK" to let the App Store know that we're received the message.
         handler = notification_handling.get(notification_object.notification, None)
         if handler is None:

@@ -140,7 +140,7 @@ def validate_and_fetch_apple_signed_payload(signed_payload: str) -> dict[str, An
     # Fetch public key from the last certificate and validate the payload.
     algorithm = header["alg"]
     try:
-        payload = jwt.decode(signed_payload, current_certificate.get_pubkey().to_cryptography_key(), algorithm)
+        payload = jwt.decode(signed_payload, current_certificate.get_pubkey().to_cryptography_key(), algorithm)  # type: ignore[arg-type]
     except jwt.PyJWTError as ex:
         raise PayloadValidationError(str(ex))
 

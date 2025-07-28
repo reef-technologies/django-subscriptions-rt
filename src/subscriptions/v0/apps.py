@@ -1,7 +1,7 @@
-from django.apps import AppConfig
+from django.apps import AppConfig as BaseAppConfig
 
 
-class AppConfig(AppConfig):
+class AppConfig(BaseAppConfig):
     name = "subscriptions.v0"
     verbose_name = "Subscriptions"
     label = "subscriptions_v0"

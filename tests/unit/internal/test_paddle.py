@@ -155,7 +155,7 @@ def test__paddle__payment_flow__regular(
 ):
     assert not Subscription.objects.exists()
 
-    response = user_client.post("/api/subscribe/", {"plan": plan.id})
+    response = user_client.post("/api/subscribe/", {"plan": plan.pk})
     assert response.status_code == 200, response.content
 
     result = response.json()
@@ -165,10 +165,10 @@ def test__paddle__payment_flow__regular(
 
     payment = SubscriptionPayment.objects.latest()
     assert result == {
-        "plan": plan.id,
+        "plan": plan.pk,
         "quantity": 1,
         "background_charge_succeeded": False,
-        "payment_id": payment.id,
+        "payment_id": str(payment.pk),
     }
 
     assert "payment_url" in payment.metadata
@@ -180,11 +180,11 @@ def test__paddle__payment_flow__regular(
     assert payment.status == SubscriptionPayment.Status.PENDING
 
     # ---- test_payment_status_endpoint_get ----
-    response = user_client.get(f"/api/payments/{payment.id}/")
+    response = user_client.get(f"/api/payments/{payment.pk}/")
     assert response.status_code == 200, response.content
     result = response.json()
     assert result == {
-        "id": payment.id,
+        "id": payment.pk,
         "status": "pending",
         "quantity": 1,
         "amount": float(payment.amount.amount),
@@ -199,17 +199,17 @@ def test__paddle__payment_flow__regular(
     # ---- test_payment_status_endpoint_post ----
     for attempt in Retrying(wait=wait_incrementing(start=2, increment=2), stop=stop_after_attempt(5)):
         with attempt:
-            response = user_client.post(f"/api/payments/{payment.id}/")
+            response = user_client.post(f"/api/payments/{payment.pk}/")
             assert response.status_code == 200, response.content
             result = response.json()
             if result["status"] != "completed":
-                raise TryAgain()
+                raise TryAgain
 
     payment = SubscriptionPayment.objects.get(pk=payment.pk)
     subscription = one(Subscription.objects.all())
 
     assert result == {
-        "id": payment.id,
+        "id": str(payment.pk),
         "status": "completed",
         "quantity": 1,
         "amount": float(payment.amount.amount),
@@ -219,7 +219,7 @@ def test__paddle__payment_flow__regular(
         "paid_to": payment.subscription_end.isoformat().replace("+00:00", "Z"),
         "created": payment.created.isoformat().replace("+00:00", "Z"),
         "subscription": {
-            "id": subscription.id,
+            "id": str(subscription.pk),
             "quantity": 1,
             "start": subscription.start.isoformat().replace("+00:00", "Z"),
             "end": subscription.end.isoformat().replace("+00:00", "Z"),
@@ -230,7 +230,7 @@ def test__paddle__payment_flow__regular(
                 "charge_amount_currency": "USD",
                 "charge_period": {"days": 30},
                 "codename": "plan",
-                "id": plan.id,
+                "id": plan.pk,
                 "is_recurring": True,
                 "max_duration": {"days": 120},
                 "metadata": {"this": "that"},
@@ -306,7 +306,7 @@ def test__paddle__payment_flow__trial_period(
 ):
     assert not user.subscriptions.exists()
 
-    response = user_client.post("/api/subscribe/", {"plan": plan.id})
+    response = user_client.post("/api/subscribe/", {"plan": plan.pk})
     assert response.status_code == 200, response.content
 
     result = response.json()
@@ -316,10 +316,10 @@ def test__paddle__payment_flow__trial_period(
 
     payment = SubscriptionPayment.objects.latest()
     assert result == {
-        "plan": plan.id,
+        "plan": plan.pk,
         "quantity": 1,
         "background_charge_succeeded": False,
-        "payment_id": payment.id,
+        "payment_id": str(payment.pk),
     }
 
     assert "payment_url" in payment.metadata
@@ -339,13 +339,13 @@ def test__paddle__payment_flow__trial_period(
     payment.status = SubscriptionPayment.Status.PENDING
     payment.save()
 
-    # Retry a few times to give paddle the time to update the tranaction status
+    # Retry a few times to give paddle the time to update the transaction status
     for attempt in Retrying(wait=wait_incrementing(start=2, increment=2), stop=stop_after_attempt(5)):
         with attempt:
             check_unfinished_payments(within=timedelta(hours=1))
             payment = SubscriptionPayment.objects.latest()
             if payment.status != SubscriptionPayment.Status.COMPLETED:
-                raise TryAgain()
+                raise TryAgain
 
     assert payment.amount == plan.charge_amount * 0
     assert payment.subscription.start + trial_period == payment.subscription.end
@@ -446,15 +446,15 @@ def test__paddle__webhook_non_existing_payment(
 def test__paddle__subscription_charge_online_avoid_duplicates(paddle, user_client, plan):
     assert not SubscriptionPayment.objects.all().exists()
 
-    response = user_client.post("/api/subscribe/", {"plan": plan.id})
+    response = user_client.post("/api/subscribe/", {"plan": plan.pk})
     assert response.status_code == 200, response.content
     assert SubscriptionPayment.objects.count() == 1
     payment = SubscriptionPayment.objects.last()
     payment_url = payment.metadata["payment_url"]
 
-    response = user_client.post("/api/subscribe/", {"plan": plan.id})
+    response = user_client.post("/api/subscribe/", {"plan": plan.pk})
     assert response.status_code == 200, response.content
-    assert SubscriptionPayment.objects.count() == 1  # additinal payment was not created
+    assert SubscriptionPayment.objects.count() == 1  # additional payment was not created
     assert SubscriptionPayment.objects.last().metadata["payment_url"] == payment_url  # url hasn't changed
 
 
@@ -462,7 +462,7 @@ def test__paddle__subscription_charge_online_avoid_duplicates(paddle, user_clien
 def test__paddle__subscription_charge_online_new_payment_after_duplicate_lookup_time(paddle, user_client, plan):
     assert not SubscriptionPayment.objects.all().exists()
 
-    response = user_client.post("/api/subscribe/", {"plan": plan.id})
+    response = user_client.post("/api/subscribe/", {"plan": plan.pk})
     assert response.status_code == 200, response.content
     assert SubscriptionPayment.objects.count() == 1
     payment = SubscriptionPayment.objects.last()
@@ -470,7 +470,7 @@ def test__paddle__subscription_charge_online_new_payment_after_duplicate_lookup_
     payment.created = now() - PaddleProvider.ONLINE_CHARGE_DUPLICATE_LOOKUP_TIME
     payment.save()
 
-    response = user_client.post("/api/subscribe/", {"plan": plan.id})
+    response = user_client.post("/api/subscribe/", {"plan": plan.pk})
     assert response.status_code == 200, response.content
     assert SubscriptionPayment.objects.count() == 2
 
@@ -479,7 +479,7 @@ def test__paddle__subscription_charge_online_new_payment_after_duplicate_lookup_
 def test__paddle__subscription_charge_online_new_payment_if_no_pending(paddle, user_client, plan):
     assert not SubscriptionPayment.objects.all().exists()
 
-    response = user_client.post("/api/subscribe/", {"plan": plan.id})
+    response = user_client.post("/api/subscribe/", {"plan": plan.pk})
     assert response.status_code == 200, response.content
     assert SubscriptionPayment.objects.count() == 1
     payment = SubscriptionPayment.objects.last()
@@ -487,7 +487,7 @@ def test__paddle__subscription_charge_online_new_payment_if_no_pending(paddle, u
     payment.status = SubscriptionPayment.Status.ERROR
     payment.save()
 
-    response = user_client.post("/api/subscribe/", {"plan": plan.id})
+    response = user_client.post("/api/subscribe/", {"plan": plan.pk})
     assert response.status_code == 200, response.content
     assert SubscriptionPayment.objects.count() == 2
 
@@ -496,7 +496,7 @@ def test__paddle__subscription_charge_online_new_payment_if_no_pending(paddle, u
 def test__paddle__subscription_charge_online_new_payment_if_no_payment_url(paddle, user_client, plan):
     assert not SubscriptionPayment.objects.all().exists()
 
-    response = user_client.post("/api/subscribe/", {"plan": plan.id})
+    response = user_client.post("/api/subscribe/", {"plan": plan.pk})
     assert response.status_code == 200, response.content
     assert SubscriptionPayment.objects.count() == 1
     payment = SubscriptionPayment.objects.last()
@@ -504,7 +504,7 @@ def test__paddle__subscription_charge_online_new_payment_if_no_payment_url(paddl
     payment.metadata = {"foo": "bar"}
     payment.save()
 
-    response = user_client.post("/api/subscribe/", {"plan": plan.id})
+    response = user_client.post("/api/subscribe/", {"plan": plan.pk})
     assert response.status_code == 200, response.content
     assert SubscriptionPayment.objects.count() == 2
 

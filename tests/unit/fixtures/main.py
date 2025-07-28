@@ -371,7 +371,7 @@ def default_plan(settings) -> Plan:
         name="Default Plan",
         charge_amount=usd(0),  # type: ignore[misc]
     )
-    config.SUBSCRIPTIONS_DEFAULT_PLAN_ID = plan.id
+    config.SUBSCRIPTIONS_DEFAULT_PLAN_ID = plan.pk
     return plan
 
 

@@ -39,7 +39,7 @@ def test__models__payment__sync_with_subscription(plan, user, dummy):
     initial_subscription_start = subscription.start
     assert payment.subscription_end == subscription.end == initial_subscription_start + plan.charge_period
 
-    # shrink the payment and ensure that subscription is not shrinked
+    # shrink the payment and ensure that subscription is not shrunk
     """
     Subscription: -----[===============]------------------------>
     Payment:      -----[=COMPLETED=]------------------------>
