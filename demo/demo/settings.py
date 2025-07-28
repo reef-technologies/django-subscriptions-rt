@@ -44,7 +44,9 @@ INSTALLED_APPS = [
     "constance",
     "constance.backends.database",
     "demo",
-    "subscriptions.v0",
+    "subscriptions.v0.apps.AppConfig",
+    "pgactivity",
+    "pglock",
 ]
 
 MIDDLEWARE = [
@@ -84,29 +86,16 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "demo.wsgi.application"
 
-# Database
-# https://docs.djangoproject.com/en/4.0/ref/settings/#databases
-
 DATABASES = {
-    # 'default': {
-    #     'ENGINE': 'django.db.backends.sqlite3',
-    #     'NAME': str(BASE_DIR / 'db.sqlite3'),
-    # },
-    "default": {},
-    # Set to check whether everything related to routing will be properly handled.
-    "actual_db": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": environ["POSTGRES_DB"],
-        "USER": environ["POSTGRES_USER"],
-        "PASSWORD": environ["POSTGRES_PASSWORD"],
-        "HOST": "localhost",
-        "PORT": environ["POSTGRES_PORT"],
-        "ATOMIC_REQUESTS": False,
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': environ.get("POSTGRES_DB", "demo"),
+        'USER': environ.get("POSTGRES_USER", "demo"),
+        'PASSWORD': environ.get("POSTGRES_PASSWORD", "demo"),
+        'HOST': environ.get("POSTGRES_HOST", "localhost"),
+        'PORT': environ.get("POSTGRES_PORT", "5432"),
     },
 }
-DATABASE_ROUTERS = [
-    "demo.db_router.DBRouter",
-]
 
 CONSTANCE_BACKEND = "constance.backends.database.DatabaseBackend"
 CONSTANCE_CONFIG = {

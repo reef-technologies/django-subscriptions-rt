@@ -17,7 +17,9 @@ INSTALLED_APPS = [
     # "django.contrib.staticfiles",
     "rest_framework",
     "constance",
-    "subscriptions.v0",
+    "subscriptions.v0.apps.AppConfig",
+    "pgactivity",
+    "pglock",
 ]
 
 MIDDLEWARE = [
@@ -54,6 +56,8 @@ DATABASES = {
 DATABASE_ROUTERS = [
     "tests.db_router.DBRouter",
 ]
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
 # AUTHENTICATION_BACKENDS =
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [

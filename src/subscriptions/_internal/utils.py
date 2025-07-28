@@ -13,6 +13,7 @@ from djmoney.money import Money
 from environs import Env
 
 from .defaults import DEFAULT_SUBSCRIPTIONS_CURRENCY
+from .exceptions import ConfigurationError
 
 log = logging.getLogger(__name__)
 env = Env()
@@ -24,10 +25,6 @@ RawQueryFunction = Callable
 
 
 class NonMonothonicSequence(Exception):
-    pass
-
-
-class ConfigurationError(Exception):
     pass
 
 

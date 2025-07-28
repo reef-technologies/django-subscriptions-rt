@@ -48,3 +48,7 @@ class BadReferencePayment(PaymentError):
 
 class InvalidOperation(Exception):
     pass
+
+
+class ConfigurationError(Exception):
+    pass
