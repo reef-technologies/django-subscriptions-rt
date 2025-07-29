@@ -10,7 +10,7 @@ from typing import TypeVar
 import pglock
 from django.conf import settings
 from django.core.serializers.json import DjangoJSONEncoder
-from django.db import models, router
+from django.db import connections, models, router
 from djmoney.money import Money
 from environs import Env
 
@@ -71,13 +71,19 @@ NO_MONEY = Money(0, default_currency)
 
 
 @contextmanager
-def nullcontext(*args, **kwargs):
+def _nullcontext(*args, **kwargs):
     yield
 
 
-advisory_lock = (
-    partial(
+@contextmanager
+def _advisory_lock(lock_id: int | str):
+    """A helper function to acquire an advisory lock both inside and outside of a transaction."""
+    # https://django-pglock.readthedocs.io/en/1.7.2/advisory/#transaction-level-locks
+
+    using = router.db_for_write(models.Model)
+    fn = partial(
         pglock.advisory,
+        lock_id,
         using=router.db_for_write(models.Model),
         xact=True,
         timeout=timedelta(
@@ -85,9 +91,17 @@ advisory_lock = (
         ),
         side_effect=pglock.Raise,
     )
-    if env.bool("SUBSCRIPTIONS_ENABLE_ADVISORY_LOCK", default=True)
-    else nullcontext
-)
+
+    if connections[using].in_atomic_block:
+        fn().acquire()
+        yield
+
+    else:
+        with fn() as lock:
+            yield lock
+
+
+advisory_lock = _advisory_lock if env.bool("SUBSCRIPTIONS_ENABLE_ADVISORY_LOCK", default=True) else _nullcontext
 
 
 def get_setting_or_raise(name: str) -> str:
