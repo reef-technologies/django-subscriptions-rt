@@ -87,13 +87,13 @@ TEMPLATES = [
 WSGI_APPLICATION = "demo.wsgi.application"
 
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': environ.get("POSTGRES_DB", "demo"),
-        'USER': environ.get("POSTGRES_USER", "demo"),
-        'PASSWORD': environ.get("POSTGRES_PASSWORD", "demo"),
-        'HOST': environ.get("POSTGRES_HOST", "localhost"),
-        'PORT': environ.get("POSTGRES_PORT", "5432"),
+    "default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": environ.get("POSTGRES_DB", "demo"),
+        "USER": environ.get("POSTGRES_USER", "demo"),
+        "PASSWORD": environ.get("POSTGRES_PASSWORD", "demo"),
+        "HOST": environ.get("POSTGRES_HOST", "localhost"),
+        "PORT": environ.get("POSTGRES_PORT", "5432"),
     },
 }
 

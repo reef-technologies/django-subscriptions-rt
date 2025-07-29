@@ -31,7 +31,7 @@ from .models import (
     Tier,
     Usage,
 )
-from .utils import HardDBLock, merge_iter
+from .utils import advisory_lock, merge_iter
 
 log = getLogger(__name__)
 
@@ -219,9 +219,8 @@ def use_resource(
     amount: int = 1,
     raises: bool = True,
 ) -> Generator[int, None, None]:
-    with HardDBLock("use_resource", f"{user.pk}00{resource.pk}"):
+    with advisory_lock(lock_id=f"subscriptions.use_resource.{user.pk}.{resource.pk}"):
         # Ensuring that all operations on the same user and resource are blocked.
-        # Lock value will be a string-integer, for user id 12 and resource id 30 it will be 120030.
 
         available = get_remaining_amount(user).get(resource, 0)
         remains = available - amount

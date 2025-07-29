@@ -16,7 +16,6 @@ from subscriptions.v0.tasks import (
     charge_recurring_subscriptions,
     notify_stuck_pending_payments,
 )
-from subscriptions.v0.utils import HardDBLock
 
 from ..helpers import days
 
@@ -101,12 +100,12 @@ def test__tasks__charge_expiring__not_charging_twice_if_pending_exists(
 
 
 @pytest.mark.django_db(transaction=True, databases=["actual_db"])
-@pytest.mark.parametrize("enable_hard_db_lock", [None, "1", "true", "0", "false"], indirect=True)
+@pytest.mark.parametrize("enable_advisory_lock", [None, "1", "true", "0", "false"], indirect=True)
 def test__tasks__charge_expiring__multiple_threads__not_charge_twice(
     subscription,
     payment,
     charge_schedule,
-    enable_hard_db_lock,
+    enable_advisory_lock,
 ):
     assert SubscriptionPayment.objects.count() == 1
     charge_period = charge_schedule[1:3]
@@ -117,11 +116,9 @@ def test__tasks__charge_expiring__multiple_threads__not_charge_twice(
             for _ in range(num_parallel_threads):
                 pool.submit(charge_recurring_subscriptions, schedule=charge_schedule, num_threads=1)
 
-    if enable_hard_db_lock in {None, "1", "true"}:
-        assert HardDBLock.is_enabled()
+    if enable_advisory_lock in {None, "1", "true"}:
         assert SubscriptionPayment.objects.count() == 2
     else:
-        assert not HardDBLock.is_enabled()
         assert SubscriptionPayment.objects.count() >= 2
 
 

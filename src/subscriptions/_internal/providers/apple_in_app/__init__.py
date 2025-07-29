@@ -25,7 +25,7 @@ from ...models import (
     SubscriptionPayment,
     SubscriptionPaymentRefund,
 )
-from ...utils import HardDBLock, get_setting_or_raise
+from ...utils import advisory_lock, get_setting_or_raise
 from .. import Provider
 from .api import (
     AppleAppStoreAPI,
@@ -178,11 +178,7 @@ class AppleInAppProvider(Provider):
             provider_transaction_id=transaction_id,
         )
 
-        with HardDBLock(
-            lock_marker=self.__class__.__name__,
-            # Apple marks transaction_id as string, but all the values are in form of an int right now
-            lock_value=transaction_id,
-        ):
+        with advisory_lock(lock_id=f"subscriptions.{self.__class__.__name__}.get_or_create_payment.{transaction_id}"):
             try:
                 payment, was_created = SubscriptionPayment.objects.get_or_create(
                     defaults={

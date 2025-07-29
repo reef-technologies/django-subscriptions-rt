@@ -363,7 +363,7 @@ def test__function__use_resource(request, use_cache, user, subscription, quota, 
 
 
 @pytest.mark.django_db(transaction=True, databases=["actual_db"])
-def test__function__use_resource__hard_db_lock(user, subscription, quota, resource, remains):
+def test__function__use_resource__advisory_lock(user, subscription, quota, resource, remains):
     num_parallel_threads = 8
     barrier = threading.Barrier(num_parallel_threads)
 

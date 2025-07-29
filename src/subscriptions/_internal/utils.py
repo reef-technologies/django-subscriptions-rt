@@ -1,18 +1,20 @@
 from __future__ import annotations
 
-import hashlib
 import logging
 from collections.abc import Callable, Iterable, Iterator
-from datetime import datetime
+from contextlib import contextmanager
+from datetime import datetime, timedelta
+from functools import partial
 from typing import TypeVar
 
+import pglock
 from django.conf import settings
 from django.core.serializers.json import DjangoJSONEncoder
-from django.db import connections, models, router, transaction
+from django.db import models, router
 from djmoney.money import Money
 from environs import Env
 
-from .defaults import DEFAULT_SUBSCRIPTIONS_CURRENCY
+from .defaults import DEFAULT_SUBSCRIPTIONS_ADVISORY_LOCK_TIMEOUT, DEFAULT_SUBSCRIPTIONS_CURRENCY
 from .exceptions import ConfigurationError
 
 log = logging.getLogger(__name__)
@@ -68,78 +70,24 @@ default_currency = getattr(settings, "SUBSCRIPTIONS_DEFAULT_CURRENCY", DEFAULT_S
 NO_MONEY = Money(0, default_currency)
 
 
-class HardDBLock:
-    """
-    Special lock made on the DB side that stops multiple operations
-    on the same entries from happening. Current implementation supports
-    only postgresql via advisory_lock mechanism.
+@contextmanager
+def nullcontext(*args, **kwargs):
+    yield
 
-    We don't care about clashes. These locks are to ensure that we're properly
-    blocking operations and if we block slightly too many, it's not a bad thing.
 
-    TODO: add support for different databases.
-    """
-
-    # Postgres supports up-to-32bit numbers, so the max positive value will be 2**31-1.
-    PSQL_MAX_LOCK_VALUE = 2**31 - 1
-
-    def __init__(
-        self,
-        lock_marker: str,
-        lock_value: str | int,
-        durable: bool = False,
-    ):
-        if not self.is_enabled():
-            return
-
-        self.db_name = router.db_for_write(models.Model)
-
-        db_type = connections[self.db_name].vendor
-        if db_type != "postgresql":
-            log.warning(f"{self.__class__.__name__} works only with postgres right now, {db_type} is unsupported.")
-
-        self.lock_marker = self._pg_str_to_int(lock_marker)
-        self.lock_value = self._pg_str_to_int(lock_value)
-        self.durable = durable
-        self.transaction = None
-
-    def _pg_str_to_int(self, in_value: str | int) -> int:
-        # Note: transaction id could be a string representing a number. So, if it's possible to use it as a number
-        # we do, and if there's a string, it's ok too. This is e.g.: a case for apple transaction ID.
-        try:
-            out_value = int(in_value)
-        except ValueError:
-            assert isinstance(in_value, str)
-            out_value = int(hashlib.sha1(in_value.encode("utf-8")).hexdigest(), 16)
-        return out_value % self.PSQL_MAX_LOCK_VALUE
-
-    @classmethod
-    def is_enabled(cls) -> bool:
-        return env.bool("ENABLE_HARD_DB_LOCK", True)
-
-    def __enter__(self):
-        if not self.is_enabled():
-            return
-
-        # Open our own transaction that will be guarded by the advisory lock.
-        self.transaction = transaction.atomic(using=self.db_name, durable=self.durable)
-        self.transaction.__enter__()
-
-        with connections[self.db_name].cursor() as cursor:
-            # xact type of lock is automatically released when the transaction ends.
-            cursor.execute(
-                "SELECT pg_advisory_xact_lock(%s, %s)",
-                (self.lock_marker, self.lock_value),
-            )
-            _ = cursor.fetchone()[0]
-
-        return self
-
-    def __exit__(self, *args, **kwargs):
-        if not self.is_enabled():
-            return
-
-        self.transaction.__exit__(*args, **kwargs)
+advisory_lock = (
+    partial(
+        pglock.advisory,
+        using=router.db_for_write(models.Model),
+        xact=True,
+        timeout=timedelta(
+            seconds=env.int("SUBSCRIPTIONS_ADVISORY_LOCK_TIMEOUT", DEFAULT_SUBSCRIPTIONS_ADVISORY_LOCK_TIMEOUT)
+        ),
+        side_effect=pglock.Raise,
+    )
+    if env.bool("SUBSCRIPTIONS_ENABLE_ADVISORY_LOCK", default=True)
+    else nullcontext
+)
 
 
 def get_setting_or_raise(name: str) -> str:

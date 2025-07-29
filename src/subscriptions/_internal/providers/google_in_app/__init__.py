@@ -27,7 +27,7 @@ from rest_framework.status import HTTP_200_OK, HTTP_400_BAD_REQUEST
 
 from ...api.serializers import SubscriptionPaymentSerializer
 from ...models import Plan, SubscriptionPayment
-from ...utils import HardDBLock, fromisoformat
+from ...utils import advisory_lock, fromisoformat
 from .. import Provider
 from .exceptions import InvalidOperation
 from .schemas import (
@@ -448,11 +448,7 @@ class GoogleInAppProvider(Provider):
 
         self.check_event(event, purchase)
 
-        with HardDBLock(
-            lock_marker=self.__class__.__name__,
-            lock_value=user.pk,
-            durable=True,
-        ):
+        with advisory_lock(lock_id=f".subscriptions.{self.__class__.__name__}.update_or_create_subscription.{user.pk}"):
             if event in {
                 GoogleSubscriptionNotificationType.RECOVERED,
                 GoogleSubscriptionNotificationType.DEFERRED,

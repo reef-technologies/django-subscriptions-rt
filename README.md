@@ -5,7 +5,7 @@
 
 See [noxfile.py](noxfile.py) for list of Python and Django versions supported (variables `PYTHON_VERSIONS` and `DJANGO_VERSIONS`).
 
-> Warning: current version only supports Postgres database (PG_ADVISORY_LOCK is used), however MySQL support may be added by supporting MySQL in HardDBLock context manager.
+> Warning: current version only supports Postgres database (PG_ADVISORY_LOCK is used).
 
 ## Features
 
@@ -19,6 +19,33 @@ See [noxfile.py](noxfile.py) for list of Python and Django versions supported (v
 * Support more granular plans, as described in [Google Play docs](https://support.google.com/googleplay/android-developer/answer/12154973?hl=en)
 * Grace period
 * Hold / pause
+
+## Configuration
+
+## Settings
+
+```python
+# settings.py
+INSTALLED_APPS = [
+   # ...,
+   "subscriptions.v0.apps.AppConfig",
+   "pgactivity",
+   "pglock",
+]
+```
+
+### Advisory lock
+
+This package uses Postgres Advisory Lock to prevent multiple threads from charging the same subscription or using resources at the same time.
+It may be controlled via environment variables:
+
+```env
+# disable advisory lock (debugging only!)
+SUBSCRIPTIONS_ENABLE_ADVISORY_LOCK=0
+
+# set non-default advisory lock timeout (in seconds)
+SUBSCRIPTIONS_ADVISORY_LOCK_TIMEOUT=1
+```
 
 ## Usage
 
@@ -37,15 +64,15 @@ INSTALLED_APPS = [
 ```
 |--------subscription-------------------------------------------->
 start             (subscription duration)                end or inf
-#
+
 |-----------------------------|---------------------------|------>
 charge   (charge period)    charge                      charge
-#
+
 |------------------------------x
 quota   (quota lifetime)       quota burned
-#
+
 (quota recharge period) |------------------------------x
-#
+
 (quota recharge period) (quota recharge period) |----------------->
 ```
 

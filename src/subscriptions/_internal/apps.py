@@ -14,6 +14,5 @@ class AppConfig(BaseAppConfig):
 
         if missing_apps := self._required_apps - set(settings.INSTALLED_APPS):
             raise ConfigurationError(
-                f"Required apps {missing_apps} are not installed. "
-                "Please add them to INSTALLED_APPS in your settings."
+                f"Required apps {missing_apps} are not installed. Please add them to INSTALLED_APPS in your settings."
             )

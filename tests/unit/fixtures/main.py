@@ -382,8 +382,8 @@ def trial_period(settings) -> relativedelta:
 
 
 @pytest.fixture
-def enable_hard_db_lock(request, monkeypatch):
-    """Set ENABLE_HARD_DB_LOCK environment variable, this fixture must be used with `parametrize`"""
+def enable_advisory_lock(request, monkeypatch):
+    """Set advisory lock, this fixture must be used with `parametrize`"""
     if request.param is not None:
-        monkeypatch.setenv("ENABLE_HARD_DB_LOCK", request.param)
+        monkeypatch.setenv("SUBSCRIPTIONS_ENABLE_ADVISORY_LOCK", request.param)
     yield request.param
