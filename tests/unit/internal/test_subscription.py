@@ -221,27 +221,27 @@ def test__subscription__payment_from_until_auto_set(plan, subscription, user, du
         user=user,
         plan=plan,
         subscription=subscription,
-        subscription_start=None,
-        subscription_end=None,
+        paid_since=None,
+        paid_until=None,
     )
     # check that PENDING doesn't affect anything
-    assert payment.subscription_start is None
-    assert payment.subscription_end is None
+    assert payment.paid_since is None
+    assert payment.paid_until is None
 
-    # check that paid_from and paid_until should be set / not set together
+    # check that paid_since and paid_until should be set / not set together
     payment.status = SubscriptionPayment.Status.COMPLETED
     with pytest.raises(AssertionError):
-        payment.subscription_start = initial_subscription_end
+        payment.paid_since = initial_subscription_end
         payment.save()
 
-    payment.subscription_start = payment.subscription_end = None
+    payment.paid_since = payment.paid_until = None
     payment.save()
-    # check that paid_from and paid_until are auto-filled
-    assert payment.subscription_start == initial_subscription_end
-    assert payment.subscription_end > payment.subscription_start
+    # check that paid_since and paid_until are auto-filled
+    assert payment.paid_since == initial_subscription_end
+    assert payment.paid_until > payment.paid_since
     # check that subscription is prolonged
     assert payment.subscription.start == initial_subscription_start
-    assert payment.subscription.end == payment.subscription_end
+    assert payment.subscription.end == payment.paid_until
 
 
 @pytest.mark.django_db(databases=["actual_db"])
@@ -254,15 +254,15 @@ def test__subscription__auto_creation_on_payment(plan, user, dummy):
         status=SubscriptionPayment.Status.COMPLETED,
         user=user,
         plan=plan,
-        subscription_start=None,
-        subscription_end=None,
+        paid_since=None,
+        paid_until=None,
     )
     assert payment.subscription
     assert now() - payment.subscription.start < timedelta(seconds=1)
     assert payment.subscription.end == payment.subscription.start + plan.charge_period
 
-    assert payment.subscription_start == payment.subscription.start
-    assert payment.subscription_end == payment.subscription.end
+    assert payment.paid_since == payment.subscription.start
+    assert payment.paid_until == payment.subscription.end
 
 
 @pytest.mark.django_db(databases=["actual_db"])
@@ -277,19 +277,19 @@ def test__subscription__duration_set_by_payment(plan, user, dummy):
         status=SubscriptionPayment.Status.COMPLETED,
         user=user,
         plan=plan,
-        subscription_start=now_,
-        subscription_end=now_ + days(5),
+        paid_since=now_,
+        paid_until=now_ + days(5),
     )
     assert payment.subscription
-    assert payment.subscription.start == payment.subscription_start
-    assert payment.subscription.end == payment.subscription_end
+    assert payment.subscription.start == payment.paid_since
+    assert payment.subscription.end == payment.paid_until
 
     # check that subscription may be prolonged by payment
-    payment.subscription_end = now_ + days(6)
+    payment.paid_until = now_ + days(6)
     payment.save()
-    assert payment.subscription.end == payment.subscription_end
+    assert payment.subscription.end == payment.paid_until
 
     # check that subscription cannot be shrunk by shrunk payment
-    payment.subscription_end = now_ + days(3)
+    payment.paid_until = now_ + days(3)
     payment.save()
     assert payment.subscription.end == now_ + days(6)

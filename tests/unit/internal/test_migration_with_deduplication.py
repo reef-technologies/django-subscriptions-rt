@@ -17,8 +17,8 @@ from django.db.migrations.executor import MigrationExecutor
 BASIC_PAYMENT_KWARGS = {
     "status": 2,  # It used to mean "COMPLETED".
     "amount": None,
-    "subscription_start": datetime.datetime(2022, 3, 1, tzinfo=datetime.UTC),
-    "subscription_end": datetime.datetime(2022, 3, 2, tzinfo=datetime.UTC),
+    "paid_since": datetime.datetime(2022, 3, 1, tzinfo=datetime.UTC),
+    "paid_until": datetime.datetime(2022, 3, 2, tzinfo=datetime.UTC),
     "created": datetime.datetime(2022, 3, 1, tzinfo=datetime.UTC),
     "updated": datetime.datetime(2022, 3, 1, tzinfo=datetime.UTC),
 }

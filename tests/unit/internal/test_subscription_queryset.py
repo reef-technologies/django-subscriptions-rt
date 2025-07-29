@@ -43,8 +43,8 @@ def past_subscription_ending_after_trial_end(plan, user, now_, dummy) -> Subscri
         user=user,
         plan=plan,
         subscription=subscription,
-        subscription_start=now_ - relativedelta(months=9, days=5),
-        subscription_end=subscription.end,
+        paid_since=now_ - relativedelta(months=9, days=5),
+        paid_until=subscription.end,
     )
     return subscription
 
@@ -65,8 +65,8 @@ def past_subscription_without_trial(plan, user, now_, dummy) -> Subscription:
         user=user,
         plan=plan,
         subscription=subscription,
-        subscription_start=subscription.start,
-        subscription_end=subscription.end,
+        paid_since=subscription.start,
+        paid_until=subscription.end,
     )
     return subscription
 
@@ -102,8 +102,8 @@ def current_subscription_after_trial_end(plan, user, now_, dummy) -> Subscriptio
         user=user,
         plan=plan,
         subscription=subscription,
-        subscription_start=now_ - relativedelta(days=2),
-        subscription_end=subscription.end,
+        paid_since=now_ - relativedelta(days=2),
+        paid_until=subscription.end,
     )
     return subscription
 
@@ -124,8 +124,8 @@ def current_subscription_without_trial(plan, user, now_, dummy) -> Subscription:
         user=user,
         plan=plan,
         subscription=subscription,
-        subscription_start=subscription.start,
-        subscription_end=subscription.end,
+        paid_since=subscription.start,
+        paid_until=subscription.end,
     )
     return subscription
 

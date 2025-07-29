@@ -303,9 +303,9 @@ class GoogleInAppProvider(Provider):
 
             now_ = now()
 
-            assert latest_payment.subscription_end
-            if latest_payment.subscription_end > now_:
-                latest_payment.subscription_end = now_
+            assert latest_payment.paid_until
+            if latest_payment.paid_until > now_:
+                latest_payment.paid_until = now_
                 latest_payment.save()
 
             subscription = latest_payment.subscription
@@ -468,11 +468,11 @@ class GoogleInAppProvider(Provider):
             elif event == GoogleSubscriptionNotificationType.RENEWED:
                 # TODO: handle case when subscription is resumed from a pause
                 last_payment = self.get_last_payment(purchase_token)
-                assert last_payment.subscription_end
-                if purchase_end > last_payment.subscription_end:
+                assert last_payment.paid_until
+                if purchase_end > last_payment.paid_until:
                     last_payment.uid = ""
-                    last_payment.subscription_start = last_payment.subscription_end
-                    last_payment.subscription_end = purchase_end
+                    last_payment.paid_since = last_payment.paid_until
+                    last_payment.paid_until = purchase_end
                     last_payment.created = last_payment.updated = ""
                     last_payment.meta = Metadata(purchase=purchase)
                     last_payment.save()
@@ -491,9 +491,9 @@ class GoogleInAppProvider(Provider):
                 subscription.auto_prolong = False
                 subscription.save()
 
-                assert last_payment.subscription_end
-                if last_payment.subscription_end > subscription.end:
-                    last_payment.subscription_end = subscription.end
+                assert last_payment.paid_until
+                if last_payment.paid_until > subscription.end:
+                    last_payment.paid_until = subscription.end
                     last_payment.save()
 
             elif event == GoogleSubscriptionNotificationType.PURCHASED:
@@ -506,8 +506,8 @@ class GoogleInAppProvider(Provider):
                         status=SubscriptionPayment.Status.COMPLETED,
                         plan=plan,
                         amount=None,
-                        subscription_start=fromisoformat(purchase.startTime),
-                        subscription_end=purchase_end,
+                        paid_since=fromisoformat(purchase.startTime),
+                        paid_until=purchase_end,
                         metadata=Metadata(purchase=purchase).dict(),
                     ),
                 )

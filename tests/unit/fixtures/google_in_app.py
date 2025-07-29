@@ -164,8 +164,8 @@ def google_in_app_payment(google_in_app, purchase_token, plan_with_google, user)
         status=SubscriptionPayment.Status.COMPLETED,
         user=user,
         plan=plan_with_google,
-        subscription_start=now_,
-        subscription_end=now_ + days(7),
+        paid_since=now_,
+        paid_until=now_ + days(7),
         created=now_,
     )
 

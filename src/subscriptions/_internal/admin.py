@@ -80,8 +80,8 @@ class SubscriptionPaymentInline(admin.StackedInline):
         "quantity",
         "provider_codename",
         "provider_transaction_id",
-        "subscription_start",
-        "subscription_end",
+        "paid_since",
+        "paid_until",
         "metadata",
     )
     readonly_fields = (
@@ -199,8 +199,8 @@ class SubscriptionPaymentAdmin(admin.ModelAdmin):
         "amount",
         "user",
         "get_subscription_display",
-        "subscription_start",
-        "subscription_end",
+        "paid_since",
+        "paid_until",
     )
     autocomplete_fields = (
         "user",

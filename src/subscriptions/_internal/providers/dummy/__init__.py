@@ -32,8 +32,8 @@ class DummyProvider(Provider):
         subscription: Subscription | None = None,
         amount: Money | None = None,
         quantity: int = 1,
-        subscription_start: datetime | None = None,
-        subscription_end: datetime | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
     ) -> tuple[SubscriptionPayment, str]:
         transaction_id = get_random_string(8)
         if amount is None:
@@ -47,8 +47,8 @@ class DummyProvider(Provider):
             user_id=user.pk,
             plan=plan,
             subscription=subscription,
-            subscription_start=subscription_start,
-            subscription_end=subscription_end,
+            paid_since=since,
+            paid_until=until,
         )
         return payment, self._payment_url.format(transaction_id)
 

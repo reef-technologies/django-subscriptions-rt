@@ -113,8 +113,8 @@ class SubscriptionPaymentSerializer(ModelSerializer):
     currency = SerializerMethodField()
     total = SerializerMethodField()
     subscription = SubscriptionSerializer()
-    paid_from = DateTimeField(source="subscription_start")
-    paid_to = DateTimeField(source="subscription_end")
+    paid_since = DateTimeField()
+    paid_until = DateTimeField()
 
     class Meta:
         model = SubscriptionPayment
@@ -126,8 +126,8 @@ class SubscriptionPaymentSerializer(ModelSerializer):
             "amount",
             "currency",
             "total",
-            "paid_from",
-            "paid_to",
+            "paid_since",
+            "paid_until",
             "created",
         )
 

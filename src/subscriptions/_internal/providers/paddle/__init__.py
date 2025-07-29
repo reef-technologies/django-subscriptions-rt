@@ -79,8 +79,8 @@ class PaddleProvider(Provider):
         subscription: Subscription | None = None,
         amount: Money | None = None,
         quantity: int = 1,
-        subscription_start: datetime | None = None,
-        subscription_end: datetime | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
     ) -> tuple[SubscriptionPayment, str]:
         if amount is None:
             amount = self.get_amount(user=user, plan=plan)
@@ -97,8 +97,8 @@ class PaddleProvider(Provider):
             quantity=quantity,
             defaults=dict(
                 provider_transaction_id=None,
-                subscription_start=subscription_start,
-                subscription_end=subscription_end,
+                paid_since=since,
+                paid_until=until,
             ),
         )
 

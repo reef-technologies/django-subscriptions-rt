@@ -34,21 +34,21 @@ def test__models__payment__sync_with_subscription(plan, user, dummy):
     payment.status = SubscriptionPayment.Status.COMPLETED
     payment.save()
     subscription = one(Subscription.objects.all())
-    assert subscription.start == payment.subscription_start
-    assert now() - timedelta(seconds=1) < payment.subscription_start < now()
+    assert subscription.start == payment.paid_since
+    assert now() - timedelta(seconds=1) < payment.paid_since < now()
     initial_subscription_start = subscription.start
-    assert payment.subscription_end == subscription.end == initial_subscription_start + plan.charge_period
+    assert payment.paid_until == subscription.end == initial_subscription_start + plan.charge_period
 
     # shrink the payment and ensure that subscription is not shrunk
     """
     Subscription: -----[===============]------------------------>
     Payment:      -----[=COMPLETED=]------------------------>
     """
-    payment.subscription_end -= days(2)
+    payment.paid_until -= days(2)
     payment.save()
     subscription = one(Subscription.objects.all())
-    assert subscription.start == payment.subscription_start == initial_subscription_start
-    assert subscription.end > payment.subscription_end
+    assert subscription.start == payment.paid_since == initial_subscription_start
+    assert subscription.end > payment.paid_until
     assert subscription.end == initial_subscription_start + plan.charge_period
 
     # enlarge the payment and ensure that subscription is enlarged as well
@@ -56,11 +56,11 @@ def test__models__payment__sync_with_subscription(plan, user, dummy):
     Subscription: -----[===================]------------------------>
     Payment:      -----[=====COMPLETED=====]------------------------>
     """
-    payment.subscription_end = subscription.end + days(2)
+    payment.paid_until = subscription.end + days(2)
     payment.save()
     subscription = one(Subscription.objects.all())
-    assert subscription.start == payment.subscription_start == initial_subscription_start
-    assert subscription.end == payment.subscription_end == initial_subscription_start + plan.charge_period + days(2)
+    assert subscription.start == payment.paid_since == initial_subscription_start
+    assert subscription.end == payment.paid_until == initial_subscription_start + plan.charge_period + days(2)
 
     # create a second payment and ensure that subscription is extended
     """
@@ -78,12 +78,12 @@ def test__models__payment__sync_with_subscription(plan, user, dummy):
     assert SubscriptionPayment.objects.count() == 2
     previous_payment = subscription.payments.earliest()
 
-    assert payment.subscription_start == previous_payment.subscription_end
-    assert payment.subscription_end == initial_subscription_start + 2 * plan.charge_period
+    assert payment.paid_since == previous_payment.paid_until
+    assert payment.paid_until == initial_subscription_start + 2 * plan.charge_period
 
     subscription = one(Subscription.objects.all())
     assert subscription.start == initial_subscription_start
-    assert subscription.end == payment.subscription_end
+    assert subscription.end == payment.paid_until
 
 
 @pytest.mark.django_db(databases=["actual_db"])

@@ -346,8 +346,8 @@ def test__api__payment(user_client, payment):
         "amount": 100.0,
         "currency": "USD",
         "total": 200.0,
-        "paid_from": datetime_to_api(payment.subscription_start),
-        "paid_to": datetime_to_api(payment.subscription_end),
+        "paid_since": datetime_to_api(payment.paid_since),
+        "paid_until": datetime_to_api(payment.paid_until),
         "created": datetime_to_api(payment.created),
     }
 

@@ -100,10 +100,10 @@ def test__google__dismiss_token(google_in_app, user, subscription, purchase_toke
         subscription=subscription,
     )
 
-    assert subscription.end == payment2.subscription_end
-    with freeze_time(payment2.subscription_start + (payment2.subscription_end - payment2.subscription_start) / 2):
-        payment1_end = payment1.subscription_end
-        payment2_end = payment2.subscription_end
+    assert subscription.end == payment2.paid_until
+    with freeze_time(payment2.paid_since + (payment2.paid_until - payment2.paid_since) / 2):
+        payment1_end = payment1.paid_until
+        payment2_end = payment2.paid_until
 
         assert payment1_end < now() < payment2_end
         google_in_app.dismiss_token(purchase_token)
@@ -113,9 +113,9 @@ def test__google__dismiss_token(google_in_app, user, subscription, purchase_toke
         payment1 = SubscriptionPayment.objects.get(pk=payment1.pk)
         payment2 = SubscriptionPayment.objects.get(pk=payment2.pk)
 
-        assert payment1.subscription_end == payment1_end
-        assert payment2.subscription_end != payment2_end
-        assert payment2.subscription_end == now()
+        assert payment1.paid_until == payment1_end
+        assert payment2.paid_until != payment2_end
+        assert payment2.paid_until == now()
         assert subscription.end == now()
 
 
@@ -158,9 +158,9 @@ def test__google__webhook_for_app_notification(
     payment = one(SubscriptionPayment.objects.all())
     subscription = payment.subscription
 
-    assert payment.subscription_start == subscription.start == fromisoformat(google_subscription_purchase.startTime)
+    assert payment.paid_since == subscription.start == fromisoformat(google_subscription_purchase.startTime)
     assert (
-        payment.subscription_end
+        payment.paid_until
         == subscription.end
         == fromisoformat(one(google_subscription_purchase.lineItems).expiryTime)
     )
@@ -203,7 +203,7 @@ def test__google__webhook_linked_token_dismissing(
         user=user,
         plan=plan_with_google,
     )
-    assert payment.subscription_end > now()
+    assert payment.paid_until > now()
     assert payment.subscription.end > now()
 
     google_subscription_purchase.linkedPurchaseToken = linked_token
@@ -218,7 +218,7 @@ def test__google__webhook_linked_token_dismissing(
     assert Subscription.objects.count() == 2
 
     payment = SubscriptionPayment.objects.get(pk=payment.pk)
-    assert payment.subscription_end < now()
+    assert payment.paid_until < now()
     assert payment.subscription.end < now()
 
 
@@ -334,7 +334,7 @@ def test__google__purchase_flow(
     payment1 = SubscriptionPayment.objects.latest()
     subscription = payment1.subscription
     assert subscription
-    assert subscription.end == payment1.subscription_end
+    assert subscription.end == payment1.paid_until
 
     google_subscription_purchase.lineItems[0].expiryTime = (now() + days(10)).isoformat()
     with mock.patch(
@@ -350,7 +350,7 @@ def test__google__purchase_flow(
 
     assert SubscriptionPayment.objects.count() == 2
     payment2 = SubscriptionPayment.objects.latest()
-    assert payment2.subscription.end == payment2.subscription_end
+    assert payment2.subscription.end == payment2.paid_until
 
 
 @pytest.mark.django_db(databases=["actual_db"], transaction=True)
@@ -364,8 +364,8 @@ def test__google__expiration_notification(
     google_in_app_payment,
     google_subscription_purchase,
 ):
-    assert google_in_app_payment.subscription.end == google_in_app_payment.subscription_end
-    initial_subscription_end = google_in_app_payment.subscription_end
+    assert google_in_app_payment.subscription.end == google_in_app_payment.paid_until
+    initial_subscription_end = google_in_app_payment.paid_until
 
     # test that subscription end date is set to expiration time even if it's BEFORE payment end date
     new_expiry_time = initial_subscription_end - days(1)
@@ -386,9 +386,9 @@ def test__google__expiration_notification(
     subscription = Subscription.objects.get(pk=google_in_app_payment.subscription.pk)
     payment = SubscriptionPayment.objects.get(pk=google_in_app_payment.pk)
 
-    assert payment.subscription_end == initial_subscription_end
+    assert payment.paid_until == initial_subscription_end
     assert subscription.end == new_expiry_time
-    assert subscription.end != payment.subscription_end
+    assert subscription.end != payment.paid_until
 
 
 # TODO: not all cases covered
@@ -422,8 +422,8 @@ def test__google__subscriptions__cancel__google(
         provider_codename=google_in_app.codename,
         provider_transaction_id="12345",
         status=SubscriptionPayment.Status.PENDING,
-        subscription_start=now() + days(10),
-        subscription_end=now() + days(40),
+        paid_since=now() + days(10),
+        paid_until=now() + days(40),
     )
 
     assert user.subscriptions.active().count() == 1
@@ -466,8 +466,8 @@ def test__google__subscriptions__voided_purchase(
         provider_codename=google_in_app.codename,
         provider_transaction_id="12345",
         status=SubscriptionPayment.Status.PENDING,
-        subscription_start=now() + days(10),
-        subscription_end=now() + days(40),
+        paid_since=now() + days(10),
+        paid_until=now() + days(40),
     )
 
     assert user.subscriptions.active().count() == 1

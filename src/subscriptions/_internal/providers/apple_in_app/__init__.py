@@ -79,7 +79,7 @@ class AppleInAppProvider(Provider):
         """
         In case of in-app purchase this operation is triggered from the mobile application library.
         """
-        raise AppleInvalidOperation()
+        raise AppleInvalidOperation
 
     def charge_offline(self, *args, **kwargs) -> SubscriptionPayment:
         raise AppleInvalidOperation
@@ -136,7 +136,7 @@ class AppleInAppProvider(Provider):
                 provider_codename=self.codename,
                 metadata__original_transaction_id=original_transaction_id,
             )
-            .order_by("subscription_end")
+            .order_by("paid_until")
             .last()
         )
         if not payment:
@@ -189,8 +189,8 @@ class AppleInAppProvider(Provider):
                         "user": user,
                         "plan": plan,
                         "subscription": subscription,
-                        "subscription_start": start,
-                        "subscription_end": end,
+                        "paid_since": start,
+                        "paid_until": end,
                         "metadata": AppleInAppMetadata(original_transaction_id=original_transaction_id).dict(),
                     },
                     **kwargs,
@@ -258,13 +258,13 @@ class AppleInAppProvider(Provider):
             if payment is None:
                 continue
 
-            # TODO: collapse this block when `subscription_end` is required field
+            # TODO: collapse this block when `paid_until` is required field
             if latest_payment is None:
                 latest_payment = payment
             else:
-                assert payment.subscription_end
-                assert latest_payment.subscription_end
-                if payment.subscription_end > latest_payment.subscription_end:
+                assert payment.paid_until
+                assert latest_payment.paid_until
+                if payment.paid_until > latest_payment.paid_until:
                     latest_payment = payment
 
         if latest_payment is None:
@@ -344,7 +344,7 @@ class AppleInAppProvider(Provider):
         if latest_payment.subscription:
             latest_payment.subscription.end = now
             latest_payment.subscription.save()
-        latest_payment.subscription_end = now
+        latest_payment.paid_until = now
 
         latest_payment.save()
 
@@ -376,7 +376,7 @@ class AppleInAppProvider(Provider):
         if refunded_payment.subscription:
             refunded_payment.subscription.end = transaction_info.revocation_date
             refunded_payment.subscription.save()
-        refunded_payment.subscription_end = transaction_info.revocation_date
+        refunded_payment.paid_until = transaction_info.revocation_date
         refunded_payment.status = SubscriptionPayment.Status.CANCELLED
 
         refunded_payment.save()

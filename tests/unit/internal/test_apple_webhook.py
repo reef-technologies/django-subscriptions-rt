@@ -184,8 +184,8 @@ def assert__valid_receipt(user_client, apple_in_app, product_id, bundle_id, **re
     assert payment.status == SubscriptionPayment.Status.COMPLETED
     assert payment.provider_codename == apple_in_app.codename
     assert payment.provider_transaction_id == single_in_app.transaction_id
-    assert payment.subscription_start == single_in_app.purchase_date
-    assert payment.subscription_end == single_in_app.expires_date
+    assert payment.paid_since == single_in_app.purchase_date
+    assert payment.paid_until == single_in_app.expires_date
 
 
 @pytest.mark.django_db(databases=["actual_db"])
@@ -221,8 +221,8 @@ def test__apple__multiple_receipts(apple_in_app, apple_product_id, apple_bundle_
     assert payment.status == SubscriptionPayment.Status.COMPLETED
     assert payment.provider_codename == apple_in_app.codename
     assert payment.provider_transaction_id == single_in_app.transaction_id
-    assert payment.subscription_start == single_in_app.purchase_date
-    assert payment.subscription_end == single_in_app.expires_date
+    assert payment.paid_since == single_in_app.purchase_date
+    assert payment.paid_until == single_in_app.expires_date
 
 
 @pytest.mark.django_db(databases=["actual_db"])
@@ -335,8 +335,8 @@ def test__apple__app_store_notification__product_upgrade(
     assert payment.plan.metadata[apple_in_app.codename] == apple_bigger_product_id
     assert payment.subscription.plan.metadata[apple_in_app.codename] == apple_bigger_product_id
     assert payment.status == SubscriptionPayment.Status.COMPLETED
-    assert payment.subscription_start == transaction_info.purchase_date
-    assert payment.subscription_end == transaction_info.expires_date
+    assert payment.paid_since == transaction_info.purchase_date
+    assert payment.paid_until == transaction_info.expires_date
 
 
 @pytest.mark.django_db(databases=["actual_db"])
@@ -417,8 +417,8 @@ def assert__app_store_notifications__renew__subscription_extended(
     assert payment.plan.metadata[apple_in_app.codename] == transaction_info.product_id
     assert payment.status == SubscriptionPayment.Status.COMPLETED
     assert payment.provider_codename == apple_in_app.codename
-    assert payment.subscription_start == transaction_info.purchase_date
-    assert payment.subscription_end == transaction_info.expires_date
+    assert payment.paid_since == transaction_info.purchase_date
+    assert payment.paid_until == transaction_info.expires_date
 
 
 @pytest.mark.django_db(databases=["actual_db"])
@@ -512,7 +512,7 @@ def test__apple__app_store_notifications__refund(
     assert payment.user == user
     assert payment.plan.metadata[apple_in_app.codename] == transaction_info.product_id
     assert payment.provider_codename == apple_in_app.codename
-    assert payment.subscription_end == transaction_info.revocation_date
+    assert payment.paid_until == transaction_info.revocation_date
     assert payment.status == SubscriptionPayment.Status.CANCELLED
 
     assert SubscriptionPaymentRefund.objects.count() == 1

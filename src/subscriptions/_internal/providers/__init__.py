@@ -42,8 +42,8 @@ class Provider:
         subscription: Subscription | None = None,
         amount: Money | None = None,
         quantity: int = 1,
-        subscription_start: datetime | None = None,
-        subscription_end: datetime | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
     ) -> tuple[SubscriptionPayment, str]:
         raise NotImplementedError()
 

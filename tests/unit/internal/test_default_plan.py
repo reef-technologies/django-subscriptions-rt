@@ -472,7 +472,7 @@ def test__default_plan__subscription_renewal(user, default_plan, subscription, p
     --[==default plan==][==subscription===================][==default plan==]->
                                        ^-now
     """
-    assert payment.subscription_end == subscription.end
+    assert payment.paid_until == subscription.end
 
     subscriptions_before = list(user.subscriptions.order_by("end"))
     assert len(subscriptions_before) == 3
@@ -484,8 +484,8 @@ def test__default_plan__subscription_renewal(user, default_plan, subscription, p
     with freeze_time(subscription.end - days(1), tick=True):
         last_payment = subscription.charge_offline()
 
-        assert last_payment.subscription_start == subscriptions_before[1].end
-        assert last_payment.subscription_end > subscriptions_before[1].end
+        assert last_payment.paid_since == subscriptions_before[1].end
+        assert last_payment.paid_until > subscriptions_before[1].end
 
         subscriptions_after = list(user.subscriptions.order_by("end"))
         assert len(subscriptions_after) == 3

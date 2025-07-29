@@ -83,7 +83,7 @@ def test__get_trial_period__cheating__multiacc__paddle(
     assert payment.status == SubscriptionPayment.Status.COMPLETED
     assert payment.amount == plan.charge_amount * 0
     assert payment.subscription.start + trial_period == payment.subscription.end
-    assert payment.subscription.start == payment.subscription_start
+    assert payment.subscription.start == payment.paid_since
 
     # ---- pay as "other_user" with same credit card ----
     client.force_login(other_user)
@@ -99,7 +99,7 @@ def test__get_trial_period__cheating__multiacc__paddle(
     assert payment.status == SubscriptionPayment.Status.COMPLETED
     assert payment.amount == plan.charge_amount * 0
     assert payment.subscription.start + trial_period == payment.subscription.end
-    assert payment.subscription.start == payment.subscription_start
+    assert payment.subscription.start == payment.paid_since
 
 
 @pytest.mark.django_db(databases=["actual_db"], transaction=True)
@@ -122,7 +122,7 @@ def test__trial_period__only_once__subsequent(trial_period, dummy, plan, user, u
     assert subscription.payments.count() == 1
     payment = subscription.payments.first()
     assert payment.amount == plan.charge_amount * 0
-    assert payment.subscription_start + trial_period == payment.subscription_end
+    assert payment.paid_since + trial_period == payment.paid_until
 
     # end subscription
     response = user_client.delete(f"/api/subscriptions/{subscription.uid}/")
@@ -138,7 +138,7 @@ def test__trial_period__only_once__subsequent(trial_period, dummy, plan, user, u
     assert subscription.payments.count() == 1
     payment = subscription.payments.latest()
     assert payment.amount == plan.charge_amount
-    assert payment.subscription_start + plan.charge_period == payment.subscription_end
+    assert payment.paid_since + plan.charge_period == payment.paid_until
 
 
 @pytest.mark.django_db(databases=["actual_db"], transaction=True)
@@ -168,7 +168,7 @@ def test__trial_period__only_once__simultaneous(
     assert subscription.payments.count() == 1
     payment = subscription.payments.latest()
     assert payment.amount == plan.charge_amount * 0
-    assert payment.subscription_start + trial_period == payment.subscription_end
+    assert payment.paid_since + trial_period == payment.paid_until
 
     # add resources and ensure no trial period is there
     response = user_client.post("/api/subscribe/", {"plan": recharge_plan.pk})
@@ -179,7 +179,7 @@ def test__trial_period__only_once__simultaneous(
     assert subscription.payments.count() == 1
     payment = subscription.payments.latest()
     assert payment.amount == recharge_plan.charge_amount
-    assert payment.subscription_start + recharge_plan.max_duration == payment.subscription_end
+    assert payment.paid_since + recharge_plan.max_duration == payment.paid_until
 
     # create another subscription and ensure no trial period is there
     response = user_client.post("/api/subscribe/", {"plan": bigger_plan.pk})
@@ -190,7 +190,7 @@ def test__trial_period__only_once__simultaneous(
     assert subscription.payments.count() == 1
     payment = subscription.payments.latest()
     assert payment.amount == bigger_plan.charge_amount
-    assert payment.subscription_start + bigger_plan.charge_period == payment.subscription_end
+    assert payment.paid_since + bigger_plan.charge_period == payment.paid_until
 
 
 @pytest.mark.django_db(databases=["actual_db"], transaction=True)
@@ -276,5 +276,5 @@ def test__trial_period__full_charge_after_trial(
         assert subscription.end == old_end + plan.charge_period
 
         payment = subscription.payments.latest()
-        assert payment.subscription_end == old_end + plan.charge_period
+        assert payment.paid_until == old_end + plan.charge_period
         assert payment.amount == plan.charge_amount

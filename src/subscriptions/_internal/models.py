@@ -585,8 +585,8 @@ class SubscriptionPayment(AbstractTransaction):
     # when payment and subscription info comes from external source and is out of control
     # of the application.
     # TODO: make these fields required?
-    subscription_start = models.DateTimeField(blank=True, null=True)  # TODO: paid from
-    subscription_end = models.DateTimeField(blank=True, null=True)  # TODO: paid until
+    paid_since = models.DateTimeField(blank=True, null=True)
+    paid_until = models.DateTimeField(blank=True, null=True)
 
     objects: ClassVar[Manager[SubscriptionPayment]] = Manager()  # for mypy
 
@@ -596,41 +596,41 @@ class SubscriptionPayment(AbstractTransaction):
 
     class Meta(AbstractTransaction.Meta):
         db_table = "subscriptions_v0_subscriptionpayment"
-        # TODO: changing latest() to `subscription_end` may not work well when subscription_end is None
-        # get_latest_by = 'subscription_end'
+        # TODO: changing latest() to `paid_until` may not work well when paid_until is None
+        # get_latest_by = 'paid_until'
 
     def __str__(self) -> str:
         return (
             f"{self.short_id} {self.get_status_display()} "
-            f"{self.user} {self.amount} from={self.subscription_start} until={self.subscription_end}"
+            f"{self.user} {self.amount} from={self.paid_since} until={self.paid_until}"
         )
 
     def save(self, *args, **kwargs):
-        assert bool(self.subscription_start) == bool(self.subscription_end), (
-            "subscription_start and subscription_end should both be either set or not"
+        assert bool(self.paid_since) == bool(self.paid_until), (
+            "paid_since and paid_until should both be either set or not"
         )
 
         if self.status == self.Status.COMPLETED:
             if subscription := self.subscription:
-                self.subscription_start = self.subscription_start or subscription.end
+                self.paid_since = self.paid_since or subscription.end
 
-                if self.subscription_end:
-                    assert self.subscription_end > self.subscription_start
+                if self.paid_until:
+                    assert self.paid_until > self.paid_since
 
                     # change existing subscription duration based on payment's end
-                    if self.subscription_end <= subscription.end:
+                    if self.paid_until <= subscription.end:
                         log.warning(
                             "Payment's end (%s) is earlier than current subscription's end (%s) "
                             "-> payment has no effect",
-                            self.subscription_end,
+                            self.paid_until,
                             subscription.end,
                         )
                     else:
-                        subscription.end = self.subscription_end
+                        subscription.end = self.paid_until
 
                 else:
                     # prolong existing subscription and set payment's (start, end)
-                    self.subscription_end = subscription.end = subscription.prolong()  # TODO: what if this fails?
+                    self.paid_until = subscription.end = subscription.prolong()  # TODO: what if this fails?
 
                 subscription.save()
 
@@ -639,12 +639,12 @@ class SubscriptionPayment(AbstractTransaction):
                     user=self.user,
                     plan=self.plan,
                     quantity=self.quantity,
-                    start=self.subscription_start,
-                    end=self.subscription_end,
+                    start=self.paid_since,
+                    end=self.paid_until,
                 )
-                # in case subscription_start and subscription_end are empty:
-                self.subscription_start = self.subscription.start
-                self.subscription_end = self.subscription.end
+                # in case paid_since and paid_until are empty:
+                self.paid_since = self.subscription.start
+                self.paid_until = self.subscription.end
 
             new_status = self.status != self._initial_status and self.status
             if new_status == self.Status.COMPLETED:

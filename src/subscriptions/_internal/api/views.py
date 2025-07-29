@@ -170,8 +170,8 @@ class SubscriptionSelectView(GenericAPIView):
                 charge_params.update(
                     {
                         "amount": plan.charge_amount * 0,  # this makes currencies match
-                        "subscription_start": now_,
-                        "subscription_end": now_ + trial_period,
+                        "since": now_,
+                        "until": now_ + trial_period,
                     }
                 )
 

@@ -190,8 +190,8 @@ def test__paddle__payment_flow__regular(
         "amount": float(payment.amount.amount),
         "currency": str(payment.amount.currency),
         "total": float((payment.amount * 1).amount),
-        "paid_from": None,
-        "paid_to": None,
+        "paid_since": None,
+        "paid_until": None,
         "created": payment.created.isoformat().replace("+00:00", "Z"),
         "subscription": None,
     }
@@ -215,8 +215,8 @@ def test__paddle__payment_flow__regular(
         "amount": float(payment.amount.amount),
         "currency": str(payment.amount.currency),
         "total": float((payment.amount * 1).amount),
-        "paid_from": payment.subscription_start.isoformat().replace("+00:00", "Z"),
-        "paid_to": payment.subscription_end.isoformat().replace("+00:00", "Z"),
+        "paid_since": payment.paid_since.isoformat().replace("+00:00", "Z"),
+        "paid_until": payment.paid_until.isoformat().replace("+00:00", "Z"),
         "created": payment.created.isoformat().replace("+00:00", "Z"),
         "subscription": {
             "id": str(subscription.pk),
@@ -349,7 +349,7 @@ def test__paddle__payment_flow__trial_period(
 
     assert payment.amount == plan.charge_amount * 0
     assert payment.subscription.start + trial_period == payment.subscription.end
-    assert payment.subscription.start == payment.subscription_start
+    assert payment.subscription.start == payment.paid_since
 
     # ---- test_charge_offline ----
     assert "subscription_id" in payment.metadata
@@ -543,7 +543,7 @@ def test__paddle__subscription_charge_offline__zero_amount(paddle, user_client, 
         plan=free_plan,
     )
     assert SubscriptionPayment.objects.count() == 2
-    last_payment = SubscriptionPayment.objects.order_by("subscription_end").last()
+    last_payment = SubscriptionPayment.objects.order_by("paid_until").last()
     assert last_payment.plan == free_plan
     assert last_payment.amount is None
 
