@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from base64 import b64decode
 from enum import Enum
 from typing import Any

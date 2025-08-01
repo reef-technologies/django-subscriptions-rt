@@ -10,8 +10,6 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/4.0/ref/settings/
 """
 
-from __future__ import annotations
-
 from os import environ
 from pathlib import Path
 

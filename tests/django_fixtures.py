@@ -1,6 +1,4 @@
 # cookiecutter-rt-pkg macro: requires cookiecutter.is_django_package
-from __future__ import annotations
-
 import pytest
 from django.contrib.auth import get_user_model
 from django.test import RequestFactory

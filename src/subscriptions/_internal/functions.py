@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from collections.abc import Callable, Generator, Iterable, Iterator
 from contextlib import contextmanager, suppress
 from datetime import UTC, datetime, timedelta

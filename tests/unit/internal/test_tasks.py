@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
