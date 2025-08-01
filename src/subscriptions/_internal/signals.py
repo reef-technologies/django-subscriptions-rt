@@ -8,13 +8,14 @@ from django.dispatch import receiver
 from django.utils.timezone import now
 
 from .functions import add_default_plan_to_users, get_default_plan
-from .models import MAX_DATETIME, Plan, Subscription
 
 log = logging.getLogger(__name__)
 
 
 @receiver(post_save, sender=get_user_model())
 def create_default_subscription_for_new_user(sender, instance, created, **kwargs):
+    from .models import MAX_DATETIME, Plan, Subscription
+
     with suppress(Plan.DoesNotExist):
         if created and (default_plan := get_default_plan()):
             Subscription.objects.create(
@@ -32,6 +33,8 @@ with suppress(ImportError):
     @receiver(config_updated)
     @transaction.atomic
     def constance_updated(sender, key, old_value, new_value, **kwargs):
+        from .models import Subscription
+
         if key != "SUBSCRIPTIONS_DEFAULT_PLAN_ID":
             return
 

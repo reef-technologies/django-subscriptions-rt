@@ -160,9 +160,7 @@ def test__google__webhook_for_app_notification(
 
     assert payment.paid_since == subscription.start == fromisoformat(google_subscription_purchase.startTime)
     assert (
-        payment.paid_until
-        == subscription.end
-        == fromisoformat(one(google_subscription_purchase.lineItems).expiryTime)
+        payment.paid_until == subscription.end == fromisoformat(one(google_subscription_purchase.lineItems).expiryTime)
     )
     assert payment.status == SubscriptionPayment.Status.COMPLETED
     assert payment.provider_codename == google_in_app.codename

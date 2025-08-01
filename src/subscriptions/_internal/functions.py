@@ -7,6 +7,7 @@ from functools import cached_property
 from itertools import chain
 from logging import getLogger
 from operator import attrgetter
+from typing import TYPE_CHECKING
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -19,24 +20,17 @@ from more_itertools import spy
 
 from .defaults import DEFAULT_SUBSCRIPTIONS_CACHE_NAME
 from .exceptions import InconsistentQuotaCache, QuotaLimitExceeded
-from .models import (
-    MAX_DATETIME,
-    Feature,
-    Plan,
-    Quota,
-    QuotaCache,
-    QuotaChunk,
-    Resource,
-    Subscription,
-    Tier,
-    Usage,
-)
 from .utils import advisory_lock, merge_iter
+
+if TYPE_CHECKING:
+    from .models import Feature, Plan, QuotaCache, QuotaChunk, Resource, Subscription
 
 log = getLogger(__name__)
 
 
 def iter_subscriptions_involved(user: AbstractUser, at: datetime) -> Iterator[Subscription]:
+    from .models import Quota, Subscription
+
     subscriptions = (
         Subscription.objects.select_related("plan")
         .prefetch_related(
@@ -83,6 +77,8 @@ def get_remaining_chunks(
     at: datetime | None = None,
     quota_cache: QuotaCache | None = None,
 ) -> list[QuotaChunk]:
+    from .models import Usage
+
     at = at or now()
     subscriptions_involved = iter_subscriptions_involved(user=user, at=at)
 
@@ -183,6 +179,8 @@ def get_remaining_amount(
     user: AbstractUser,
     at: datetime | None = None,
 ) -> dict[Resource, int]:
+    from .models import QuotaCache
+
     at = at or now()
 
     cache = get_cache_or_none(get_cache_name())
@@ -219,6 +217,8 @@ def use_resource(
     amount: int = 1,
     raises: bool = True,
 ) -> Generator[int, None, None]:
+    from .models import Usage
+
     with advisory_lock(lock_id=f"subscriptions.use_resource.{user.pk}.{resource.pk}"):
         # Ensuring that all operations on the same user and resource are blocked.
 
@@ -302,6 +302,8 @@ class cache:
 
 
 def get_default_features() -> set[Feature]:
+    from .models import Tier
+
     default_tiers = Tier.objects.filter(is_default=True).prefetch_related("features")
     return merge_feature_sets(*(tier.features.all() for tier in default_tiers))
 
@@ -323,6 +325,8 @@ def get_default_plan() -> Plan | None:
 
 
 def add_default_plan_to_users() -> None:
+    from .models import MAX_DATETIME, Plan, Subscription
+
     User = get_user_model()
 
     try:

@@ -26,6 +26,7 @@ from django.db.models import (
 from django.db.models.functions import Least
 from django.urls import reverse
 from django.utils.timezone import now
+from model_utils import FieldTracker
 from pydantic import BaseModel
 
 from .exceptions import (
@@ -250,6 +251,7 @@ class Subscription(models.Model):
     start = models.DateTimeField(blank=True)
     end = models.DateTimeField(blank=True)
 
+    tracker = FieldTracker()
     objects = SubscriptionQuerySet.as_manager()
 
     class Meta(SubscriptionsMeta):
@@ -584,15 +586,11 @@ class SubscriptionPayment(AbstractTransaction):
     # are set, their values will be used to adjust subscription duration; this is handy
     # when payment and subscription info comes from external source and is out of control
     # of the application.
-    # TODO: make these fields required?
-    paid_since = models.DateTimeField(blank=True, null=True)
-    paid_until = models.DateTimeField(blank=True, null=True)
+    paid_since = models.DateTimeField(blank=True)
+    paid_until = models.DateTimeField(blank=True)
 
+    tracker = FieldTracker()
     objects: ClassVar[Manager[SubscriptionPayment]] = Manager()  # for mypy
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._initial_status = self.uid and self.status
 
     class Meta(AbstractTransaction.Meta):
         db_table = "subscriptions_v0_subscriptionpayment"
@@ -612,8 +610,6 @@ class SubscriptionPayment(AbstractTransaction):
 
         if self.status == self.Status.COMPLETED:
             if subscription := self.subscription:
-                self.paid_since = self.paid_since or subscription.end
-
                 if self.paid_until:
                     assert self.paid_until > self.paid_since
 
@@ -629,7 +625,7 @@ class SubscriptionPayment(AbstractTransaction):
                         subscription.end = self.paid_until
 
                 else:
-                    # prolong existing subscription and set payment's (start, end)
+                    self.paid_since = subscription.end
                     self.paid_until = subscription.end = subscription.prolong()  # TODO: what if this fails?
 
                 subscription.save()
@@ -642,13 +638,9 @@ class SubscriptionPayment(AbstractTransaction):
                     start=self.paid_since,
                     end=self.paid_until,
                 )
-                # in case paid_since and paid_until are empty:
+                # in case paid_since and paid_until were empty:
                 self.paid_since = self.subscription.start
                 self.paid_until = self.subscription.end
-
-            new_status = self.status != self._initial_status and self.status
-            if new_status == self.Status.COMPLETED:
-                pass  # TODO: send email if not silent
 
         return super().save(*args, **kwargs)
 
@@ -668,6 +660,7 @@ class SubscriptionPaymentRefund(AbstractTransaction):
     original_payment = models.ForeignKey(SubscriptionPayment, on_delete=models.PROTECT, related_name="refunds")
     # TODO: add support by providers
 
+    tracker = FieldTracker()
     objects: ClassVar[Manager[SubscriptionPaymentRefund]] = Manager()  # for mypy
 
     class Meta(AbstractTransaction.Meta):

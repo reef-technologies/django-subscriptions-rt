@@ -22,8 +22,6 @@ See [noxfile.py](noxfile.py) for list of Python and Django versions supported (v
 
 ## Configuration
 
-## Settings
-
 ```python
 # settings.py
 INSTALLED_APPS = [
@@ -52,13 +50,6 @@ SUBSCRIPTIONS_ADVISORY_LOCK_TIMEOUT=1
 > [!IMPORTANT]
 > This package uses [ApiVer](#versioning), make sure to import `subscriptions.v0`.
 
-```python
-# settings.py
-INSTALLED_APPS = [
-   ...,
-   'subscriptions.v0',
-]
-
 ### Subscriptions
 
 ```
@@ -74,6 +65,21 @@ quota   (quota lifetime)       quota burned
 (quota recharge period) |------------------------------x
 
 (quota recharge period) (quota recharge period) |----------------->
+```
+
+### Tracking changes
+
+[django-model-utils](https://django-model-utils.readthedocs.io/en/latest/utilities.html) package is used to track changes in essential models, such as `Subscription`, `SubscriptionPayment`, and `SubscriptionPaymentRefund`. This allows to track changes in subscription status / dates, payment status, and other fields.
+
+This is an example of how to do some processing when subscription payment status changes:
+
+```python
+@receiver(post_save, sender=SubscriptionPayment)
+def handler(sender, instance: SubscriptionPayment, **kwargs):
+   if instance.tracker.has_changed("status"):
+      old_status = instance.tracker.previous("status")
+      new_status = instance.status
+      print(f'Payment status changed from {old_status} to {new_status}')
 ```
 
 ### Default plan

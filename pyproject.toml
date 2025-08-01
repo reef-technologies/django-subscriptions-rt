@@ -39,6 +39,7 @@ dependencies = [
     "environs>=14.1.1,<15",
     "django-pglock>=1.7.2",
     "psycopg2-binary>=2.9.10",
+    "django-model-utils>=5.0.0",
 ]
 
 [project.optional-dependencies]
@@ -110,13 +111,12 @@ select = [
 ]
 ignore = [
     "D100", "D105", "D107", "D200", "D202", "D203", "D205", "D212", "D400", "D401", "D415",
-    "D101", "D102", "D103", "D104", # TODO remove once we have docstring for all public methods
-    "D106",
+    "D101", "D102", "D103", "D104", "D106",
 ]
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
-"test/**" = ["D", "F403", "F405"]
+"tests/**" = ["D", "F403", "F405"]
 
 [tool.codespell]
 skip = "*.min.js,pdm.lock,*/migrations/*"
