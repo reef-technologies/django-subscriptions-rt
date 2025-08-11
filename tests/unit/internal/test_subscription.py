@@ -4,6 +4,7 @@ from itertools import islice
 import pytest
 from dateutil.relativedelta import relativedelta
 from django.db import connections
+from django.forms import ValidationError
 from django.utils.timezone import now
 
 from subscriptions.v0.exceptions import PaymentError, ProlongationImpossible
@@ -183,21 +184,21 @@ def test__subscription__expiring__performance(django_assert_num_queries, two_sub
 
 
 @pytest.mark.django_db(databases=["actual_db"])
-def test__subscription__charge_offline__without_prev_payments(subscription):
+def test__subscription__charge_automatically__without_prev_payments(subscription):
     with pytest.raises(PaymentError):
-        subscription.charge_offline()
+        subscription.charge_automatically()
 
 
 @pytest.mark.django_db(databases=["actual_db"])
-def test__subscription__charge_offline__with_unconfirmed_payment(subscription, paddle_unconfirmed_payment):
+def test__subscription__charge_automatically__with_unconfirmed_payment(subscription, paddle_unconfirmed_payment):
     with pytest.raises(PaymentError):
-        subscription.charge_offline()
+        subscription.charge_automatically()
 
 
 @pytest.mark.django_db(databases=["actual_db"])
-def test__subscription__charge_offline(subscription, payment):
+def test__subscription__charge_automatically(subscription, payment):
     assert SubscriptionPayment.objects.all().count() == 1
-    subscription.charge_offline()
+    subscription.charge_automatically()
     assert SubscriptionPayment.objects.all().count() == 2
 
     last_payment = SubscriptionPayment.objects.latest()
@@ -210,63 +211,26 @@ def test__subscription__charge_offline(subscription, payment):
 
 
 @pytest.mark.django_db(databases=["actual_db"])
-def test__subscription__payment_from_until_auto_set(plan, subscription, user, dummy):
-    initial_subscription_start = subscription.start
-    initial_subscription_end = subscription.end
-
-    payment = SubscriptionPayment.objects.create(
-        provider_codename=dummy,
-        provider_transaction_id="test",
-        status=SubscriptionPayment.Status.PENDING,
-        user=user,
-        plan=plan,
-        subscription=subscription,
-        paid_since=None,
-        paid_until=None,
-    )
-    # check that PENDING doesn't affect anything
-    assert payment.paid_since is None
-    assert payment.paid_until is None
-
-    # check that paid_since and paid_until should be set / not set together
-    payment.status = SubscriptionPayment.Status.COMPLETED
-    with pytest.raises(AssertionError):
-        payment.paid_since = initial_subscription_end
-        payment.save()
-
-    payment.paid_since = payment.paid_until = None
-    payment.save()
-    # check that paid_since and paid_until are auto-filled
-    assert payment.paid_since == initial_subscription_end
-    assert payment.paid_until > payment.paid_since
-    # check that subscription is prolonged
-    assert payment.subscription.start == initial_subscription_start
-    assert payment.subscription.end == payment.paid_until
-
-
-@pytest.mark.django_db(databases=["actual_db"])
 def test__subscription__auto_creation_on_payment(plan, user, dummy):
     assert not Subscription.objects.exists()
 
+    now_ = now()
     payment = SubscriptionPayment.objects.create(
         provider_codename=dummy,
         provider_transaction_id="test",
         status=SubscriptionPayment.Status.COMPLETED,
         user=user,
         plan=plan,
-        paid_since=None,
-        paid_until=None,
+        paid_since=now_,
+        paid_until=now_ + plan.charge_period,
     )
     assert payment.subscription
-    assert now() - payment.subscription.start < timedelta(seconds=1)
-    assert payment.subscription.end == payment.subscription.start + plan.charge_period
-
-    assert payment.paid_since == payment.subscription.start
-    assert payment.paid_until == payment.subscription.end
+    assert payment.subscription.start == payment.paid_since
+    assert payment.subscription.end == payment.paid_until
 
 
 @pytest.mark.django_db(databases=["actual_db"])
-def test__subscription__duration_set_by_payment(plan, user, dummy):
+def test__subscription__unaffected_by_payment(plan, user, dummy):
     assert not Subscription.objects.exists()
 
     now_ = now()
@@ -284,12 +248,12 @@ def test__subscription__duration_set_by_payment(plan, user, dummy):
     assert payment.subscription.start == payment.paid_since
     assert payment.subscription.end == payment.paid_until
 
-    # check that subscription may be prolonged by payment
+    # check that subscription cannot be prolonged by payment
     payment.paid_until = now_ + days(6)
     payment.save()
-    assert payment.subscription.end == payment.paid_until
+    assert payment.subscription.end == now_ + days(5)
 
     # check that subscription cannot be shrunk by shrunk payment
     payment.paid_until = now_ + days(3)
     payment.save()
-    assert payment.subscription.end == now_ + days(6)
+    assert payment.subscription.end == now_ + days(5)

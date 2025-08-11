@@ -17,25 +17,22 @@ from .forms import DummyForm
 
 
 class DummyProvider(Provider):
-    codename: ClassVar[str] = "dummy"
     is_external: ClassVar[bool] = False
     form: ClassVar[type[Form] | None] = DummyForm
 
     _payment_url: ClassVar[str] = "/payment/{}/"
 
-    def charge_online(
+    def charge_interactively(
         self,
         user: AbstractBaseUser,
         plan: Plan,
+        since: datetime,
+        until: datetime,
         subscription: Subscription | None = None,
         amount: Money | None = None,
         quantity: int = 1,
-        since: datetime | None = None,
-        until: datetime | None = None,
     ) -> tuple[SubscriptionPayment, str]:
         transaction_id = get_random_string(8)
-        if amount is None:
-            amount = self.get_amount(user=user, plan=plan)
 
         payment = SubscriptionPayment.objects.create(  # TODO: limit number of creations per day
             provider_codename=self.codename,
@@ -50,33 +47,27 @@ class DummyProvider(Provider):
         )
         return payment, self._payment_url.format(transaction_id)
 
-    def charge_offline(
+    def charge_automatically(
         self,
-        user: AbstractBaseUser,
         plan: Plan,
-        subscription: Subscription | None = None,
-        amount: Money | None = None,
-        quantity: int = 1,
+        amount: Money,
+        quantity: int,
+        since: datetime,
+        until: datetime,
+        subscription: Subscription | None = None,  # TODO: probably better to change signature (remove unrelated to payment fields)
         reference_payment: SubscriptionPayment | None = None,
     ) -> SubscriptionPayment:
-        if not user.payments.filter(  # type: ignore[attr-defined]
-            provider_codename=self.codename,
-            status=SubscriptionPayment.Status.COMPLETED,
-        ).exists():
-            raise PaymentError("Cannot offline-charge without previous successful charge")
-
-        if amount is None:
-            amount = self.get_amount(user=user, plan=plan)
-
         return SubscriptionPayment.objects.create(  # TODO: limit number of creations per day
             provider_codename=self.codename,
             provider_transaction_id=get_random_string(8),
-            amount=self.get_amount(user=user, plan=plan),  # type: ignore[misc]
+            amount=plan.charge_amount,  # type: ignore[misc]
             quantity=quantity,
-            user_id=user.pk,
+            user_id=reference_payment.user_id,
             plan=plan,
             subscription=subscription,
             status=SubscriptionPayment.Status.COMPLETED,
+            paid_since=since,
+            paid_until=until,
         )
 
     def webhook(self, request: Request, payload: dict) -> Response:

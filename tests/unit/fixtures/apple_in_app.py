@@ -1,6 +1,6 @@
 import pytest
 
-from subscriptions.v0.providers import get_provider, get_providers
+from subscriptions.v0.providers import get_provider_by_codename
 from subscriptions.v0.providers.apple_in_app import AppleInAppProvider
 
 
@@ -15,8 +15,4 @@ def apple_in_app(settings, apple_bundle_id) -> AppleInAppProvider:
         "subscriptions.v0.providers.apple_in_app.AppleInAppProvider",
     ]
     AppleInAppProvider.bundle_id = apple_bundle_id
-    get_provider.cache_clear()
-    get_providers.cache_clear()
-    provider = get_provider()
-    assert isinstance(provider, AppleInAppProvider)
-    return provider
+    return get_provider_by_codename('apple')

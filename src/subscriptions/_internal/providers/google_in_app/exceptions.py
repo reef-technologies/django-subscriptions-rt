@@ -4,3 +4,7 @@ class GoogleInAppException(Exception):
 
 class InvalidOperation(GoogleInAppException):
     pass
+
+
+class AmbiguousDataError(GoogleInAppException):
+    pass

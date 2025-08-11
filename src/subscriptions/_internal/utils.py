@@ -2,7 +2,7 @@ import logging
 from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
 from datetime import datetime, timedelta
-from functools import partial
+from functools import partial, wraps
 from typing import TypeVar
 
 import pglock
@@ -106,3 +106,14 @@ def get_setting_or_raise(name: str) -> str:
     if not (value := getattr(settings, name, None)):
         raise ConfigurationError(f"Setting {name} is not set or is empty")
     return value
+
+
+def pre_validate(fn: Callable) -> Callable:
+    """A decorator to validate model fields before saving."""
+
+    @wraps(fn)
+    def wrapper(self, *args, **kwargs):
+        self.full_clean()
+        return fn(self, *args, **kwargs)
+
+    return wrapper

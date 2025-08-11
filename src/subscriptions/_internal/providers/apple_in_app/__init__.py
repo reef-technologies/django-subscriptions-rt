@@ -1,7 +1,11 @@
+import datetime
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
+from functools import cached_property
 from logging import getLogger
 from typing import TYPE_CHECKING, ClassVar
 
+from django.contrib.auth.models import User
 from django.core.exceptions import SuspiciousOperation
 from django.db import transaction
 from django.utils import timezone
@@ -9,6 +13,7 @@ from pydantic import (
     BaseModel,
     ValidationError,
 )
+from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.status import (
     HTTP_200_OK,
@@ -46,13 +51,6 @@ from .exceptions import (
     InvalidAppleReceiptError,
 )
 
-if TYPE_CHECKING:
-    import datetime
-    from collections.abc import Callable, Iterable
-
-    from django.contrib.auth.models import User
-    from rest_framework.request import Request
-
 logger = getLogger(__name__)
 
 
@@ -63,7 +61,7 @@ class AppleInAppMetadata(BaseModel):
 @dataclass
 class AppleInAppProvider(Provider):
     # This is also name of the field in metadata of the Plan, that stores Apple App Store product id.
-    codename: ClassVar[str] = "apple_in_app"
+    codename: ClassVar[str] = "apple"
     is_external: ClassVar[bool] = True
     bundle_id: ClassVar[str] = get_setting_or_raise("APPLE_BUNDLE_ID")
     api: AppleAppStoreAPI = field(default_factory=lambda: AppleAppStoreAPI(get_setting_or_raise("APPLE_SHARED_SECRET")))
@@ -73,13 +71,13 @@ class AppleInAppProvider(Provider):
         # Check whether the Apple certificate is provided and is a valid certificate.
         get_original_apple_certificate()
 
-    def charge_online(self, *args, **kwargs) -> tuple[SubscriptionPayment, str]:
+    def charge_interactively(self, *args, **kwargs) -> tuple[SubscriptionPayment, str]:
         """
         In case of in-app purchase this operation is triggered from the mobile application library.
         """
         raise AppleInvalidOperation
 
-    def charge_offline(self, *args, **kwargs) -> SubscriptionPayment:
+    def charge_automatically(self, *args, **kwargs) -> SubscriptionPayment:
         raise AppleInvalidOperation
 
     def webhook(self, request: Request, payload: dict) -> Response:

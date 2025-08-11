@@ -17,8 +17,7 @@ from ..defaults import DEFAULT_SUBSCRIPTIONS_SUCCESS_URL, DEFAULT_SUBSCRIPTIONS_
 from ..exceptions import PaymentError, RecurringSubscriptionsAlreadyExist, SubscriptionError
 from ..functions import get_remaining_amount
 from ..models import Plan, Subscription, SubscriptionPayment
-from ..providers import Provider, get_provider, get_providers
-from ..validators import get_validators
+from ..providers import Provider, get_provider, get_provider_by_codename, get_providers_fqns
 from .exceptions import BadRequest
 from .serializers import (
     PaymentProviderListSerializer,
@@ -56,11 +55,9 @@ class PaymentProviderListView(GenericAPIView):
     serializer_class = PaymentProviderListSerializer
 
     def get(self, request, *args, **kwargs) -> Response:
-        serializer = self.serializer_class(
-            {
-                "providers": [{"name": provider.codename} for provider in get_providers() if provider.is_enabled],
-            }
-        )
+        serializer = self.serializer_class({
+            "providers": [{"name": get_provider(fqn).codename} for fqn in get_providers_fqns()]
+        })
 
         return Response(serializer.data)
 
@@ -90,7 +87,7 @@ class SubscriptionView(DestroyAPIView):
     def perform_destroy(self, instance):
         with suppress(SubscriptionPayment.DoesNotExist):
             latest_payment = instance.payments.latest()
-            if get_provider(latest_payment.provider_codename).is_external:
+            if get_provider_by_codename(latest_payment.provider_codename).is_external:
                 raise BadRequest(detail="Cancellation endpoint is not allowed for this provider")
 
         instance.auto_prolong = False
@@ -101,10 +98,6 @@ class SubscriptionSelectView(GenericAPIView):
     permission_classes = (IsAuthenticated,)
     serializer_class = SubscriptionSelectSerializer
     schema = AutoSchema()
-
-    @classmethod
-    def select_payment_provider(cls) -> Provider:
-        return get_provider()
 
     @classmethod
     def get_trial_period(cls, plan, user) -> relativedelta:
@@ -123,17 +116,17 @@ class SubscriptionSelectView(GenericAPIView):
 
     @transaction.atomic(durable=True)
     def post(self, request, *args, **kwargs) -> Response:
+        from ..validators import get_validators
+
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         # TODO: handle quantity
 
+        now_ = now()
         plan = serializer.validated_data["plan"]
         quantity = serializer.validated_data["quantity"]
-        charge_params = {
-            "user": request.user,
-            "plan": plan,
-            "quantity": quantity,
-        }
+        provider_codename = serializer.validated_data["provider"]
+        provider = get_provider_by_codename(provider_codename)
 
         active_subscriptions = request.user.subscriptions.active().order_by("end")
         for validator in get_validators():
@@ -142,38 +135,44 @@ class SubscriptionSelectView(GenericAPIView):
             except RecurringSubscriptionsAlreadyExist as exc:
                 # if there are recurring subscriptions and they are conflicting,
                 # we force-terminate them and go on with creating a new one
-                now_ = now()
                 for subscription in exc.subscriptions:
-                    subscription.end = now()
+                    subscription.end = now_
                     subscription.save()
             except SubscriptionError as exc:
                 raise PermissionDenied(detail=str(exc)) from exc
 
-        provider = self.select_payment_provider()
-        background_charge_succeeded = False
-
-        try:
-            payment = provider.charge_offline(**charge_params)
-            background_charge_succeeded = True
-            redirect_url = getattr(settings, "SUBSCRIPTIONS_SUCCESS_URL", DEFAULT_SUBSCRIPTIONS_SUCCESS_URL)
-        except Exception as exc:
-            if not isinstance(exc, PaymentError | NotImplementedError):
-                log.exception("Offline charge error")
-
-        if not background_charge_succeeded:
-            trial_period = self.get_trial_period(plan, request.user)
-
-            if trial_period:
-                now_ = now()
-                charge_params.update(
-                    {
-                        "amount": plan.charge_amount * 0,  # this makes currencies match
-                        "since": now_,
-                        "until": now_ + trial_period,
-                    }
+        automatic_charge_succeeded = False
+        reference_payment = request.user.payments.filter(
+            provider_codename=provider_codename,
+            status=SubscriptionPayment.Status.COMPLETED,
+        ).order_by("created").last()
+        if reference_payment:
+            try:
+                payment = provider.charge_automatically(
+                    plan=plan,
+                    amount=plan.charge_amount,
+                    quantity=quantity,
+                    since=now_,
+                    until=now_ + plan.charge_period,
+                    reference_payment=reference_payment,
                 )
+                automatic_charge_succeeded = True
+                redirect_url = getattr(settings, "SUBSCRIPTIONS_SUCCESS_URL", DEFAULT_SUBSCRIPTIONS_SUCCESS_URL)
+            except (PaymentError, NotImplementedError):
+                pass
+            except Exception:
+                log.exception("Background charge error")
 
-            payment, redirect_url = provider.charge_online(**charge_params)
+        if not automatic_charge_succeeded:
+            trial_period = self.get_trial_period(plan, request.user)
+            payment, redirect_url = provider.charge_interactively(
+                user=request.user,
+                plan=plan,
+                amount=plan.charge_amount * (0 if trial_period else 1),  # zero with currency if trial_period is not empty
+                quantity=quantity,
+                since=now_,
+                until=now_ + (trial_period or plan.charge_period),
+            )
 
             if trial_period:
                 assert not payment.subscription
@@ -183,7 +182,7 @@ class SubscriptionSelectView(GenericAPIView):
                     quantity=quantity,
                     start=now_,
                     end=now_,
-                    initial_charge_offset=trial_period,
+                    initial_charge_offset=trial_period,  # TODO: ugly
                 )
                 payment.subscription.save()
                 payment.save()
@@ -192,10 +191,11 @@ class SubscriptionSelectView(GenericAPIView):
             self.serializer_class(
                 {
                     "redirect_url": redirect_url,
-                    "background_charge_succeeded": background_charge_succeeded,
+                    "automatic_charge_succeeded": automatic_charge_succeeded,
                     "quantity": payment.quantity,
                     "plan": payment.plan,
                     "payment_id": payment.pk,
+                    "provider": provider_codename,
                 }
             ).data
         )
@@ -216,11 +216,11 @@ class PaymentWebhookView(GenericAPIView):
 
 
 def build_payment_webhook_view(provider: Provider) -> type[GenericAPIView]:
-    codename = provider.codename
+    _provider = provider
 
     class _PaymentWebhookView(PaymentWebhookView):
-        schema = AutoSchema(operation_id_base=f"_{codename}_webhook")
-        provider = get_provider(codename)
+        schema = AutoSchema(operation_id_base=f"_{_provider.codename}_webhook")
+        provider = _provider
 
     return _PaymentWebhookView
 
@@ -251,7 +251,7 @@ class PaymentView(RetrieveAPIView):
         """Fetch payment status from the provider and update status if needed"""
         payment = self.get_object()
         if payment.status == SubscriptionPayment.Status.PENDING:
-            provider = get_provider(payment.provider_codename)
+            provider = get_provider_by_codename(payment.provider_codename)
             provider.check_payments([payment])
 
         return self.get(request, *args, **kwargs)

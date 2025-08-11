@@ -12,7 +12,6 @@ from subscriptions.v0.exceptions import PaymentError
 from subscriptions.v0.fields import relativedelta_to_dict
 from subscriptions.v0.functions import use_resource
 from subscriptions.v0.models import Subscription, SubscriptionPayment, Usage
-from subscriptions.v0.providers import get_providers
 
 from ..helpers import datetime_to_api, days
 
@@ -73,7 +72,7 @@ def test__api__subscriptions__authorized(user_client, two_subscriptions):
             "end": datetime_to_api(subscription.end),
             "quantity": 1,
             "next_charge_date": None,
-            "payment_provider_class": None,
+            "payment_provider": None,
             "plan": {
                 "id": subscription.plan.pk,
                 "codename": subscription.plan.codename,
@@ -132,14 +131,14 @@ def test__api__subscriptions__next_charge_date__not_prolong(user_client, subscri
 
 
 @pytest.mark.django_db(databases=["actual_db"], transaction=True)
-def test__api__subscribe__unauthorized(client, plan):
-    response = client.post("/api/subscribe/", {"plan": plan.pk})
+def test__api__subscribe__unauthorized(client, plan, dummy):
+    response = client.post("/api/subscribe/", {"plan": plan.pk, "provider": dummy.codename})
     assert response.status_code == 403
 
 
 @pytest.mark.django_db(databases=["actual_db"], transaction=True)
 def test__api__subscribe__authorized(client, user_client, plan, dummy):
-    response = user_client.post("/api/subscribe/", {"plan": plan.pk, "quantity": 2})
+    response = user_client.post("/api/subscribe/", {"provider": dummy.codename, "plan": plan.pk, "quantity": 2})
     assert response.status_code == 200, response.content
     result = response.json()
 
@@ -148,7 +147,7 @@ def test__api__subscribe__authorized(client, user_client, plan, dummy):
         "payment_id": str(SubscriptionPayment.objects.latest().pk),
         "quantity": 2,
         "redirect_url": result["redirect_url"],
-        "background_charge_succeeded": False,
+        "automatic_charge_succeeded": False,
     }.items() <= result.items()
 
     response = user_client.get("/api/subscriptions/")
@@ -245,12 +244,12 @@ def test__api__resources__expiration(request, use_cache, user_client, subscripti
 
 
 @pytest.mark.django_db(databases=["actual_db"], transaction=True)
-def test__api__recurring_plan_switch(user, user_client, subscription, payment, bigger_plan):
+def test__api__recurring_plan_switch(user, user_client, subscription, payment, bigger_plan, dummy):
     with freeze_time(subscription.start):
         assert one(user.subscriptions.active()).plan == subscription.plan
 
     with freeze_time(subscription.start + days(2), tick=True):
-        response = user_client.post("/api/subscribe/", {"plan": bigger_plan.pk})
+        response = user_client.post("/api/subscribe/", {"plan": bigger_plan.pk, "provider": dummy.codename})
         assert response.status_code == 200, response.content
         assert one(user.subscriptions.active()).plan == bigger_plan
 
@@ -264,12 +263,12 @@ def test__api__recurring_plan_switch(user, user_client, subscription, payment, b
     ],
 )
 def test__api__recharge_plan_subscription(
-    request, use_cache, client, user_client, subscription, quota, recharge_plan, recharge_quota, resource
+    request, use_cache, client, user_client, subscription, quota, recharge_plan, recharge_quota, resource, dummy
 ):
     request.getfixturevalue("cache_backend") if use_cache else None
 
     with freeze_time(subscription.start + days(2), tick=True):
-        response = user_client.post("/api/subscribe/", {"plan": recharge_plan.pk})
+        response = user_client.post("/api/subscribe/", {"plan": recharge_plan.pk, "provider": dummy.codename})
         assert response.status_code == 200, response.content
         result = response.json()
 
@@ -278,7 +277,7 @@ def test__api__recharge_plan_subscription(
             "quantity": 1,
             "payment_id": str(SubscriptionPayment.objects.latest().pk),
             "redirect_url": result["redirect_url"],
-            "background_charge_succeeded": False,
+            "automatic_charge_succeeded": False,
         }.items() <= result.items()
 
         transaction_id = SubscriptionPayment.objects.latest().provider_transaction_id
@@ -294,26 +293,28 @@ def test__api__recharge_plan_subscription(
 
 
 @pytest.mark.django_db(databases=["actual_db"])
-def test__background_charge(subscription):
+def test__charge_automatically(subscription, dummy):
     with freeze_time(subscription.start + days(1)):
         payment = SubscriptionPayment.objects.create(
-            provider_codename=get_providers()[0].codename,
+            provider_codename=dummy.codename,
             provider_transaction_id="0000",
             amount=subscription.plan.charge_amount,
             user=subscription.user,
             plan=subscription.plan,
             subscription=subscription,
+            paid_since=subscription.start,
+            paid_until=subscription.end,
         )
 
     with freeze_time(subscription.start + days(2)):
         with pytest.raises(PaymentError, match="no previous successful payment"):
-            subscription.charge_offline()
+            subscription.charge_automatically()
 
     payment.status = SubscriptionPayment.Status.COMPLETED
     payment.save()
 
     with freeze_time(subscription.start + days(2)):
-        subscription.charge_offline()
+        subscription.charge_automatically()
 
 
 @pytest.mark.django_db(databases=["actual_db"])
@@ -340,7 +341,7 @@ def test__api__payment(user_client, payment):
             "start": datetime_to_api(payment.subscription.start),
             "end": datetime_to_api(payment.subscription.end),
             "next_charge_date": datetime_to_api(next(payment.subscription.iter_charge_dates(since=now()))),
-            "payment_provider_class": "DummyProvider",
+            "payment_provider": "dummy",
         },
         "quantity": 2,
         "amount": 100.0,

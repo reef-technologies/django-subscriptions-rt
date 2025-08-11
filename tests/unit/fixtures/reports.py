@@ -70,6 +70,8 @@ def reports_payments(db, user, other_user, plan, bigger_plan, paddle) -> list[Su
             quantity=2,
             amount=usd(100),
             provider_codename=paddle.codename,
+            paid_since=now_,
+            paid_until=now() + days(10),
         ),
         SubscriptionPayment.objects.create(
             created=now_ + days(10),
@@ -79,6 +81,8 @@ def reports_payments(db, user, other_user, plan, bigger_plan, paddle) -> list[Su
             quantity=2,
             amount=usd(90),
             provider_codename=paddle.codename,
+            paid_since=now_ + days(10),
+            paid_until=now_ + days(20),
         ),
         SubscriptionPayment.objects.create(
             created=now_ + days(20),
@@ -88,6 +92,8 @@ def reports_payments(db, user, other_user, plan, bigger_plan, paddle) -> list[Su
             quantity=2,
             amount=usd(80),
             provider_codename=paddle.codename,
+            paid_since=now_ + days(20),
+            paid_until=now_ + days(30),
         ),
         SubscriptionPayment.objects.create(
             created=now_ + days(30),
@@ -97,6 +103,8 @@ def reports_payments(db, user, other_user, plan, bigger_plan, paddle) -> list[Su
             quantity=2,
             amount=usd(70),
             provider_codename=paddle.codename,
+            paid_since=now_ + days(30),
+            paid_until=now_ + days(40),
         ),
         SubscriptionPayment.objects.create(
             created=now_ + days(10),
@@ -106,6 +114,8 @@ def reports_payments(db, user, other_user, plan, bigger_plan, paddle) -> list[Su
             quantity=2,
             amount=usd(200),
             provider_codename=paddle.codename,
+            paid_since=now_ + days(10),
+            paid_until=now_ + days(20),
         ),
         SubscriptionPayment.objects.create(
             created=now_ + days(20),
@@ -115,6 +125,8 @@ def reports_payments(db, user, other_user, plan, bigger_plan, paddle) -> list[Su
             quantity=2,
             amount=usd(200),
             provider_codename=paddle.codename,
+            paid_since=now_ + days(20),
+            paid_until=now_ + days(30),
         ),
         SubscriptionPayment.objects.create(
             created=now_ + days(20),
@@ -124,6 +136,8 @@ def reports_payments(db, user, other_user, plan, bigger_plan, paddle) -> list[Su
             quantity=3,
             amount=None,
             provider_codename=paddle.codename,
+            paid_since=now_ + days(20),
+            paid_until=now_ + days(30),
         ),
     ]
 

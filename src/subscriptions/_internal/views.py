@@ -5,7 +5,7 @@ from django.views.generic import DetailView, ListView, TemplateView
 
 from .exceptions import PaymentError, ProviderNotFound
 from .models import Plan
-from .providers import get_provider
+from .providers import get_provider_by_codename
 
 
 class PlanListView(ListView):
@@ -28,7 +28,7 @@ class PlanSubscriptionView(LoginRequiredMixin, PlanView):
     def dispatch(self, request, *args, **kwargs):
         self.provider_codename = request.GET.get("provider")
         try:
-            self.payment_provider = get_provider(self.provider_codename)
+            self.payment_provider = get_provider_by_codename(self.provider_codename)
         except ProviderNotFound:
             raise Http404()
 

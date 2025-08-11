@@ -17,7 +17,7 @@ from rest_framework.serializers import (
 from ..exceptions import ProviderNotFound
 from ..fields import relativedelta_to_dict
 from ..models import Plan, Subscription, SubscriptionPayment
-from ..providers import get_provider
+from .validators import validate_provider
 
 
 class PlanSerializer(ModelSerializer):
@@ -53,7 +53,7 @@ class PlanSerializer(ModelSerializer):
 class SubscriptionSerializer(ModelSerializer):
     plan = PlanSerializer()
     next_charge_date = SerializerMethodField()
-    payment_provider_class = SerializerMethodField()
+    payment_provider = SerializerMethodField()
 
     class Meta:
         model = Subscription
@@ -64,7 +64,7 @@ class SubscriptionSerializer(ModelSerializer):
             "start",
             "end",
             "next_charge_date",
-            "payment_provider_class",
+            "payment_provider",
         )
 
     def get_next_charge_date(self, obj) -> datetime | None:
@@ -74,11 +74,10 @@ class SubscriptionSerializer(ModelSerializer):
         with suppress(StopIteration):
             return next(obj.iter_charge_dates(since=now()))
 
-    def get_payment_provider_class(self, obj) -> str | None:
+    def get_payment_provider(self, obj) -> str | None:
         with suppress(SubscriptionPayment.DoesNotExist, ProviderNotFound):
             reference_payment = obj.get_reference_payment()
-            provider = get_provider(reference_payment.provider_codename)
-            return provider.__class__.__name__
+            return reference_payment.provider_codename
 
 
 class PaymentProviderSerializer(Serializer):
@@ -92,8 +91,9 @@ class PaymentProviderListSerializer(Serializer):
 class SubscriptionSelectSerializer(Serializer):
     plan = PrimaryKeyRelatedField(queryset=Plan.objects.all())
     quantity = IntegerField(default=1)
+    provider = CharField(validators=[validate_provider])
     redirect_url = CharField(read_only=True)
-    background_charge_succeeded = BooleanField(default=False)
+    automatic_charge_succeeded = BooleanField(default=False)
     payment_id = CharField(read_only=True)
 
 

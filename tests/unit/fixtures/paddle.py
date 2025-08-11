@@ -1,8 +1,8 @@
+from django.utils.timezone import now
 import pytest
 
 from subscriptions.v0.models import SubscriptionPayment
-from subscriptions.v0.providers import get_provider, get_providers
-from subscriptions.v0.providers.paddle import PaddleProvider
+from subscriptions.v0.providers import get_provider_by_codename
 
 from ..helpers import usd
 
@@ -12,15 +12,12 @@ def paddle(settings) -> str:
     settings.SUBSCRIPTIONS_PAYMENT_PROVIDERS = [
         "subscriptions.v0.providers.paddle.PaddleProvider",
     ]
-    get_provider.cache_clear()
-    get_providers.cache_clear()
-    provider = get_provider()
-    assert isinstance(provider, PaddleProvider)
-    return provider
+    return get_provider_by_codename('paddle')
 
 
 @pytest.fixture
 def paddle_unconfirmed_payment(db, paddle, plan, user) -> SubscriptionPayment:
+    now_ = now()
     return SubscriptionPayment.objects.create(
         user=user,
         plan=plan,
@@ -29,6 +26,8 @@ def paddle_unconfirmed_payment(db, paddle, plan, user) -> SubscriptionPayment:
         provider_transaction_id="12345",
         amount=usd(100),  # type: ignore[misc]
         metadata={"subscription_id": "888999"},
+        paid_since=now_,
+        paid_until=now_ + plan.charge_period,
     )
 
 

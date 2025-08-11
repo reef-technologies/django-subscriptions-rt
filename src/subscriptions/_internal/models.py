@@ -22,6 +22,8 @@ from django.db.models import (
     UniqueConstraint,
 )
 from django.db.models.functions import Least
+from django.db.transaction import atomic
+from django.forms import ValidationError
 from django.urls import reverse
 from django.utils.timezone import now
 from model_utils import FieldTracker
@@ -34,7 +36,7 @@ from .exceptions import (
     ProviderNotFound,
 )
 from .fields import MoneyField, RelativeDurationField
-from .utils import AdvancedJSONEncoder, merge_iter
+from .utils import AdvancedJSONEncoder, merge_iter, pre_validate
 
 log = getLogger(__name__)
 
@@ -83,7 +85,7 @@ class Tier(models.Model):
 
     features = models.ManyToManyField(Feature)
 
-    objects: ClassVar[Manager[Tier]] = Manager()  # for mypy
+    objects: ClassVar[Manager["Tier"]] = Manager()  # for mypy
 
     class Meta(SubscriptionsMeta):
         db_table = "subscriptions_v0_tier"
@@ -109,7 +111,7 @@ class Plan(models.Model):
     metadata = models.JSONField(blank=True, default=dict, encoder=AdvancedJSONEncoder)
     is_enabled = models.BooleanField(default=True)
 
-    objects: ClassVar[Manager[Plan]] = Manager()  # for mypy
+    objects: ClassVar[Manager["Plan"]] = Manager()  # for mypy
 
     class Meta(SubscriptionsMeta):
         db_table = "subscriptions_v0_plan"
@@ -146,7 +148,7 @@ class QuotaChunk:
     def includes(self, date: datetime) -> bool:
         return self.start <= date < self.end
 
-    def same_lifetime(self, other: QuotaChunk) -> bool:
+    def same_lifetime(self, other: "QuotaChunk") -> bool:
         return self.start == other.start and self.end == other.end
 
 
@@ -320,7 +322,7 @@ class Subscription(models.Model):
 
     def _iter_single_quota_chunks(
         self,
-        quota: Quota,
+        quota: "Quota",
         since: datetime | None = None,
         until: datetime | None = None,
     ):
@@ -373,34 +375,49 @@ class Subscription(models.Model):
 
             yield charge_date
 
-    def get_reference_payment(self) -> SubscriptionPayment:
-        return self.payments.filter(status=SubscriptionPayment.Status.COMPLETED).latest()
+    def get_reference_payment(
+        self,
+        lookback: timedelta = timedelta(days=90),
+    ) -> "SubscriptionPayment":
+        """Find a payment to take credentials from for automatic charging"""
 
-    def charge_offline(self) -> SubscriptionPayment:
-        from .providers import get_provider
+        last_successful_payment = SubscriptionPayment.objects.filter(
+            status=SubscriptionPayment.Status.COMPLETED,
+            user_id=self.user.pk,
+            updated__gte=now() - lookback,
+        ).order_by("updated").last()
+        if not last_successful_payment:
+            raise SubscriptionPayment.DoesNotExist
+
+        return last_successful_payment
+
+    def charge_automatically(self) -> "SubscriptionPayment":
+        from .providers import get_provider_by_codename
 
         try:
             reference_payment = self.get_reference_payment()
         except SubscriptionPayment.DoesNotExist:
             raise PaymentError("There is no previous successful payment to take credentials from")
 
-        provider_codename = reference_payment.provider_codename
+        codename = reference_payment.provider_codename
         try:
-            provider = get_provider(provider_codename)
+            provider = get_provider_by_codename(codename)
         except ProviderNotFound as exc:
-            raise PaymentError(f'Could not retrieve provider "{provider_codename}"') from exc
+            raise PaymentError(f'Could not retrieve provider "{codename}"') from exc
 
-        return provider.charge_offline(
-            user=self.user,
+        return provider.charge_automatically(
             plan=self.plan,
-            subscription=self,
+            amount=self.plan.charge_amount,
             quantity=self.quantity,
+            since=self.end,
+            until=self.end + self.plan.charge_period,
+            subscription=self,
             reference_payment=reference_payment,
         )
 
     def adjust_default_subscription(self):
         # this subscription pushes out every default subscription out of its (start,end) period;
-        # if this subscription is shrink, then it fills the gap with default subscription
+        # if this subscription is shrunk, then it fills the gap with default subscription
 
         from .functions import get_default_plan
 
@@ -520,7 +537,7 @@ class AbstractTransaction(models.Model):
     provider_codename = models.CharField(max_length=255)
     # Sometimes there is no information about internal provider's transaction ID.
     # For such cases we set `provider_transaction_id` to None and fill it in later.
-    # Also, this field is legacy and should be replaced by provider-specific child
+    # TODO: Also, this field is legacy and should be replaced by provider-specific child
     # model, see https://github.com/reef-technologies/django-subscriptions-rt/issues/13
     provider_transaction_id = models.CharField(max_length=255, blank=True, null=True)
     status = models.PositiveSmallIntegerField(choices=Status.choices, default=Status.PENDING)
@@ -561,10 +578,10 @@ class AbstractTransaction(models.Model):
         return f"{self.short_id} {self.get_status_display()} {self.amount}"
 
     @property
-    def provider(self) -> Provider:
-        from .providers import get_provider
+    def provider(self) -> "Provider":
+        from .providers import get_provider_by_codename
 
-        return get_provider(self.provider_codename)
+        return get_provider_by_codename(self.provider_codename)
 
 
 class SubscriptionPayment(AbstractTransaction):
@@ -574,21 +591,16 @@ class SubscriptionPayment(AbstractTransaction):
         Subscription,
         on_delete=models.PROTECT,
         blank=True,
-        null=True,  # TODO: make this field required?
+        null=True,
         related_name="payments",
+        editable=False,
     )
     quantity = models.PositiveIntegerField(default=1)
-
-    # If not specifying following fields, they are set automatically after Subscription
-    # creation / prolongation; however, it works other way round as well: if these fields
-    # are set, their values will be used to adjust subscription duration; this is handy
-    # when payment and subscription info comes from external source and is out of control
-    # of the application.
-    paid_since = models.DateTimeField(blank=True)
-    paid_until = models.DateTimeField(blank=True)
+    paid_since = models.DateTimeField()
+    paid_until = models.DateTimeField()
 
     tracker = FieldTracker()
-    objects: ClassVar[Manager[SubscriptionPayment]] = Manager()  # for mypy
+    objects: ClassVar[Manager["SubscriptionPayment"]] = Manager()  # for mypy
 
     class Meta(AbstractTransaction.Meta):
         db_table = "subscriptions_v0_subscriptionpayment"
@@ -601,34 +613,35 @@ class SubscriptionPayment(AbstractTransaction):
             f"{self.user} {self.amount} from={self.paid_since} until={self.paid_until}"
         )
 
+    def clean_subscription(self) -> None:
+        if not self.subscription:
+            return
+
+        if self.subscription.plan != self.plan:
+            raise ValidationError("Subscription plan does not match payment plan")
+
+        if self.subscription.user != self.user:
+            raise ValidationError("Subscription user does not match payment user")
+
+        if self.subscription.quantity != self.quantity:
+            raise ValidationError("Subscription quantity does not match payment quantity")
+
+        if self.paid_until < self.start or self.paid_since > self.end:
+            raise ValidationError("Payment period does not overlap with subscription period")
+
+    @atomic
+    @pre_validate
     def save(self, *args, **kwargs):
-        assert bool(self.paid_since) == bool(self.paid_until), (
-            "paid_since and paid_until should both be either set or not"
-        )
+        assert self.paid_since <= self.paid_until, "paid_since must be less than or equal to paid_until"
 
-        if self.status == self.Status.COMPLETED:
-            if subscription := self.subscription:
-                if self.paid_until:
-                    assert self.paid_until > self.paid_since
-
-                    # change existing subscription duration based on payment's end
-                    if self.paid_until <= subscription.end:
-                        log.warning(
-                            "Payment's end (%s) is earlier than current subscription's end (%s) "
-                            "-> payment has no effect",
-                            self.paid_until,
-                            subscription.end,
-                        )
-                    else:
-                        subscription.end = self.paid_until
-
-                else:
-                    self.paid_since = subscription.end
-                    self.paid_until = subscription.end = subscription.prolong()  # TODO: what if this fails?
-
-                subscription.save()
-
+        if self.tracker.has_changed("status") and self.status == self.Status.COMPLETED:
+            if self.subscription:
+                # extend subscription period
+                self.subscription.start = min(self.paid_since, self.subscription.start)
+                self.subscription.end = max(self.paid_until, self.subscription.end)
+                self.subscription.save()
             else:
+                # create a new subscription
                 self.subscription = Subscription.objects.create(
                     user=self.user,
                     plan=self.plan,
@@ -636,21 +649,18 @@ class SubscriptionPayment(AbstractTransaction):
                     start=self.paid_since,
                     end=self.paid_until,
                 )
-                # in case paid_since and paid_until were empty:
-                self.paid_since = self.subscription.start
-                self.paid_until = self.subscription.end
 
         return super().save(*args, **kwargs)
 
     @property
     def meta(self) -> BaseModel:
-        from .providers import get_provider
+        from .providers import get_provider_by_codename
 
-        provider = get_provider(self.provider_codename)
+        provider = get_provider_by_codename(self.provider_codename)
         return provider.metadata_class.parse_obj(self.metadata)
 
     @meta.setter
-    def meta(self, value: BaseModel):
+    def meta(self, value: BaseModel) -> None:
         self.metadata = value.dict()
 
 
@@ -659,7 +669,7 @@ class SubscriptionPaymentRefund(AbstractTransaction):
     # TODO: add support by providers
 
     tracker = FieldTracker()
-    objects: ClassVar[Manager[SubscriptionPaymentRefund]] = Manager()  # for mypy
+    objects: ClassVar[Manager["SubscriptionPaymentRefund"]] = Manager()  # for mypy
 
     class Meta(AbstractTransaction.Meta):
         db_table = "subscriptions_v0_subscriptionpaymentrefund"
@@ -669,7 +679,7 @@ class Tax(models.Model):
     subscription_payment = models.ForeignKey(SubscriptionPayment, on_delete=models.PROTECT, related_name="taxes")
     amount = MoneyField()
 
-    objects: ClassVar[Manager[Tax]] = Manager()  # for mypy
+    objects: ClassVar[Manager["Tax"]] = Manager()  # for mypy
 
     class Meta(SubscriptionsMeta):
         db_table = "subscriptions_v0_tax"

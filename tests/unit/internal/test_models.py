@@ -18,11 +18,15 @@ def test__models__payment__sync_with_subscription(plan, user, dummy):
     Subscription: ---------------------------------------------->
     Payment:      -----?---------------------------------------->
     """
+    start = now()
+
     payment = SubscriptionPayment.objects.create(
         user=user,
         plan=plan,
         provider_codename=dummy.codename,
         provider_transaction_id="12345",
+        paid_since=start,
+        paid_until=start + plan.charge_period,
     )
     assert not Subscription.objects.exists()
 
@@ -35,9 +39,7 @@ def test__models__payment__sync_with_subscription(plan, user, dummy):
     payment.save()
     subscription = one(Subscription.objects.all())
     assert subscription.start == payment.paid_since
-    assert now() - timedelta(seconds=1) < payment.paid_since < now()
-    initial_subscription_start = subscription.start
-    assert payment.paid_until == subscription.end == initial_subscription_start + plan.charge_period
+    assert payment.paid_until == subscription.end == start + plan.charge_period
 
     # shrink the payment and ensure that subscription is not shrunk
     """
@@ -47,20 +49,34 @@ def test__models__payment__sync_with_subscription(plan, user, dummy):
     payment.paid_until -= days(2)
     payment.save()
     subscription = one(Subscription.objects.all())
-    assert subscription.start == payment.paid_since == initial_subscription_start
+    assert subscription.start == payment.paid_since == start
     assert subscription.end > payment.paid_until
-    assert subscription.end == initial_subscription_start + plan.charge_period
+    assert subscription.end == start + plan.charge_period
 
-    # enlarge the payment and ensure that subscription is enlarged as well
+    # enlarge the payment and ensure that subscription is left as-is (since no status change)
     """
-    Subscription: -----[===================]------------------------>
+    Subscription: -----[===============]---------------------------->
     Payment:      -----[=====COMPLETED=====]------------------------>
     """
     payment.paid_until = subscription.end + days(2)
     payment.save()
     subscription = one(Subscription.objects.all())
-    assert subscription.start == payment.paid_since == initial_subscription_start
-    assert subscription.end == payment.paid_until == initial_subscription_start + plan.charge_period + days(2)
+    assert subscription.start == payment.paid_since == start
+    assert subscription.end == start + plan.charge_period
+
+    # re-set payment status and ensure that subscription is enlarged as well
+    """
+    Subscription: -----[===================]------------------------>
+    Payment:      -----[=====COMPLETED=====]------------------------>
+    """
+    payment.status = SubscriptionPayment.Status.PENDING
+    payment.save()
+    payment.status = SubscriptionPayment.Status.COMPLETED
+    payment.save()
+
+    subscription = one(Subscription.objects.all())
+    assert subscription.start == payment.paid_since == start
+    assert subscription.end == payment.paid_until == start + plan.charge_period + days(2)
 
     # create a second payment and ensure that subscription is extended
     """
@@ -74,15 +90,14 @@ def test__models__payment__sync_with_subscription(plan, user, dummy):
         provider_codename=dummy.codename,
         provider_transaction_id="12346",
         status=SubscriptionPayment.Status.COMPLETED,
+        paid_since=subscription.end,
+        paid_until=subscription.prolong(),
     )
-    assert SubscriptionPayment.objects.count() == 2
-    previous_payment = subscription.payments.earliest()
 
-    assert payment.paid_since == previous_payment.paid_until
-    assert payment.paid_until == initial_subscription_start + 2 * plan.charge_period
+    assert SubscriptionPayment.objects.count() == 2
 
     subscription = one(Subscription.objects.all())
-    assert subscription.start == initial_subscription_start
+    assert subscription.start == start
     assert subscription.end == payment.paid_until
 
 
@@ -106,6 +121,8 @@ def test__models__payment__no_sync_with_subscription(plan, user, dummy, subscrip
         provider_codename=dummy.codename,
         provider_transaction_id="12345",
         status=SubscriptionPayment.Status.PENDING,
+        paid_since=subscription.end,
+        paid_until=subscription.prolong(),
     )
     subscription = one(Subscription.objects.all())
     assert subscription.start == subsciption_initial_start

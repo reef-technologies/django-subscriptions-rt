@@ -88,7 +88,10 @@ def test__google__dismiss_token(google_in_app, user, subscription, purchase_toke
         user=user,
         plan=subscription.plan,
         subscription=subscription,
+        paid_since=subscription.end,
+        paid_until=subscription.prolong(),
     )
+    subscription.refresh_from_db()
     payment2 = SubscriptionPayment.objects.create(
         provider_codename=google_in_app.codename,
         provider_transaction_id=purchase_token,
@@ -96,10 +99,13 @@ def test__google__dismiss_token(google_in_app, user, subscription, purchase_toke
         user=user,
         plan=subscription.plan,
         subscription=subscription,
+        paid_since=subscription.end,
+        paid_until=subscription.prolong(),
     )
 
     assert subscription.end == payment2.paid_until
-    with freeze_time(payment2.paid_since + (payment2.paid_until - payment2.paid_since) / 2):
+    now_ = payment2.paid_since + (payment2.paid_until - payment2.paid_since) / 2
+    with freeze_time(now_):
         payment1_end = payment1.paid_until
         payment2_end = payment2.paid_until
 
@@ -111,10 +117,9 @@ def test__google__dismiss_token(google_in_app, user, subscription, purchase_toke
         payment1 = SubscriptionPayment.objects.get(pk=payment1.pk)
         payment2 = SubscriptionPayment.objects.get(pk=payment2.pk)
 
-        assert payment1.paid_until == payment1_end
-        assert payment2.paid_until != payment2_end
-        assert payment2.paid_until == now()
-        assert subscription.end == now()
+        assert payment1.paid_until == payment1_end  # old payment remains as-is
+        assert payment2.paid_until == now()  # current payment is shrunk
+        assert subscription.end == now()  # current subscription is shrunk
 
 
 @pytest.mark.django_db(databases=["actual_db"])
@@ -128,13 +133,13 @@ def test__google__get_user_by_token(google_in_app, payment):
 
 @pytest.mark.django_db(databases=["actual_db"])
 def test__google__webhook_test__google__notification(google_in_app, google_test_notification, client):
-    response = client.post("/api/webhook/google_in_app/", google_test_notification, content_type="application/json")
+    response = client.post("/api/webhook/google/", google_test_notification, content_type="application/json")
     assert response.status_code == 200, response.content
 
 
 @pytest.mark.django_db(databases=["actual_db"])
 def test__google__webhook_for_app_notification_unauthorized(google_in_app, app_notification, client):
-    response = client.post("/api/webhook/google_in_app/", app_notification, content_type="application/json")
+    response = client.post("/api/webhook/google/", app_notification, content_type="application/json")
     assert response.status_code == 403, response.content
 
 
@@ -149,7 +154,7 @@ def test__google__webhook_for_app_notification(
         "subscriptions.v0.providers.google_in_app.GoogleInAppProvider.get_purchase",
         return_value=google_subscription_purchase,
     ):
-        response = user_client.post("/api/webhook/google_in_app/", app_notification, content_type="application/json")
+        response = user_client.post("/api/webhook/google/", app_notification, content_type="application/json")
         assert response.status_code == 200, response.content
         google_in_app.get_purchase.assert_called_with(app_notification["purchase_token"])
 
@@ -178,7 +183,7 @@ def test__google__webhook_for_app_notification_duplicate(
     ):
         for _ in range(3):
             response = user_client.post(
-                "/api/webhook/google_in_app/", app_notification, content_type="application/json"
+                "/api/webhook/google/", app_notification, content_type="application/json"
             )
             assert response.status_code == 200, response.content
 
@@ -198,6 +203,8 @@ def test__google__webhook_linked_token_dismissing(
         status=SubscriptionPayment.Status.COMPLETED,
         user=user,
         plan=plan_with_google,
+        paid_since=now(),
+        paid_until=now() + plan_with_google.charge_period,
     )
     assert payment.paid_until > now()
     assert payment.subscription.end > now()
@@ -207,7 +214,7 @@ def test__google__webhook_linked_token_dismissing(
         "subscriptions.v0.providers.google_in_app.GoogleInAppProvider.get_purchase",
         return_value=google_subscription_purchase,
     ):
-        response = user_client.post("/api/webhook/google_in_app/", app_notification, content_type="application/json")
+        response = user_client.post("/api/webhook/google/", app_notification, content_type="application/json")
         assert response.status_code == 200, response.content
 
     assert SubscriptionPayment.objects.count() == 2
@@ -226,7 +233,7 @@ def test__google__google_notification_without_app_notification(
         "subscriptions.v0.providers.google_in_app.GoogleInAppProvider.get_purchase",
         return_value=google_subscription_purchase,
     ):
-        response = client.post("/api/webhook/google_in_app/", google_rtdn_notification, content_type="application/json")
+        response = client.post("/api/webhook/google/", google_rtdn_notification, content_type="application/json")
         assert response.status_code == 200, response.content
 
 
@@ -246,6 +253,8 @@ def test__google__event_status_check(
         status=SubscriptionPayment.Status.COMPLETED,
         user=user,
         plan=plan_with_google,
+        paid_since=now(),
+        paid_until=now() + plan_with_google.charge_period,
     )
 
     # TODO: not all cases covered
@@ -255,7 +264,7 @@ def test__google__event_status_check(
             return_value=google_subscription_purchase,
         ):
             response = client.post(
-                "/api/webhook/google_in_app/", google_rtdn_notification, content_type="application/json"
+                "/api/webhook/google/", google_rtdn_notification, content_type="application/json"
             )
             # google posted notification with PURCHASED state, but real purchase has PAUSED state
             # -> something went wrong
@@ -278,7 +287,7 @@ def test__google__purchase_acknowledgement(
             ),
         ):
             response = user_client.post(
-                "/api/webhook/google_in_app/", app_notification, content_type="application/json"
+                "/api/webhook/google/", app_notification, content_type="application/json"
             )
             assert response.status_code == 200, response.content
             assert Subscription.objects.exists()
@@ -311,7 +320,7 @@ def test__google__purchase_flow(
         "subscriptions.v0.providers.google_in_app.GoogleInAppProvider.get_purchase",
         return_value=google_subscription_purchase,
     ):
-        response = user_client.post("/api/webhook/google_in_app/", app_notification, content_type="application/json")
+        response = user_client.post("/api/webhook/google/", app_notification, content_type="application/json")
         assert response.status_code == 200, response.content
 
     assert SubscriptionPayment.objects.exists()
@@ -321,7 +330,7 @@ def test__google__purchase_flow(
         return_value=google_subscription_purchase,
     ):
         response = client.post(
-            "/api/webhook/google_in_app/",
+            "/api/webhook/google/",
             google_rtdn_notification_factory(GoogleSubscriptionNotificationType.PURCHASED),
             content_type="application/json",
         )
@@ -338,7 +347,7 @@ def test__google__purchase_flow(
         return_value=google_subscription_purchase,
     ):
         response = client.post(
-            "/api/webhook/google_in_app/",
+            "/api/webhook/google/",
             google_rtdn_notification_factory(GoogleSubscriptionNotificationType.RENEWED),
             content_type="application/json",
         )
@@ -373,7 +382,7 @@ def test__google__expiration_notification(
         return_value=google_subscription_purchase,
     ):
         response = client.post(
-            "/api/webhook/google_in_app/",
+            "/api/webhook/google/",
             google_rtdn_notification_factory(GoogleSubscriptionNotificationType.EXPIRED),
             content_type="application/json",
         )
@@ -437,7 +446,7 @@ def test__google__subscriptions__cancel__google(
         return_value=google_subscription_purchase,
     ):
         notification = google_rtdn_notification_factory(GoogleSubscriptionNotificationType.CANCELED)
-        response = client.post("/api/webhook/google_in_app/", notification, content_type="application/json")
+        response = client.post("/api/webhook/google/", notification, content_type="application/json")
         assert response.status_code == 200, response.content
 
     assert user.subscriptions.active().count() == 1
@@ -451,6 +460,7 @@ def test__google__subscriptions__voided_purchase(
     subscription,
     google_in_app,
     google_rtdn_voided_purchase_notification,
+    purchase_token,
 ):
     subscription.end = now() + days(10)
     subscription.save()
@@ -460,7 +470,7 @@ def test__google__subscriptions__voided_purchase(
         plan=subscription.plan,
         subscription=subscription,
         provider_codename=google_in_app.codename,
-        provider_transaction_id="12345",
+        provider_transaction_id=purchase_token,
         status=SubscriptionPayment.Status.PENDING,
         paid_since=now() + days(10),
         paid_until=now() + days(40),
@@ -469,7 +479,7 @@ def test__google__subscriptions__voided_purchase(
     assert user.subscriptions.active().count() == 1
 
     response = client.post(
-        "/api/webhook/google_in_app/", google_rtdn_voided_purchase_notification, content_type="application/json"
+        "/api/webhook/google/", google_rtdn_voided_purchase_notification, content_type="application/json"
     )
     assert response.status_code == 200, response.content
 

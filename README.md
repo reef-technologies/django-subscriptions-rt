@@ -265,7 +265,7 @@ Below is an example how to use reporting functionality. Please pay attention tha
 from django.utils.timezone import now
 from datetime import timedelta
 from subscriptions.v0 import SubscriptionsReport, TransactionsReport
-from subscriptions.v0 import get_provider
+
 
 subscriptions = SubscriptionsReport(
    since=now()-timedelta(days=30),
@@ -286,7 +286,7 @@ print('Active plans & quantities:', subscriptions.get_active_plans_and_quantitie
 print('Active plans -> quantity total:', subscriptions.get_active_plans_total())
 
 transactions = TransactionsReport(
-   provider_codename=get_provider().codename,
+   provider_codename="paddle",
    since=now()-timedelta(days=30),
    until=now(),
 )
@@ -325,7 +325,7 @@ for report in TransactionsReport.iter_periods(
    frequency=DAILY,
    since=now()-timedelta(days=30),
    until=now(),
-   provider_codename=get_provider().codename,
+   provider_codename="paddle",
 ):
    print(f'Completed payments amount for {report.since}-{report.until}: {report.get_completed_payments_total()}')
 ```

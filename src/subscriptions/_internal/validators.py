@@ -1,15 +1,12 @@
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import TYPE_CHECKING
 
 from django.conf import settings
 from django.utils.module_loading import import_string
 
 from .defaults import DEFAULT_SUBSCRIPTIONS_VALIDATORS
 from .exceptions import RecurringSubscriptionsAlreadyExist, SubscriptionError
-
-if TYPE_CHECKING:
-    from .models import Plan, SubscriptionQuerySet
+from .models import Plan, SubscriptionQuerySet
 
 
 @dataclass(frozen=True)

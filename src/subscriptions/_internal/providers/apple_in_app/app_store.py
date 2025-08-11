@@ -4,7 +4,7 @@ import enum
 import functools
 import logging
 import pathlib
-from typing import Any
+from typing import Any, Self
 
 import jwt
 from cryptography.hazmat.primitives.serialization import Encoding
@@ -16,10 +16,8 @@ from pydantic import (
     Field,
 )
 
-from subscriptions.v0.providers.apple_in_app.exceptions import ConfigurationError
-
 from .enums import AppleEnvironment
-from .exceptions import PayloadValidationError
+from .exceptions import ConfigurationError, PayloadValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -212,7 +210,7 @@ class AppStoreTransactionInfo(BaseModel):
     web_order_line_item_id: str = Field(alias="webOrderLineItemId")
 
     @classmethod
-    def from_signed_payload(cls, signed_payload_data: str) -> AppStoreTransactionInfo:
+    def from_signed_payload(cls, signed_payload_data: str) -> Self:
         payload = validate_and_fetch_apple_signed_payload(signed_payload_data)
         return cls.parse_obj(payload)
 
@@ -260,7 +258,7 @@ class AppStoreNotification(BaseModel):
         return self.data.transaction_info
 
     @classmethod
-    def from_signed_payload(cls, signed_payload_data: str) -> AppStoreNotification:
+    def from_signed_payload(cls, signed_payload_data: str) -> Self:
         payload = validate_and_fetch_apple_signed_payload(signed_payload_data)
         return cls.parse_obj(payload)
 

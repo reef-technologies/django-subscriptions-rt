@@ -346,6 +346,9 @@ def test__default_plan__subscription_payment__num_subscriptions(user, default_pl
         subscription=subscription,
         plan=plan,
         status=SubscriptionPayment.Status.COMPLETED,
+        paid_since=subscription.end,
+        paid_until=subscription.prolong(),
+        provider_codename="dummy",
     )
     assert user.subscriptions.count() == 3
 
@@ -482,7 +485,7 @@ def test__default_plan__subscription_renewal(user, default_plan, subscription, p
     assert subscriptions_before[1].end == subscriptions_before[2].start
 
     with freeze_time(subscription.end - days(1), tick=True):
-        last_payment = subscription.charge_offline()
+        last_payment = subscription.charge_automatically()
 
         assert last_payment.paid_since == subscriptions_before[1].end
         assert last_payment.paid_until > subscriptions_before[1].end

@@ -25,7 +25,7 @@ class SubscriptionError(Exception):
 
 
 class RecurringSubscriptionsAlreadyExist(SubscriptionError):
-    def __init__(self, message, subscriptions: list[Subscription]):
+    def __init__(self, message, subscriptions: list["Subscription"]):
         super().__init__(message)
         self.subscriptions = subscriptions
 

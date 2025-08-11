@@ -1,5 +1,8 @@
 from datetime import timedelta
 
+from django.utils.timezone import now
+from more_itertools import one
+
 import pytest
 from dateutil.relativedelta import relativedelta
 from freezegun import freeze_time
@@ -38,6 +41,8 @@ def test__get_trial_period__already_paid(trial_period, plan, user):
         user=user,
         plan=plan,
         provider_codename="some",
+        paid_since=now(),
+        paid_until=now() + plan.charge_period,
     )
     assert SubscriptionSelectView.get_trial_period(plan, user) == trial_period
 
@@ -71,7 +76,7 @@ def test__get_trial_period__cheating__multiacc__paddle(
 
     # ---- pay as "user" ----
     client.force_login(user)
-    response = client.post("/api/subscribe/", {"plan": plan.pk})
+    response = client.post("/api/subscribe/", {"plan": plan.pk, "provider": paddle.codename})
     assert response.status_code == 200, response.content
 
     result = response.json()
@@ -87,7 +92,7 @@ def test__get_trial_period__cheating__multiacc__paddle(
 
     # ---- pay as "other_user" with same credit card ----
     client.force_login(other_user)
-    response = client.post("/api/subscribe/", {"plan": plan.pk})
+    response = client.post("/api/subscribe/", {"plan": plan.pk, "provider": paddle.codename})
     assert response.status_code == 200, response.content
 
     result = response.json()
@@ -107,7 +112,7 @@ def test__trial_period__only_once__subsequent(trial_period, dummy, plan, user, u
     assert user.subscriptions.active().count() == 0
 
     # create new subscription
-    response = user_client.post("/api/subscribe/", {"plan": plan.pk})
+    response = user_client.post("/api/subscribe/", {"plan": plan.pk, "provider": dummy.codename})
     assert response.status_code == 200, response.content
     response = user_client.post(
         "/api/webhook/dummy/",
@@ -130,7 +135,7 @@ def test__trial_period__only_once__subsequent(trial_period, dummy, plan, user, u
     assert user.subscriptions.latest().auto_prolong is False
 
     # create another subscription and ensure no trial period is there
-    response = user_client.post("/api/subscribe/", {"plan": plan.pk})
+    response = user_client.post("/api/subscribe/", {"plan": plan.pk, "provider": dummy.codename})
     assert response.status_code == 200, response.content
     assert user.subscriptions.active().count() == 1
 
@@ -153,7 +158,7 @@ def test__trial_period__only_once__simultaneous(
     assert user.subscriptions.active().count() == 0
 
     # create new subscription
-    response = user_client.post("/api/subscribe/", {"plan": plan.pk})
+    response = user_client.post("/api/subscribe/", {"plan": plan.pk, "provider": dummy.codename})
     assert response.status_code == 200, response.content
     response = user_client.post(
         "/api/webhook/dummy/",
@@ -165,24 +170,22 @@ def test__trial_period__only_once__simultaneous(
     assert user.subscriptions.active().count() == 1
 
     subscription = user.subscriptions.latest()
-    assert subscription.payments.count() == 1
-    payment = subscription.payments.latest()
+    payment = one(subscription.payments.all())
     assert payment.amount == plan.charge_amount * 0
     assert payment.paid_since + trial_period == payment.paid_until
 
     # add resources and ensure no trial period is there
-    response = user_client.post("/api/subscribe/", {"plan": recharge_plan.pk})
+    response = user_client.post("/api/subscribe/", {"plan": recharge_plan.pk, "provider": dummy.codename})
     assert response.status_code == 200, response.content
     assert user.subscriptions.active().count() == 2
 
     subscription = user.subscriptions.latest()
-    assert subscription.payments.count() == 1
-    payment = subscription.payments.latest()
+    payment = one(subscription.payments.all())
     assert payment.amount == recharge_plan.charge_amount
-    assert payment.paid_since + recharge_plan.max_duration == payment.paid_until
+    assert payment.paid_since + recharge_plan.charge_period == payment.paid_until
 
     # create another subscription and ensure no trial period is there
-    response = user_client.post("/api/subscribe/", {"plan": bigger_plan.pk})
+    response = user_client.post("/api/subscribe/", {"plan": bigger_plan.pk, "provider": dummy.codename})
     assert response.status_code == 200, response.content
     assert user.subscriptions.active().count() == 3
 
@@ -203,10 +206,10 @@ def test__get_trial_period__cheating__simultaneous_payments(
 ):
     assert not SubscriptionPayment.objects.exists()
 
-    response = user_client.post("/api/subscribe/", {"plan": plan.pk})
+    response = user_client.post("/api/subscribe/", {"plan": plan.pk, "provider": dummy.codename})
     assert response.status_code == 200, response.content
 
-    response = user_client.post("/api/subscribe/", {"plan": plan.pk})
+    response = user_client.post("/api/subscribe/", {"plan": plan.pk, "provider": dummy.codename})
     assert response.status_code == 200, response.content
 
     payments = SubscriptionPayment.objects.all()
@@ -233,11 +236,11 @@ def test__get_trial_period__not_cheating__multiacc(
     assert not Subscription.objects.exists()
 
     client.force_login(user)
-    response = client.post("/api/subscribe/", {"plan": plan.pk})
+    response = client.post("/api/subscribe/", {"plan": plan.pk, "provider": dummy.codename})
     assert response.status_code == 200, response.content
 
     client.force_login(other_user)
-    response = client.post("/api/subscribe/", {"plan": plan.pk})
+    response = client.post("/api/subscribe/", {"plan": plan.pk, "provider": dummy.codename})
     assert response.status_code == 200, response.content
 
     payments = SubscriptionPayment.objects.all().order_by("subscription__user_id")
@@ -257,7 +260,7 @@ def test__get_trial_period__not_cheating__multiacc(
 def test__trial_period__full_charge_after_trial(
     dummy, plan, charge_expiring, charge_schedule, user_client, user, trial_period
 ):
-    response = user_client.post("/api/subscribe/", {"plan": plan.pk})
+    response = user_client.post("/api/subscribe/", {"plan": plan.pk, "provider": dummy.codename})
     assert response.status_code == 200, response.content
 
     assert user.subscriptions.count() == 1

@@ -6,7 +6,7 @@ import pytest
 from django.utils.timezone import now
 
 from subscriptions.v0.models import Plan, SubscriptionPayment
-from subscriptions.v0.providers import get_provider, get_providers
+from subscriptions.v0.providers import get_provider_by_codename
 from subscriptions.v0.providers.google_in_app import GoogleInAppProvider
 from subscriptions.v0.providers.google_in_app.schemas import (
     GoogleAcknowledgementState,
@@ -27,11 +27,7 @@ def google_in_app(settings) -> GoogleInAppProvider:
     settings.SUBSCRIPTIONS_PAYMENT_PROVIDERS = [
         "subscriptions.v0.providers.google_in_app.GoogleInAppProvider",
     ]
-    get_provider.cache_clear()
-    get_providers.cache_clear()
-    provider = get_provider()
-    assert isinstance(provider, GoogleInAppProvider)
-    return provider
+    return get_provider_by_codename('google')
 
 
 @pytest.fixture

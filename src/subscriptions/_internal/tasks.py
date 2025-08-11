@@ -1,9 +1,9 @@
 from collections import defaultdict
+from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor, wait
 from datetime import datetime, timedelta
 from functools import partial
 from logging import getLogger
-from typing import TYPE_CHECKING
 
 from django.conf import settings
 from django.db import transaction
@@ -17,10 +17,7 @@ from .defaults import (
 )
 from .exceptions import PaymentError, ProlongationImpossible
 from .models import Subscription, SubscriptionPayment, SubscriptionQuerySet
-from .providers import get_provider
-
-if TYPE_CHECKING:
-    from collections.abc import Iterable
+from .providers import get_provider_by_codename
 
 log = getLogger(__name__)
 
@@ -101,7 +98,7 @@ def _charge_recurring_subscription(
 
     log.debug("Trying to prolong subscription %s", subscription)
     try:
-        subscription.prolong()  # try extending end date of subscription
+        new_subscription_end = subscription.prolong()  # try extending end date of subscription
         log.debug("Prolongation of subscription is possible")
     except ProlongationImpossible as exc:
         # cannot prolong anymore, disable auto_prolong for this subscription
@@ -113,29 +110,31 @@ def _charge_recurring_subscription(
         return
 
     try:
-        log.debug("Offline-charging subscription %s", subscription)
-        subscription.charge_offline()
+        log.debug("Background-charging subscription %s", subscription)
+        subscription.charge_automatically()
     except PaymentError as exc:
-        log.warning("Failed to offline-charge subscription", extra=exc.debug_info)
+        log.warning("Failed to background-charge subscription", extra=exc.debug_info)
 
         # here we create a failed SubscriptionPayment to indicate that we tried
         # to charge but something went wrong, so that subsequent task calls
         # won't try charging and sending email again within same charge_period
         SubscriptionPayment.objects.create(
-            provider_codename="",
+            provider_codename="auto",
             user=subscription.user,
             status=SubscriptionPayment.Status.ERROR,
             plan=subscription.plan,
             subscription=subscription,
             quantity=subscription.quantity,
+            paid_since=subscription.end,
+            paid_until=new_subscription_end,
             metadata=exc.debug_info,
         )
         return
 
     log.debug("Offline charge successfully created for subscription %s", subscription)
-    # even if offline subscription succeeds, we are not sure about its status,
+    # even if background subscription succeeds, we are not sure about its status,
     # so we don't prolong the subscription here but instead let setting
-    # `subscription.status = COMPLETED` (by charge_offline or webhook or whatever)
+    # `payment.status = COMPLETED` (by charge_automatically or webhook or whatever)
     # to auto-prolong subscription itself
 
 
@@ -218,7 +217,7 @@ def check_unfinished_payments(within: timedelta = timedelta(hours=12)):
     codenames = set(unfinished_payments.order_by("provider_codename").values_list("provider_codename", flat=True))
 
     for codename in codenames:
-        get_provider(codename).check_payments(unfinished_payments.filter(provider_codename=codename))
+        get_provider_by_codename(codename).check_payments(unfinished_payments.filter(provider_codename=codename))
 
 
 def check_duplicated_payments() -> dict[tuple[str, str], list[SubscriptionPayment]]:

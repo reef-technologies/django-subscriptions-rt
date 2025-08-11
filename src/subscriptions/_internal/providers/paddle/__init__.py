@@ -13,7 +13,7 @@ from django.contrib.auth.models import AbstractBaseUser
 from django.db import transaction
 from django.utils.timezone import now
 from djmoney.money import Money
-from more_itertools import unique_everseen
+from more_itertools import one, unique_everseen
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.status import HTTP_200_OK
@@ -22,6 +22,7 @@ from ...exceptions import BadReferencePayment, PaymentError
 from ...models import Plan, Subscription, SubscriptionPayment
 from .. import Provider
 from .api import Paddle, PaddleError
+from .exceptions import AmbiguousPlanList, MissingPlan
 from .schemas import Alert, Passthrough
 
 log = getLogger(__name__)
@@ -56,21 +57,9 @@ class PaddleProvider(Provider):
     @cached_property
     def _plan(self) -> dict:
         plans = self._api.list_subscription_plans()
-        assert (num_plans := len(plans)) == 1, (
-            f"There should be exactly one subscription plan, but there are {num_plans}: {plans}"
-        )
-        return plans[0]
+        return one(plans, too_long=AmbiguousPlanList, too_short=MissingPlan)
 
-    def get_amount(self, user: AbstractBaseUser, plan: Plan) -> Money | None:
-        if self.STAFF_DISCOUNT and getattr(user, "is_staff", False):
-            return Money(
-                amount=Decimal("1.0") + Decimal("0.01") * plan.pk,
-                currency=plan.charge_amount.currency,
-            )
-
-        return plan.charge_amount
-
-    def charge_online(
+    def charge_interactively(
         self,
         user: AbstractBaseUser,
         plan: Plan,
@@ -80,9 +69,6 @@ class PaddleProvider(Provider):
         since: datetime | None = None,
         until: datetime | None = None,
     ) -> tuple[SubscriptionPayment, str]:
-        if amount is None:
-            amount = self.get_amount(user=user, plan=plan)
-
         payment, is_new = SubscriptionPayment.objects.get_or_create(
             created__gte=now() - self.ONLINE_CHARGE_DUPLICATE_LOOKUP_TIME,
             status=SubscriptionPayment.Status.PENDING,
@@ -117,19 +103,20 @@ class PaddleProvider(Provider):
 
         return payment, payment.metadata["payment_url"]
 
-    def charge_offline(
+    def charge_automatically(
         self,
-        user: AbstractBaseUser,
         plan: Plan,
+        amount: Money,
+        quantity: int,
+        since: datetime,
+        until: datetime,
+        reference_payment: SubscriptionPayment,
         subscription: Subscription | None = None,
-        amount: Money | None = None,
-        quantity: int = 1,
-        reference_payment: SubscriptionPayment | None = None,
     ) -> SubscriptionPayment:
         assert quantity > 0
-
-        if amount is None:
-            amount = self.get_amount(user=user, plan=plan)
+        assert reference_payment.provider_codename == self.codename, \
+            f"Reference payment belongs to provider '{reference_payment.provider_codename}' " \
+            f"while expected to belong to '{self.codename}'"
 
         if amount is None or amount.amount == 0:
             return SubscriptionPayment.objects.create(
@@ -138,43 +125,23 @@ class PaddleProvider(Provider):
                 amount=amount,  # type: ignore[misc]
                 quantity=quantity,
                 status=SubscriptionPayment.Status.COMPLETED,
-                user=user,
+                user=reference_payment.user,
                 plan=plan,
                 subscription=subscription,
+                paid_since=since,
+                paid_until=until,
                 metadata={},
             )
 
-        if not reference_payment and subscription:
-            with suppress(SubscriptionPayment.DoesNotExist):
-                reference_payment = subscription.get_reference_payment()
-
-        if not reference_payment:
-            # this happens when user had a subscription and wants a new one,
-            # so this new subscription doesn't have a reference payment yet;
-            # however we could take payment credentials from some other
-            # successful payment by same provider
-            with suppress(SubscriptionPayment.DoesNotExist):
-                reference_payment = SubscriptionPayment.objects.filter(
-                    user_id=user.pk,
-                    provider_codename=self.codename,
-                    status=SubscriptionPayment.Status.COMPLETED,
-                ).latest()
-
-        if not reference_payment:
-            raise PaymentError("No reference payment to take credentials from")
-
-        assert reference_payment.status == SubscriptionPayment.Status.COMPLETED
         try:
             subscription_id = reference_payment.metadata["subscription_id"]
         except KeyError as exc:
-            # TODO: better iterate over reference payments
             log.error('Reference payment (%s) metadata has no "subscription_id" field', reference_payment)
             raise BadReferencePayment(
                 f'Reference payment {reference_payment.uid} metadata has no "subscription_id" field'
             ) from exc
 
         # paddle doesn't allow one-off charges with different currencies
-        assert reference_payment.subscription
         if reference_payment.subscription.plan.charge_amount.currency != plan.charge_amount.currency:
             raise BadReferencePayment("Reference payment has different currency than current plan")
 
@@ -190,7 +157,7 @@ class PaddleProvider(Provider):
                 debug_info={
                     "paddle_msg": str(exc),
                     "paddle_code": exc.code,
-                    "user": user,
+                    "user": reference_payment.user,
                     "subscription": subscription,
                 },
             ) from exc
@@ -200,7 +167,6 @@ class PaddleProvider(Provider):
             "pending": SubscriptionPayment.Status.PENDING,
         }
         paddle_status = metadata.get("status")
-
         try:
             status = status_mapping[paddle_status]
         except KeyError:
@@ -211,17 +177,19 @@ class PaddleProvider(Provider):
             status = SubscriptionPayment.Status.ERROR
 
         # when status is PENDING, no webhook will come, so we rely on
-        # background task to search for payments not in webhook history
+        # background task to search for payments
 
         return SubscriptionPayment.objects.create(
             provider_codename=self.codename,
             provider_transaction_id=None,  # paddle doesn't return anything
             amount=amount,  # type: ignore[misc]
             status=status,
-            user=user,
+            user=reference_payment.user,
             plan=plan,
             subscription=subscription,
             quantity=quantity,
+            paid_since=since,
+            paid_until=until,
             metadata=metadata,
         )
 

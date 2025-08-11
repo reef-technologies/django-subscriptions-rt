@@ -16,6 +16,8 @@ def test__duplicates__no_duplicates_in_transaction_id(user, plan):
         subscription=subscription,
         provider_codename="test-1",
         provider_transaction_id="transaction-1",
+        paid_since=subscription.start,
+        paid_until=subscription.end,
     )
     SubscriptionPayment.objects.create(
         user=user,
@@ -23,6 +25,8 @@ def test__duplicates__no_duplicates_in_transaction_id(user, plan):
         subscription=subscription,
         provider_codename="test-1",
         provider_transaction_id="transaction-2",
+        paid_since=subscription.start,
+        paid_until=subscription.end,
     )
 
     results = check_duplicated_payments()
@@ -41,6 +45,8 @@ def test__duplicates__no_duplicates_in_providers(user, plan):
         subscription=subscription,
         provider_codename="test-1",
         provider_transaction_id="transaction-1",
+        paid_since=subscription.start,
+        paid_until=subscription.end,
     )
     SubscriptionPayment.objects.create(
         user=user,
@@ -48,6 +54,8 @@ def test__duplicates__no_duplicates_in_providers(user, plan):
         subscription=subscription,
         provider_codename="test-2",
         provider_transaction_id="transaction-1",
+        paid_since=subscription.start,
+        paid_until=subscription.end,
     )
 
     results = check_duplicated_payments()
@@ -66,6 +74,8 @@ def test__duplicates__duplicated_transactions(user, plan):
         subscription=subscription,
         provider_codename="test-1",
         provider_transaction_id="transaction-1",
+        paid_since=subscription.start,
+        paid_until=subscription.end,
     )
     payment_2 = SubscriptionPayment.objects.create(
         user=user,
@@ -73,6 +83,8 @@ def test__duplicates__duplicated_transactions(user, plan):
         subscription=subscription,
         provider_codename="test-1",
         provider_transaction_id="transaction-1",
+        paid_since=subscription.start,
+        paid_until=subscription.end,
     )
     SubscriptionPayment.objects.create(
         user=user,
@@ -80,6 +92,8 @@ def test__duplicates__duplicated_transactions(user, plan):
         subscription=subscription,
         provider_codename="test-1",
         provider_transaction_id="transaction-2",
+        paid_since=subscription.start,
+        paid_until=subscription.end,
     )
     SubscriptionPayment.objects.create(
         user=user,
@@ -87,6 +101,8 @@ def test__duplicates__duplicated_transactions(user, plan):
         subscription=subscription,
         provider_codename="test-1",
         provider_transaction_id="transaction-3",
+        paid_since=subscription.start,
+        paid_until=subscription.end,
     )
 
     results = check_duplicated_payments()

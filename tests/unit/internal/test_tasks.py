@@ -79,10 +79,13 @@ def test__tasks__charge_expiring__not_charging_twice_if_pending_exists(
 
     with freeze_time(subscription.start):
         pending_payment = SubscriptionPayment.objects.create(
+            provider_codename=payment.provider_codename,
             subscription=subscription,
             plan=subscription.plan,
             user=subscription.user,
             status=SubscriptionPayment.Status.PENDING,
+            paid_since=payment.paid_since,
+            paid_until=payment.paid_until,
         )
     assert SubscriptionPayment.objects.count() == 2
 
@@ -262,7 +265,7 @@ def test__tasks__charge_expiring__payment_failure(
         )
 
     with freeze_time(subscription.end + charge_schedule[-2], tick=True):
-        with mock.patch.object(dummy, "charge_offline", raise_payment_error):
+        with mock.patch.object(dummy, "charge_automatically", raise_payment_error):
             charge_recurring_subscriptions(schedule=charge_schedule, num_threads=1)
 
             assert SubscriptionPayment.objects.count() == 2
@@ -278,46 +281,61 @@ def test__tasks__charge_expiring__payment_failure(
 
 
 @pytest.mark.django_db(databases=["actual_db"])
-def test__tasks__notify_stuck_pending_payments(subscription, user, caplog):
+def test__tasks__notify_stuck_pending_payments(subscription, user, caplog, dummy):
     min_age = days(3)
 
     with freeze_time(now() - min_age - days(10)):
         _ = SubscriptionPayment.objects.create(
+            provider_codename=dummy,
             plan=subscription.plan,
             user=user,
             status=SubscriptionPayment.Status.PENDING,
+            paid_since=now(),
+            paid_until=now() + subscription.plan.charge_period,
         )
 
     with freeze_time(now() - min_age - days(10)):
         very_old_payment = SubscriptionPayment.objects.create(
+            provider_codename=dummy,
             subscription=subscription,
             plan=subscription.plan,
             user=user,
             status=SubscriptionPayment.Status.PENDING,
+            paid_since=now(),
+            paid_until=now() + subscription.plan.charge_period,
         )
 
     with freeze_time(now() - min_age - timedelta(seconds=1)):
         slightly_old_payment = SubscriptionPayment.objects.create(
+            provider_codename=dummy,
             subscription=subscription,
             plan=subscription.plan,
             user=user,
             status=SubscriptionPayment.Status.PENDING,
+            paid_since=now(),
+            paid_until=now() + subscription.plan.charge_period,
         )
 
     with freeze_time(now() - min_age + timedelta(seconds=30)):
         _ = SubscriptionPayment.objects.create(
+            provider_codename=dummy,
             subscription=subscription,
             plan=subscription.plan,
             user=user,
             status=SubscriptionPayment.Status.PENDING,
+            paid_since=now(),
+            paid_until=now() + subscription.plan.charge_period,
         )
 
     with freeze_time(now()):
         _ = SubscriptionPayment.objects.create(
+            provider_codename=dummy,
             subscription=subscription,
             plan=subscription.plan,
             user=user,
             status=SubscriptionPayment.Status.PENDING,
+            paid_since=now(),
+            paid_until=now() + subscription.plan.charge_period,
         )
 
     with caplog.at_level(logging.ERROR):

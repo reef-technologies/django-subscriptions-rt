@@ -1,12 +1,13 @@
+from collections.abc import Callable
 from datetime import datetime, timedelta
 from functools import wraps
-from typing import TYPE_CHECKING
 
 import pytest
 from constance import config
 from dateutil.relativedelta import relativedelta
 from django.contrib.auth import get_user_model
 from django.core.cache import caches
+from django.test import Client
 from django.utils.timezone import now
 from djmoney.money import Money
 
@@ -25,24 +26,19 @@ from subscriptions.v0.models import (
     SubscriptionPayment,
     Usage,
 )
-from subscriptions.v0.providers import get_provider, get_providers
+from subscriptions.v0.providers import get_provider, get_provider_by_codename
 from subscriptions.v0.providers.dummy import DummyProvider
 from subscriptions.v0.tasks import charge_recurring_subscriptions
 from subscriptions.v0.validators import get_validators
 
 from ..helpers import days, usd
 
-if TYPE_CHECKING:
-    from collections.abc import Callable
-
-    from django.test import Client
-
 
 @pytest.fixture(autouse=True)
 def clear_lru_cache():
     get_validators.cache_clear()
     get_provider.cache_clear()
-    get_providers.cache_clear()
+    get_provider_by_codename.cache_clear()
 
 
 @pytest.fixture
@@ -284,11 +280,7 @@ def dummy(settings) -> DummyProvider:
     settings.SUBSCRIPTIONS_PAYMENT_PROVIDERS = [
         "subscriptions.v0.providers.dummy.DummyProvider",
     ]
-    get_provider.cache_clear()
-    get_providers.cache_clear()
-    provider = get_provider()
-    assert isinstance(provider, DummyProvider)
-    return provider
+    return get_provider_by_codename('dummy')
 
 
 @pytest.fixture
@@ -302,6 +294,8 @@ def payment(dummy, subscription) -> SubscriptionPayment:
         amount=subscription.plan.charge_amount,
         quantity=2,  # so limit = 50 * 2 = 100 in total
         status=SubscriptionPayment.Status.COMPLETED,
+        paid_since=subscription.end,
+        paid_until=subscription.prolong(),
         metadata={
             "subscription_id": "some-dummy-uid",
         },

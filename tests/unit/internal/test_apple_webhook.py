@@ -30,7 +30,7 @@ from subscriptions.v0.providers.apple_in_app.exceptions import (
     InvalidAppleReceiptError,
 )
 
-APPLE_API_WEBHOOK = "/api/webhook/apple_in_app/"
+APPLE_API_WEBHOOK = "/api/webhook/apple/"
 RECEIPT_FETCH_FUNCTION = "subscriptions.v0.providers.apple_in_app.api.AppleAppStoreAPI._fetch_receipt_from_endpoint"
 NOTIFICATION_PARSER = "subscriptions.v0.providers.apple_in_app.app_store.AppStoreNotification.from_signed_payload"
 TRANSACTION_INFO = "subscriptions.v0.providers.apple_in_app.app_store.AppStoreNotification.transaction_info"
@@ -163,7 +163,7 @@ def make_notification_query() -> dict:
 
 
 @pytest.mark.django_db(databases=["actual_db"])
-def test__apple__invalid_query_sent(user_client):
+def test__apple__invalid_query_sent(user_client, apple_in_app):
     response = user_client.post(APPLE_API_WEBHOOK, {"test": "data"}, content_type="application/json")
     assert response.status_code == 400
 

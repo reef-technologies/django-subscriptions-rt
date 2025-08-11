@@ -27,7 +27,7 @@ from ...api.serializers import SubscriptionPaymentSerializer
 from ...models import Plan, SubscriptionPayment
 from ...utils import advisory_lock, fromisoformat
 from .. import Provider
-from .exceptions import InvalidOperation
+from .exceptions import AmbiguousDataError, InvalidOperation
 from .schemas import (
     AppNotification,
     GoogleAcknowledgementState,
@@ -71,7 +71,7 @@ class GoogleInAppProvider(Provider):
     https://developer.android.com/google/play/billing/test
     """
 
-    codename: ClassVar[str] = "google_in_app"
+    codename: ClassVar[str] = "google"
     is_external: ClassVar[bool] = True
     package_name: ClassVar[str] = str(settings.GOOGLE_PLAY_PACKAGE_NAME)
     metadata_class: ClassVar[type[BaseModel]] = Metadata
@@ -113,12 +113,12 @@ class GoogleInAppProvider(Provider):
             }
         )
 
-    def charge_offline(self, *args, **kwargs) -> SubscriptionPayment:
+    def charge_automatically(self, *args, **kwargs) -> SubscriptionPayment:
         # don't try to prolong the subscription on our side
-        raise InvalidOperation(f"Offline charge not supported for {self.codename}")
+        raise InvalidOperation(f"Automatic charge not supported for {self.codename}")
 
-    def charge_online(self, *args, **kwargs) -> tuple[SubscriptionPayment, str]:
-        raise InvalidOperation(f"Online charge not supported for {self.codename}")
+    def charge_interactively(self, *args, **kwargs) -> tuple[SubscriptionPayment, str]:
+        raise InvalidOperation(f"Interactive charge not supported for {self.codename}")
 
     def iter_subscriptions(self) -> Iterator[GoogleSubscription]:
         """Yield all Google in-app products available for users."""
@@ -285,32 +285,46 @@ class GoogleInAppProvider(Provider):
             archived=plan.is_enabled,
         )
 
+    @transaction.atomic
     def dismiss_token(self, token: str):
         """Stop a subscription associated with specific purchase token."""
-
         # https://chromeos.dev/en/publish/play-billing-backend#subscription-linkedpurchasetoken
-        with transaction.atomic():
-            try:
-                latest_payment = SubscriptionPayment.objects.filter(
-                    provider_codename=self.codename,
-                    provider_transaction_id=token,
-                ).latest()
-            except SubscriptionPayment.DoesNotExist:
-                log.warning("Tried to dismiss a token %s but no payment was found", token)
-                return
 
-            now_ = now()
+        linked_payments = list(SubscriptionPayment.objects.filter(
+            provider_codename=self.codename,
+            provider_transaction_id=token,
+        ))
+        if not linked_payments:
+            log.warning("Tried to dismiss a token %s but no payments were found", token)
+            return
 
-            assert latest_payment.paid_until
-            if latest_payment.paid_until > now_:
-                latest_payment.paid_until = now_
-                latest_payment.save()
+        now_ = now()
+        for payment in linked_payments:
+            if payment.paid_until > now_:
+                # cancel future payments, shring current ones
 
-            subscription = latest_payment.subscription
-            assert subscription
-            if subscription.end > now_:
-                subscription.end = now_
-                subscription.save()
+                if payment.paid_since >= now_:
+                    # Before: ---------[=========]--
+                    #            ^now
+                    # After:  ---------[CANCELLED]--
+                    payment.status = SubscriptionPayment.Status.CANCELLED
+                else:
+                    # Before: ---------[=========]--
+                    #                        ^now
+                    # After:  ---------[=====]------
+                    payment.paid_until = now_
+                payment.save()
+
+        try:
+            subscription = one({payment.subscription for payment in linked_payments})
+        except ValueError as exc:
+            log.error("Payments with different subscriptions are linked to the same linkedPurchaseToken")
+            raise AmbiguousDataError from exc
+
+        now_ = now()
+        if subscription.end > now_:
+            subscription.end = now_
+            subscription.save(update_fields=['end'])
 
     def get_user_by_token(self, token: str) -> AbstractBaseUser | None:
         with suppress(SubscriptionPayment.DoesNotExist):
@@ -465,18 +479,24 @@ class GoogleInAppProvider(Provider):
 
             elif event == GoogleSubscriptionNotificationType.RENEWED:
                 # TODO: handle case when subscription is resumed from a pause
-                last_payment = self.get_last_payment(purchase_token)
-                assert last_payment.paid_until
-                if purchase_end > last_payment.paid_until:
-                    last_payment.uid = ""
-                    last_payment.paid_since = last_payment.paid_until
-                    last_payment.paid_until = purchase_end
-                    last_payment.created = last_payment.updated = ""
-                    last_payment.meta = Metadata(purchase=purchase)
-                    last_payment.save()
 
+                last_payment = self.get_last_payment(purchase_token)
                 subscription = last_payment.subscription
-                assert subscription, f"Subscription should exist for {event} payment"
+
+                if purchase_end > subscription.end:
+                    SubscriptionPayment.objects.create(
+                        provider_codename=self.codename,
+                        user=last_payment.user,
+                        status=SubscriptionPayment.Status.COMPLETED,
+                        plan=last_payment.plan,
+                        subscription=last_payment.subscription,
+                        amount=last_payment.amount,
+                        quantity=last_payment.quantity,
+                        paid_since=subscription.end,
+                        paid_until=purchase_end,
+                        meta=Metadata(purchase=purchase),
+                    )
+
                 subscription.auto_prolong = True
                 subscription.save()
 
@@ -488,11 +508,6 @@ class GoogleInAppProvider(Provider):
                 subscription.end = purchase_end
                 subscription.auto_prolong = False
                 subscription.save()
-
-                assert last_payment.paid_until
-                if last_payment.paid_until > subscription.end:
-                    last_payment.paid_until = subscription.end
-                    last_payment.save()
 
             elif event == GoogleSubscriptionNotificationType.PURCHASED:
                 plan = self.get_plan_by_google_id(product_id)

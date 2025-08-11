@@ -18,10 +18,12 @@ from tenacity import Retrying, TryAgain, stop_after_attempt, wait_incrementing
 
 from subscriptions.v0.exceptions import BadReferencePayment, PaymentError
 from subscriptions.v0.models import Plan, Subscription, SubscriptionPayment
-from subscriptions.v0.providers import get_provider
+from subscriptions.v0.providers import get_provider_by_codename
 from subscriptions.v0.providers.paddle import PaddleProvider
 from subscriptions.v0.tasks import check_unfinished_payments
 from subscriptions.v0.utils import fromisoformat
+
+from ..helpers import days
 
 
 def automate_payment(url: str, card: str, email: str):
@@ -155,7 +157,7 @@ def test__paddle__payment_flow__regular(
 ):
     assert not Subscription.objects.exists()
 
-    response = user_client.post("/api/subscribe/", {"plan": plan.pk})
+    response = user_client.post("/api/subscribe/", {"plan": plan.pk, "provider": paddle.codename})
     assert response.status_code == 200, response.content
 
     result = response.json()
@@ -167,8 +169,9 @@ def test__paddle__payment_flow__regular(
     assert result == {
         "plan": plan.pk,
         "quantity": 1,
-        "background_charge_succeeded": False,
+        "automatic_charge_succeeded": False,
         "payment_id": str(payment.pk),
+        "provider": "paddle",
     }
 
     assert "payment_url" in payment.metadata
@@ -183,27 +186,25 @@ def test__paddle__payment_flow__regular(
     response = user_client.get(f"/api/payments/{payment.pk}/")
     assert response.status_code == 200, response.content
     result = response.json()
-    assert result == {
-        "id": payment.pk,
+    assert {
+        "id": str(payment.pk),
         "status": "pending",
         "quantity": 1,
         "amount": float(payment.amount.amount),
         "currency": str(payment.amount.currency),
         "total": float((payment.amount * 1).amount),
-        "paid_since": None,
-        "paid_until": None,
         "created": payment.created.isoformat().replace("+00:00", "Z"),
         "subscription": None,
-    }
+    }.items() <= result.items()
 
     # ---- test_payment_status_endpoint_post ----
-    for attempt in Retrying(wait=wait_incrementing(start=2, increment=2), stop=stop_after_attempt(5)):
+    for attempt in Retrying(wait=wait_incrementing(start=2, increment=2), stop=stop_after_attempt(5), reraise=True):
         with attempt:
             response = user_client.post(f"/api/payments/{payment.pk}/")
             assert response.status_code == 200, response.content
             result = response.json()
             if result["status"] != "completed":
-                raise TryAgain
+                raise TryAgain(result)
 
     payment = SubscriptionPayment.objects.get(pk=payment.pk)
     subscription = one(Subscription.objects.all())
@@ -224,7 +225,7 @@ def test__paddle__payment_flow__regular(
             "start": subscription.start.isoformat().replace("+00:00", "Z"),
             "end": subscription.end.isoformat().replace("+00:00", "Z"),
             "next_charge_date": next(subscription.iter_charge_dates(since=now())).isoformat().replace("+00:00", "Z"),
-            "payment_provider_class": "PaddleProvider",
+            "payment_provider": "paddle",
             "plan": {
                 "charge_amount": 100,
                 "charge_amount_currency": "USD",
@@ -257,9 +258,9 @@ def test__paddle__payment_flow__regular(
     assert subscription.start == initial_subscription_start
     assert subscription.end == initial_subscription_start + plan.charge_period
 
-    # ---- test_charge_offline ----
+    # ---- test_charge_automatically ----
     assert "subscription_id" in payment.metadata
-    payment.subscription.charge_offline()
+    payment.subscription.charge_automatically()
     assert SubscriptionPayment.objects.count() == 2
 
     last_payment = SubscriptionPayment.objects.latest()
@@ -268,24 +269,20 @@ def test__paddle__payment_flow__regular(
     assert subscription.end == initial_subscription_start + 2 * plan.charge_period
 
     assert last_payment.provider_codename == payment.provider_codename
-    provider = get_provider(last_payment.provider_codename)
-    assert last_payment.amount == provider.get_amount(
-        user=last_payment.user,
-        plan=plan,
-    )
+    assert last_payment.amount == plan.charge_amount
     assert last_payment.quantity == subscription.quantity
     assert last_payment.user == subscription.user
     assert last_payment.subscription == subscription
     assert last_payment.plan == plan
 
     # check subsequent offline charge
-    payment.subscription.charge_offline()
+    payment.subscription.charge_automatically()
     subscription = one(Subscription.objects.all())
     assert subscription.start == initial_subscription_start
     assert subscription.end == initial_subscription_start + 3 * plan.charge_period
 
     # check non-subscription offline charge (taking reference payment from other subscription)
-    payment = paddle.charge_offline(
+    payment = paddle.charge_automatically(
         user=user,
         plan=recharge_plan,
     )
@@ -306,7 +303,7 @@ def test__paddle__payment_flow__trial_period(
 ):
     assert not user.subscriptions.exists()
 
-    response = user_client.post("/api/subscribe/", {"plan": plan.pk})
+    response = user_client.post("/api/subscribe/", {"plan": plan.pk, "provider": paddle.codename})
     assert response.status_code == 200, response.content
 
     result = response.json()
@@ -318,8 +315,9 @@ def test__paddle__payment_flow__trial_period(
     assert result == {
         "plan": plan.pk,
         "quantity": 1,
-        "background_charge_succeeded": False,
+        "automatic_charge_succeeded": False,
         "payment_id": str(payment.pk),
+        "provider": "paddle",
     }
 
     assert "payment_url" in payment.metadata
@@ -340,38 +338,34 @@ def test__paddle__payment_flow__trial_period(
     payment.save()
 
     # Retry a few times to give paddle the time to update the transaction status
-    for attempt in Retrying(wait=wait_incrementing(start=2, increment=2), stop=stop_after_attempt(5)):
+    for attempt in Retrying(wait=wait_incrementing(start=2, increment=2), stop=stop_after_attempt(5), reraise=True):
         with attempt:
             check_unfinished_payments(within=timedelta(hours=1))
             payment = SubscriptionPayment.objects.latest()
             if payment.status != SubscriptionPayment.Status.COMPLETED:
-                raise TryAgain
+                raise TryAgain(payment)
 
     assert payment.amount == plan.charge_amount * 0
     assert payment.subscription.start + trial_period == payment.subscription.end
     assert payment.subscription.start == payment.paid_since
 
-    # ---- test_charge_offline ----
+    # ---- test_charge_automatically ----
     assert "subscription_id" in payment.metadata
-    payment.subscription.charge_offline()
+    payment.subscription.charge_automatically()
     assert SubscriptionPayment.objects.count() == 2
 
     last_payment = SubscriptionPayment.objects.latest()
     subscription = last_payment.subscription
 
     assert last_payment.provider_codename == payment.provider_codename
-    provider = get_provider(last_payment.provider_codename)
-    assert last_payment.amount == provider.get_amount(
-        user=last_payment.user,
-        plan=plan,
-    )
+    assert last_payment.amount == plan.charge_amount
     assert last_payment.quantity == subscription.quantity
     assert last_payment.user == subscription.user
     assert last_payment.subscription == subscription
     assert last_payment.plan == plan
 
     # check subsequent offline charge
-    payment.subscription.charge_offline()
+    payment.subscription.charge_automatically()
 
 
 @pytest.mark.django_db(databases=["actual_db"])
@@ -443,26 +437,26 @@ def test__paddle__webhook_non_existing_payment(
 
 
 @pytest.mark.django_db(databases=["actual_db"], transaction=True)
-def test__paddle__subscription_charge_online_avoid_duplicates(paddle, user_client, plan):
+def test__paddle__subscription__charge_interactively_avoid_duplicates(paddle, user_client, plan):
     assert not SubscriptionPayment.objects.all().exists()
 
-    response = user_client.post("/api/subscribe/", {"plan": plan.pk})
+    response = user_client.post("/api/subscribe/", {"plan": plan.pk, "provider": paddle.codename})
     assert response.status_code == 200, response.content
     assert SubscriptionPayment.objects.count() == 1
     payment = SubscriptionPayment.objects.last()
     payment_url = payment.metadata["payment_url"]
 
-    response = user_client.post("/api/subscribe/", {"plan": plan.pk})
+    response = user_client.post("/api/subscribe/", {"plan": plan.pk, "provider": paddle.codename})
     assert response.status_code == 200, response.content
     assert SubscriptionPayment.objects.count() == 1  # additional payment was not created
     assert SubscriptionPayment.objects.last().metadata["payment_url"] == payment_url  # url hasn't changed
 
 
 @pytest.mark.django_db(databases=["actual_db"], transaction=True)
-def test__paddle__subscription_charge_online_new_payment_after_duplicate_lookup_time(paddle, user_client, plan):
+def test__paddle__subscription__charge_interactively__new_payment_after_duplicate_lookup_time(paddle, user_client, plan):
     assert not SubscriptionPayment.objects.all().exists()
 
-    response = user_client.post("/api/subscribe/", {"plan": plan.pk})
+    response = user_client.post("/api/subscribe/", {"plan": plan.pk, "provider": paddle.codename})
     assert response.status_code == 200, response.content
     assert SubscriptionPayment.objects.count() == 1
     payment = SubscriptionPayment.objects.last()
@@ -470,16 +464,16 @@ def test__paddle__subscription_charge_online_new_payment_after_duplicate_lookup_
     payment.created = now() - PaddleProvider.ONLINE_CHARGE_DUPLICATE_LOOKUP_TIME
     payment.save()
 
-    response = user_client.post("/api/subscribe/", {"plan": plan.pk})
+    response = user_client.post("/api/subscribe/", {"plan": plan.pk, "provider": paddle.codename})
     assert response.status_code == 200, response.content
     assert SubscriptionPayment.objects.count() == 2
 
 
 @pytest.mark.django_db(databases=["actual_db"], transaction=True)
-def test__paddle__subscription_charge_online_new_payment_if_no_pending(paddle, user_client, plan):
+def test__paddle__subscription__charge_interactively__new_payment_if_no_pending(paddle, user_client, plan):
     assert not SubscriptionPayment.objects.all().exists()
 
-    response = user_client.post("/api/subscribe/", {"plan": plan.pk})
+    response = user_client.post("/api/subscribe/", {"plan": plan.pk, "provider": paddle.codename})
     assert response.status_code == 200, response.content
     assert SubscriptionPayment.objects.count() == 1
     payment = SubscriptionPayment.objects.last()
@@ -487,16 +481,16 @@ def test__paddle__subscription_charge_online_new_payment_if_no_pending(paddle, u
     payment.status = SubscriptionPayment.Status.ERROR
     payment.save()
 
-    response = user_client.post("/api/subscribe/", {"plan": plan.pk})
+    response = user_client.post("/api/subscribe/", {"plan": plan.pk, "provider": paddle.codename})
     assert response.status_code == 200, response.content
     assert SubscriptionPayment.objects.count() == 2
 
 
 @pytest.mark.django_db(databases=["actual_db"], transaction=True)
-def test__paddle__subscription_charge_online_new_payment_if_no_payment_url(paddle, user_client, plan):
+def test__paddle__subscription__charge_interactively__new_payment_if_no_payment_url(paddle, user_client, plan):
     assert not SubscriptionPayment.objects.all().exists()
 
-    response = user_client.post("/api/subscribe/", {"plan": plan.pk})
+    response = user_client.post("/api/subscribe/", {"plan": plan.pk, "provider": paddle.codename})
     assert response.status_code == 200, response.content
     assert SubscriptionPayment.objects.count() == 1
     payment = SubscriptionPayment.objects.last()
@@ -504,7 +498,7 @@ def test__paddle__subscription_charge_online_new_payment_if_no_payment_url(paddl
     payment.metadata = {"foo": "bar"}
     payment.save()
 
-    response = user_client.post("/api/subscribe/", {"plan": plan.pk})
+    response = user_client.post("/api/subscribe/", {"plan": plan.pk, "provider": paddle.codename})
     assert response.status_code == 200, response.content
     assert SubscriptionPayment.objects.count() == 2
 
@@ -518,16 +512,19 @@ def test__paddle__reference_payment_non_matching_currency(paddle, user_client, p
         charge_period=relativedelta(days=30),
     )
 
-    provider = get_provider()
     with pytest.raises(BadReferencePayment):
-        provider.charge_offline(
-            user=paddle_payment.user,
+        paddle.charge_automatically(
             plan=other_currency_plan,
+            amount=Money(30, "USD"),
+            quantity=1,
+            since=now(),
+            until=now() + days(10),
+            reference_payment=paddle_payment,
         )
 
 
 @pytest.mark.django_db(databases=["actual_db"])
-def test__paddle__subscription_charge_offline__zero_amount(paddle, user_client, paddle_payment):
+def test__paddle__subscription__charge_automatically__zero_amount(paddle, user_client, paddle_payment):
     assert SubscriptionPayment.objects.count() == 1
 
     free_plan = Plan.objects.create(
@@ -537,10 +534,13 @@ def test__paddle__subscription_charge_offline__zero_amount(paddle, user_client, 
         charge_period=relativedelta(days=30),
     )
 
-    provider = get_provider()
-    provider.charge_offline(
-        user=paddle_payment.user,
+    paddle.charge_automatically(
         plan=free_plan,
+        amount=free_plan.charge_amount,
+        quantity=1,
+        since=now(),
+        until=now() + free_plan.charge_period,
+        reference_payment=paddle_payment,
     )
     assert SubscriptionPayment.objects.count() == 2
     last_payment = SubscriptionPayment.objects.order_by("paid_until").last()
@@ -549,7 +549,7 @@ def test__paddle__subscription_charge_offline__zero_amount(paddle, user_client, 
 
 
 @pytest.mark.django_db(databases=["actual_db"])
-def test__paddle__subscription_charge_offline__error(paddle, user, paddle_payment, charge_expiring):
+def test__paddle__subscription__charge_automatically__error(paddle, user, paddle_payment, charge_expiring):
     subscription = paddle_payment.subscription
     assert subscription.auto_prolong is True
 
@@ -566,4 +566,4 @@ def test__paddle__subscription_charge_offline__error(paddle, user, paddle_paymen
 
     with mock.patch.object(paddle._api, "request", lambda *args, **kwargs: response):
         with pytest.raises(PaymentError):
-            subscription.charge_offline()
+            subscription.charge_automatically()

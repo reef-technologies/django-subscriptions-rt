@@ -5,7 +5,6 @@ from functools import cached_property
 from itertools import chain
 from logging import getLogger
 from operator import attrgetter
-from typing import TYPE_CHECKING
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -18,10 +17,8 @@ from more_itertools import spy
 
 from .defaults import DEFAULT_SUBSCRIPTIONS_CACHE_NAME
 from .exceptions import InconsistentQuotaCache, QuotaLimitExceeded
+from .models import Feature, Plan, QuotaCache, QuotaChunk, Resource, Subscription
 from .utils import advisory_lock, merge_iter
-
-if TYPE_CHECKING:
-    from .models import Feature, Plan, QuotaCache, QuotaChunk, Resource, Subscription
 
 log = getLogger(__name__)
 
