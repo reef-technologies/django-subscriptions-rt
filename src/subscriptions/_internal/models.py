@@ -557,7 +557,7 @@ class AbstractTransaction(models.Model):
         ]
         get_latest_by = "created"
 
-    def save(self, *args, **kwargs):
+    def save(self, *args, **kwargs) -> None:
         now_ = now()
         self.uid = self.uid or uuid4()
         self.created = self.created or now_
@@ -604,8 +604,10 @@ class SubscriptionPayment(AbstractTransaction):
 
     class Meta(AbstractTransaction.Meta):
         db_table = "subscriptions_v0_subscriptionpayment"
-        # TODO: changing latest() to `paid_until` may not work well when paid_until is None
-        # get_latest_by = 'paid_until'
+        get_latest_by = "paid_until", "created"
+        indexes = [
+            Index(fields=["subscription", "paid_until", "created"]),  # for `latest()` lookups
+        ]
 
     def __str__(self) -> str:
         return (
@@ -626,29 +628,35 @@ class SubscriptionPayment(AbstractTransaction):
         if self.subscription.quantity != self.quantity:
             raise ValidationError("Subscription quantity does not match payment quantity")
 
+    def clean_paid_until(self) -> None:
         if self.paid_until < self.start or self.paid_since > self.end:
             raise ValidationError("Payment period does not overlap with subscription period")
 
-    @atomic
-    @pre_validate
-    def save(self, *args, **kwargs):
-        assert self.paid_since <= self.paid_until, "paid_since must be less than or equal to paid_until"
+        if self.paid_since >= self.paid_until:
+            raise ValidationError("paid_since must be less than paid_until")
 
+    def extend_or_create_subscription(self) -> None:
+        assert self.status == self.Status.COMPLETED, "Payment must be completed to extend or create a subscription"
+
+        if self.subscription:
+            # extend subscription period
+            self.subscription.start = min(self.paid_since, self.subscription.start)
+            self.subscription.end = max(self.paid_until, self.subscription.end)
+            self.subscription.save()
+        else:
+            # create a new subscription
+            self.subscription = Subscription.objects.create(
+                user=self.user,
+                plan=self.plan,
+                quantity=self.quantity,
+                start=self.paid_since,
+                end=self.paid_until,
+            )
+
+    @pre_validate
+    def save(self, *args, **kwargs) -> None:
         if self.tracker.has_changed("status") and self.status == self.Status.COMPLETED:
-            if self.subscription:
-                # extend subscription period
-                self.subscription.start = min(self.paid_since, self.subscription.start)
-                self.subscription.end = max(self.paid_until, self.subscription.end)
-                self.subscription.save()
-            else:
-                # create a new subscription
-                self.subscription = Subscription.objects.create(
-                    user=self.user,
-                    plan=self.plan,
-                    quantity=self.quantity,
-                    start=self.paid_since,
-                    end=self.paid_until,
-                )
+            self.extend_or_create_subscription()
 
         return super().save(*args, **kwargs)
 

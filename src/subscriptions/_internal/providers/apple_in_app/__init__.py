@@ -127,17 +127,10 @@ class AppleInAppProvider(Provider):
 
     def _get_latest_transaction(self, original_transaction_id: str) -> SubscriptionPayment:
         # We assume that the user has a single subscription active for this app on the Apple platform.
-        payment = (
-            SubscriptionPayment.objects.filter(
-                provider_codename=self.codename,
-                metadata__original_transaction_id=original_transaction_id,
-            )
-            .order_by("paid_until")
-            .last()
-        )
-        if not payment:
-            raise SubscriptionPayment.DoesNotExist
-        return payment
+        return SubscriptionPayment.objects.filter(
+            provider_codename=self.codename,
+            metadata__original_transaction_id=original_transaction_id,
+        ).latest()
 
     def _get_active_transaction(self, transaction_id: str, original_transaction_id: str) -> SubscriptionPayment:
         kwargs = dict(

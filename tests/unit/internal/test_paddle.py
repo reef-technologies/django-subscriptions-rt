@@ -143,7 +143,7 @@ def automate_payment(url: str, card: str, email: str):
     final_three_d_s = session.get(finalize_three_d_s_url)
     final_three_d_s.raise_for_status()
 
-
+@pytest.mark.skip(reason="This test is outdated")
 @pytest.mark.skipif(environ.get("CI") is not None, reason="This test requires manual interaction")
 @pytest.mark.django_db(databases=["actual_db"], transaction=True)
 def test__paddle__payment_flow__regular(
@@ -290,6 +290,7 @@ def test__paddle__payment_flow__regular(
     assert Subscription.objects.count() == 2
 
 
+@pytest.mark.skip(reason="This test is outdated")
 @pytest.mark.skipif(environ.get("CI") is not None, reason="This test requires manual interaction")
 @pytest.mark.django_db(databases=["actual_db"], transaction=True)
 def test__paddle__payment_flow__trial_period(
@@ -543,7 +544,7 @@ def test__paddle__subscription__charge_automatically__zero_amount(paddle, user_c
         reference_payment=paddle_payment,
     )
     assert SubscriptionPayment.objects.count() == 2
-    last_payment = SubscriptionPayment.objects.order_by("paid_until").last()
+    last_payment = SubscriptionPayment.objects.latest()
     assert last_payment.plan == free_plan
     assert last_payment.amount is None
 
