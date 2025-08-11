@@ -280,7 +280,7 @@ def dummy(settings) -> DummyProvider:
     settings.SUBSCRIPTIONS_PAYMENT_PROVIDERS = [
         "subscriptions.v0.providers.dummy.DummyProvider",
     ]
-    return get_provider_by_codename('dummy')
+    return get_provider_by_codename("dummy")
 
 
 @pytest.fixture

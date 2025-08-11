@@ -18,7 +18,6 @@ from tenacity import Retrying, TryAgain, stop_after_attempt, wait_incrementing
 
 from subscriptions.v0.exceptions import BadReferencePayment, PaymentError
 from subscriptions.v0.models import Plan, Subscription, SubscriptionPayment
-from subscriptions.v0.providers import get_provider_by_codename
 from subscriptions.v0.providers.paddle import PaddleProvider
 from subscriptions.v0.tasks import check_unfinished_payments
 from subscriptions.v0.utils import fromisoformat
@@ -142,6 +141,7 @@ def automate_payment(url: str, card: str, email: str):
     # in general this step might be necessary to finalize the transaction.
     final_three_d_s = session.get(finalize_three_d_s_url)
     final_three_d_s.raise_for_status()
+
 
 @pytest.mark.skip(reason="This test is outdated")
 @pytest.mark.skipif(environ.get("CI") is not None, reason="This test requires manual interaction")
@@ -454,7 +454,9 @@ def test__paddle__subscription__charge_interactively_avoid_duplicates(paddle, us
 
 
 @pytest.mark.django_db(databases=["actual_db"], transaction=True)
-def test__paddle__subscription__charge_interactively__new_payment_after_duplicate_lookup_time(paddle, user_client, plan):
+def test__paddle__subscription__charge_interactively__new_payment_after_duplicate_lookup_time(
+    paddle, user_client, plan
+):
     assert not SubscriptionPayment.objects.all().exists()
 
     response = user_client.post("/api/subscribe/", {"plan": plan.pk, "provider": paddle.codename})

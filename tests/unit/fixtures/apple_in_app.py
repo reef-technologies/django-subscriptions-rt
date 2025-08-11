@@ -15,4 +15,4 @@ def apple_in_app(settings, apple_bundle_id) -> AppleInAppProvider:
         "subscriptions.v0.providers.apple_in_app.AppleInAppProvider",
     ]
     AppleInAppProvider.bundle_id = apple_bundle_id
-    return get_provider_by_codename('apple')
+    return get_provider_by_codename("apple")

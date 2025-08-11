@@ -1,10 +1,9 @@
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from itertools import islice
 
 import pytest
 from dateutil.relativedelta import relativedelta
 from django.db import connections
-from django.forms import ValidationError
 from django.utils.timezone import now
 
 from subscriptions.v0.exceptions import PaymentError, ProlongationImpossible

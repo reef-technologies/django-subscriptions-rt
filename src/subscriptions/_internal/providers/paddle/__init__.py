@@ -114,9 +114,10 @@ class PaddleProvider(Provider):
         subscription: Subscription | None = None,
     ) -> SubscriptionPayment:
         assert quantity > 0
-        assert reference_payment.provider_codename == self.codename, \
-            f"Reference payment belongs to provider '{reference_payment.provider_codename}' " \
+        assert reference_payment.provider_codename == self.codename, (
+            f"Reference payment belongs to provider '{reference_payment.provider_codename}' "
             f"while expected to belong to '{self.codename}'"
+        )
 
         if amount is None or amount.amount == 0:
             return SubscriptionPayment.objects.create(

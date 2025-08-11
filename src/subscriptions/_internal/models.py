@@ -22,7 +22,6 @@ from django.db.models import (
     UniqueConstraint,
 )
 from django.db.models.functions import Least
-from django.db.transaction import atomic
 from django.forms import ValidationError
 from django.urls import reverse
 from django.utils.timezone import now
@@ -381,11 +380,15 @@ class Subscription(models.Model):
     ) -> "SubscriptionPayment":
         """Find a payment to take credentials from for automatic charging"""
 
-        last_successful_payment = SubscriptionPayment.objects.filter(
-            status=SubscriptionPayment.Status.COMPLETED,
-            user_id=self.user.pk,
-            updated__gte=now() - lookback,
-        ).order_by("updated").last()
+        last_successful_payment = (
+            SubscriptionPayment.objects.filter(
+                status=SubscriptionPayment.Status.COMPLETED,
+                user_id=self.user.pk,
+                updated__gte=now() - lookback,
+            )
+            .order_by("updated")
+            .last()
+        )
         if not last_successful_payment:
             raise SubscriptionPayment.DoesNotExist
 

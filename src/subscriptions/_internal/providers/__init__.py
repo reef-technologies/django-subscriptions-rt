@@ -45,9 +45,9 @@ class Provider:
         quantity: int,
         since: datetime,
         until: datetime,
-        subscription: Subscription | None = None,  # TODO: probably better to change signature (remove unrelated to payment fields)
+        subscription: Subscription | None = None,  # TODO: change signature? (remove unrelated to payment fields)
     ) -> tuple[SubscriptionPayment, str]:
-        raise NotImplementedError()
+        raise NotImplementedError
 
     def charge_automatically(
         self,
@@ -56,7 +56,7 @@ class Provider:
         quantity: int,
         since: datetime,
         until: datetime,
-        subscription: Subscription | None = None,  # TODO: probably better to change signature (remove unrelated to payment fields)
+        subscription: Subscription | None = None,  # TODO: change signature? (remove unrelated to payment fields)
         reference_payment: SubscriptionPayment | None = None,
     ) -> SubscriptionPayment:
         raise NotImplementedError()

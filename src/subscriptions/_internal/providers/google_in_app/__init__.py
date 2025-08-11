@@ -290,10 +290,12 @@ class GoogleInAppProvider(Provider):
         """Stop a subscription associated with specific purchase token."""
         # https://chromeos.dev/en/publish/play-billing-backend#subscription-linkedpurchasetoken
 
-        linked_payments = list(SubscriptionPayment.objects.filter(
-            provider_codename=self.codename,
-            provider_transaction_id=token,
-        ))
+        linked_payments = list(
+            SubscriptionPayment.objects.filter(
+                provider_codename=self.codename,
+                provider_transaction_id=token,
+            )
+        )
         if not linked_payments:
             log.warning("Tried to dismiss a token %s but no payments were found", token)
             return
@@ -324,7 +326,7 @@ class GoogleInAppProvider(Provider):
         now_ = now()
         if subscription.end > now_:
             subscription.end = now_
-            subscription.save(update_fields=['end'])
+            subscription.save(update_fields=["end"])
 
     def get_user_by_token(self, token: str) -> AbstractBaseUser | None:
         with suppress(SubscriptionPayment.DoesNotExist):

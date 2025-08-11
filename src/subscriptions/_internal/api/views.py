@@ -55,9 +55,9 @@ class PaymentProviderListView(GenericAPIView):
     serializer_class = PaymentProviderListSerializer
 
     def get(self, request, *args, **kwargs) -> Response:
-        serializer = self.serializer_class({
-            "providers": [{"name": get_provider(fqn).codename} for fqn in get_providers_fqns()]
-        })
+        serializer = self.serializer_class(
+            {"providers": [{"name": get_provider(fqn).codename} for fqn in get_providers_fqns()]}
+        )
 
         return Response(serializer.data)
 
@@ -142,10 +142,14 @@ class SubscriptionSelectView(GenericAPIView):
                 raise PermissionDenied(detail=str(exc)) from exc
 
         automatic_charge_succeeded = False
-        reference_payment = request.user.payments.filter(
-            provider_codename=provider_codename,
-            status=SubscriptionPayment.Status.COMPLETED,
-        ).order_by("created").last()
+        reference_payment = (
+            request.user.payments.filter(
+                provider_codename=provider_codename,
+                status=SubscriptionPayment.Status.COMPLETED,
+            )
+            .order_by("created")
+            .last()
+        )
         if reference_payment:
             try:
                 payment = provider.charge_automatically(
@@ -168,7 +172,7 @@ class SubscriptionSelectView(GenericAPIView):
             payment, redirect_url = provider.charge_interactively(
                 user=request.user,
                 plan=plan,
-                amount=plan.charge_amount * (0 if trial_period else 1),  # zero with currency if trial_period is not empty
+                amount=plan.charge_amount * (0 if trial_period else 1),  # zero with currency
                 quantity=quantity,
                 since=now_,
                 until=now_ + (trial_period or plan.charge_period),

@@ -1,5 +1,5 @@
-from django.utils.timezone import now
 import pytest
+from django.utils.timezone import now
 
 from subscriptions.v0.models import SubscriptionPayment
 from subscriptions.v0.providers import get_provider_by_codename
@@ -12,7 +12,7 @@ def paddle(settings) -> str:
     settings.SUBSCRIPTIONS_PAYMENT_PROVIDERS = [
         "subscriptions.v0.providers.paddle.PaddleProvider",
     ]
-    return get_provider_by_codename('paddle')
+    return get_provider_by_codename("paddle")
 
 
 @pytest.fixture

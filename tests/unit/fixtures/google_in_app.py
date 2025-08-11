@@ -27,7 +27,7 @@ def google_in_app(settings) -> GoogleInAppProvider:
     settings.SUBSCRIPTIONS_PAYMENT_PROVIDERS = [
         "subscriptions.v0.providers.google_in_app.GoogleInAppProvider",
     ]
-    return get_provider_by_codename('google')
+    return get_provider_by_codename("google")
 
 
 @pytest.fixture

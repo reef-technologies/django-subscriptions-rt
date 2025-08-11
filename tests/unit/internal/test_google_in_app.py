@@ -182,9 +182,7 @@ def test__google__webhook_for_app_notification_duplicate(
         return_value=google_subscription_purchase,
     ):
         for _ in range(3):
-            response = user_client.post(
-                "/api/webhook/google/", app_notification, content_type="application/json"
-            )
+            response = user_client.post("/api/webhook/google/", app_notification, content_type="application/json")
             assert response.status_code == 200, response.content
 
             assert SubscriptionPayment.objects.count() == 1
@@ -263,9 +261,7 @@ def test__google__event_status_check(
             "subscriptions.v0.providers.google_in_app.GoogleInAppProvider.get_purchase",
             return_value=google_subscription_purchase,
         ):
-            response = client.post(
-                "/api/webhook/google/", google_rtdn_notification, content_type="application/json"
-            )
+            response = client.post("/api/webhook/google/", google_rtdn_notification, content_type="application/json")
             # google posted notification with PURCHASED state, but real purchase has PAUSED state
             # -> something went wrong
             assert response.status_code == 400, response.content
@@ -286,9 +282,7 @@ def test__google__purchase_acknowledgement(
                 return_value=Executable(),
             ),
         ):
-            response = user_client.post(
-                "/api/webhook/google/", app_notification, content_type="application/json"
-            )
+            response = user_client.post("/api/webhook/google/", app_notification, content_type="application/json")
             assert response.status_code == 200, response.content
             assert Subscription.objects.exists()
             google_in_app.acknowledge.assert_called_with(
