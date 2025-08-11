@@ -72,7 +72,7 @@ def test__api__subscriptions__authorized(user_client, two_subscriptions):
             "end": datetime_to_api(subscription.end),
             "quantity": 1,
             "next_charge_date": None,
-            "payment_provider": None,
+            "payment_provider": None,  # TODO: wat?
             "plan": {
                 "id": subscription.plan.pk,
                 "codename": subscription.plan.codename,
