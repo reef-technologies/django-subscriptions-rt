@@ -286,7 +286,7 @@ class GoogleInAppProvider(Provider):
         )
 
     @transaction.atomic
-    def dismiss_token(self, token: str):
+    def dismiss_token(self, token: str) -> None:
         """Stop a subscription associated with specific purchase token."""
         # https://chromeos.dev/en/publish/play-billing-backend#subscription-linkedpurchasetoken
 
@@ -323,6 +323,7 @@ class GoogleInAppProvider(Provider):
             log.error("Payments with different subscriptions are linked to the same linkedPurchaseToken")
             raise AmbiguousDataError from exc
 
+        assert subscription
         now_ = now()
         if subscription.end > now_:
             subscription.end = now_
@@ -484,6 +485,7 @@ class GoogleInAppProvider(Provider):
 
                 last_payment = self.get_last_payment(purchase_token)
                 subscription = last_payment.subscription
+                assert subscription, f"Subscription should exist for {event} payment"
 
                 if purchase_end > subscription.end:
                     SubscriptionPayment.objects.create(
@@ -496,7 +498,7 @@ class GoogleInAppProvider(Provider):
                         quantity=last_payment.quantity,
                         paid_since=subscription.end,
                         paid_until=purchase_end,
-                        meta=Metadata(purchase=purchase),
+                        metadata=Metadata(purchase=purchase).dict(),
                     )
 
                 subscription.auto_prolong = True

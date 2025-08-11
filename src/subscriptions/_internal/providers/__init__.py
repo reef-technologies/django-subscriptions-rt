@@ -56,17 +56,17 @@ class Provider:
         quantity: int,
         since: datetime,
         until: datetime,
+        reference_payment: SubscriptionPayment,
         subscription: Subscription | None = None,  # TODO: change signature? (remove unrelated to payment fields)
-        reference_payment: SubscriptionPayment | None = None,
     ) -> SubscriptionPayment:
-        raise NotImplementedError()
+        raise NotImplementedError
 
     def webhook(self, request: Request, payload: dict) -> Response:
         log.warning(f'Webhook for "{self.codename}" triggered without explicit handler')
         return Response(payload)
 
     def check_payments(self, payments: Iterable[SubscriptionPayment]):
-        raise NotImplementedError()
+        raise NotImplementedError
 
 
 @lru_cache

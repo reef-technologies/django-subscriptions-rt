@@ -63,11 +63,11 @@ class PaddleProvider(Provider):
         self,
         user: AbstractBaseUser,
         plan: Plan,
+        amount: Money,
+        quantity: int,
+        since: datetime,
+        until: datetime,
         subscription: Subscription | None = None,
-        amount: Money | None = None,
-        quantity: int = 1,
-        since: datetime | None = None,
-        until: datetime | None = None,
     ) -> tuple[SubscriptionPayment, str]:
         payment, is_new = SubscriptionPayment.objects.get_or_create(
             created__gte=now() - self.ONLINE_CHARGE_DUPLICATE_LOOKUP_TIME,
@@ -119,76 +119,66 @@ class PaddleProvider(Provider):
             f"while expected to belong to '{self.codename}'"
         )
 
-        if amount is None or amount.amount == 0:
-            return SubscriptionPayment.objects.create(
-                provider_codename=self.codename,
-                provider_transaction_id=None,  # paddle doesn't return anything
-                amount=amount,  # type: ignore[misc]
-                quantity=quantity,
-                status=SubscriptionPayment.Status.COMPLETED,
-                user=reference_payment.user,
-                plan=plan,
-                subscription=subscription,
-                paid_since=since,
-                paid_until=until,
-                metadata={},
-            )
+        if amount.amount <= 0:
+            status = SubscriptionPayment.Status.COMPLETED
+            metadata = {}
 
-        try:
-            subscription_id = reference_payment.metadata["subscription_id"]
-        except KeyError as exc:
-            log.error('Reference payment (%s) metadata has no "subscription_id" field', reference_payment)
-            raise BadReferencePayment(
-                f'Reference payment {reference_payment.uid} metadata has no "subscription_id" field'
-            ) from exc
+        else:
+            try:
+                subscription_id = reference_payment.metadata["subscription_id"]
+            except KeyError as exc:
+                log.error('Reference payment (%s) metadata has no "subscription_id" field', reference_payment)
+                raise BadReferencePayment(
+                    f'Reference payment {reference_payment.uid} metadata has no "subscription_id" field'
+                ) from exc
 
-        # paddle doesn't allow one-off charges with different currencies
-        if reference_payment.subscription.plan.charge_amount.currency != plan.charge_amount.currency:
-            raise BadReferencePayment("Reference payment has different currency than current plan")
+            # paddle doesn't allow one-off charges with different currencies
+            if reference_payment.amount.currency != amount.currency:
+                raise BadReferencePayment("Reference payment has different currency")
 
-        try:
-            metadata = self._api.one_off_charge(
-                subscription_id=subscription_id,
-                amount=amount.amount * quantity,
-                name=plan.name,
-            )
-        except PaddleError as exc:
-            raise PaymentError(
-                "Failed to offline-charge Paddle",
-                debug_info={
-                    "paddle_msg": str(exc),
-                    "paddle_code": exc.code,
-                    "user": reference_payment.user,
-                    "subscription": subscription,
-                },
-            ) from exc
+            try:
+                metadata = self._api.one_off_charge(
+                    subscription_id=subscription_id,
+                    amount=amount.amount * quantity,
+                    name=plan.name,
+                )
+            except PaddleError as exc:
+                raise PaymentError(
+                    "Failed to offline-charge Paddle",
+                    debug_info={
+                        "paddle_msg": str(exc),
+                        "paddle_code": exc.code,
+                        "user": reference_payment.user,
+                        "subscription": subscription,
+                    },
+                ) from exc
 
-        status_mapping = {
-            "success": SubscriptionPayment.Status.COMPLETED,
-            "pending": SubscriptionPayment.Status.PENDING,
-        }
-        paddle_status = metadata.get("status")
-        try:
-            status = status_mapping[paddle_status]
-        except KeyError:
-            log.error(
-                f'Paddle one-off charge status "{paddle_status}" is unknown, '
-                f"should be from {set(status_mapping.keys())}"
-            )
-            status = SubscriptionPayment.Status.ERROR
+            status_mapping = {
+                "success": SubscriptionPayment.Status.COMPLETED,
+                "pending": SubscriptionPayment.Status.PENDING,
+            }
+            paddle_status = metadata.get("status")
+            try:
+                status = status_mapping[paddle_status]
+            except KeyError:
+                log.error(
+                    f'Paddle one-off charge status "{paddle_status}" is unknown, '
+                    f"should be from {set(status_mapping.keys())}"
+                )
+                status = SubscriptionPayment.Status.ERROR
 
-        # when status is PENDING, no webhook will come, so we rely on
-        # background task to search for payments
+            # when status is PENDING, no webhook will come, so we rely on
+            # background task to search for payments
 
         return SubscriptionPayment.objects.create(
             provider_codename=self.codename,
             provider_transaction_id=None,  # paddle doesn't return anything
             amount=amount,  # type: ignore[misc]
+            quantity=quantity,
             status=status,
             user=reference_payment.user,
             plan=plan,
             subscription=subscription,
-            quantity=quantity,
             paid_since=since,
             paid_until=until,
             metadata=metadata,

@@ -558,7 +558,7 @@ class AbstractTransaction(models.Model):
         indexes = [
             Index(fields=("provider_codename", "provider_transaction_id")),
         ]
-        get_latest_by = "created"
+        get_latest_by: str | tuple | list = "created"
 
     def save(self, *args, **kwargs) -> None:
         now_ = now()
@@ -607,7 +607,10 @@ class SubscriptionPayment(AbstractTransaction):
 
     class Meta(AbstractTransaction.Meta):
         db_table = "subscriptions_v0_subscriptionpayment"
-        get_latest_by = "paid_until", "created"
+        get_latest_by = (
+            "paid_until",
+            "created",
+        )
         indexes = [
             Index(fields=["subscription", "paid_until", "created"]),  # for `latest()` lookups
         ]
@@ -632,7 +635,10 @@ class SubscriptionPayment(AbstractTransaction):
             raise ValidationError("Subscription quantity does not match payment quantity")
 
     def clean_paid_until(self) -> None:
-        if self.paid_until < self.start or self.paid_since > self.end:
+        if not self.subscription:
+            return
+
+        if self.paid_until < self.subscription.start or self.paid_since > self.subscription.end:
             raise ValidationError("Payment period does not overlap with subscription period")
 
         if self.paid_since >= self.paid_until:

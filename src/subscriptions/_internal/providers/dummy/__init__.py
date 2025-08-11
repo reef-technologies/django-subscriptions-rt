@@ -26,11 +26,11 @@ class DummyProvider(Provider):
         self,
         user: AbstractBaseUser,
         plan: Plan,
+        amount: Money,
+        quantity: int,
         since: datetime,
         until: datetime,
         subscription: Subscription | None = None,
-        amount: Money | None = None,
-        quantity: int = 1,
     ) -> tuple[SubscriptionPayment, str]:
         transaction_id = get_random_string(8)
 
@@ -54,13 +54,13 @@ class DummyProvider(Provider):
         quantity: int,
         since: datetime,
         until: datetime,
+        reference_payment: SubscriptionPayment,
         subscription: Subscription | None = None,  # TODO: change signature? (remove unrelated to payment fields)
-        reference_payment: SubscriptionPayment | None = None,
     ) -> SubscriptionPayment:
         return SubscriptionPayment.objects.create(  # TODO: limit number of creations per day
             provider_codename=self.codename,
             provider_transaction_id=get_random_string(8),
-            amount=plan.charge_amount,  # type: ignore[misc]
+            amount=amount,  # type: ignore[misc]
             quantity=quantity,
             user_id=reference_payment.user_id,
             plan=plan,
