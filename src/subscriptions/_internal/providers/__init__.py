@@ -26,7 +26,6 @@ log = getLogger(__name__)
 @dataclass
 class Provider:
     is_external: ClassVar[bool]  # TODO: get rid of this
-    form: ClassVar[type[Form] | None] = None
     metadata_class: ClassVar[type[BaseModel]] = BaseModel
 
     @property

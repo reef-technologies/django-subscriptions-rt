@@ -247,14 +247,8 @@ class AppleInAppProvider(Provider):
             if payment is None:
                 continue
 
-            # TODO: collapse this block when `paid_until` is required field
-            if latest_payment is None:
+            if not latest_payment or payment.paid_until > latest_payment.paid_until:
                 latest_payment = payment
-            else:
-                assert payment.paid_until
-                assert latest_payment.paid_until
-                if payment.paid_until > latest_payment.paid_until:
-                    latest_payment = payment
 
         if latest_payment is None:
             logger.warning("No subscription information provided in the payload receipt.")

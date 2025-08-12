@@ -1,20 +1,17 @@
 import logging
 from contextlib import suppress
 
-from dateutil.relativedelta import relativedelta
-from django.conf import settings
 from django.db import transaction
 from django.http import QueryDict
-from django.utils.timezone import now
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.generics import DestroyAPIView, GenericAPIView, ListAPIView, RetrieveAPIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.schemas.openapi import AutoSchema
 from rest_framework.views import APIView
 
-from ..defaults import DEFAULT_SUBSCRIPTIONS_SUCCESS_URL, DEFAULT_SUBSCRIPTIONS_TRIAL_PERIOD
-from ..exceptions import PaymentError, RecurringSubscriptionsAlreadyExist, SubscriptionError
+from ..exceptions import SubscriptionError
 from ..functions import get_remaining_amount
 from ..models import Plan, Subscription, SubscriptionPayment
 from ..providers import Provider, get_provider, get_provider_by_codename, get_providers_fqns
@@ -28,6 +25,7 @@ from .serializers import (
     SubscriptionSerializer,
     WebhookSerializer,
 )
+from ..models import subscribe
 
 log = logging.getLogger(__name__)
 
@@ -99,97 +97,25 @@ class SubscriptionSelectView(GenericAPIView):
     serializer_class = SubscriptionSelectSerializer
     schema = AutoSchema()
 
-    @classmethod
-    def get_trial_period(cls, plan, user) -> relativedelta:
-        trial_period = getattr(settings, "SUBSCRIPTIONS_TRIAL_PERIOD", DEFAULT_SUBSCRIPTIONS_TRIAL_PERIOD)
-
-        if (
-            trial_period
-            and plan.charge_amount
-            and plan.is_recurring()
-            and not user.payments.filter(status=SubscriptionPayment.Status.COMPLETED).exists()
-            and not user.subscriptions.recurring().exists()
-        ):
-            return trial_period
-
-        return relativedelta()
-
     @transaction.atomic(durable=True)
-    def post(self, request, *args, **kwargs) -> Response:
-        from ..validators import get_validators
-
+    def post(self, request: Request, *args, **kwargs) -> Response:
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        # TODO: handle quantity
 
-        now_ = now()
         plan = serializer.validated_data["plan"]
         quantity = serializer.validated_data["quantity"]
         provider_codename = serializer.validated_data["provider"]
         provider = get_provider_by_codename(provider_codename)
 
-        active_subscriptions = request.user.subscriptions.active().order_by("end")
-        for validator in get_validators():
-            try:
-                validator(active_subscriptions, plan)
-            except RecurringSubscriptionsAlreadyExist as exc:
-                # if there are recurring subscriptions and they are conflicting,
-                # we force-terminate them and go on with creating a new one
-                for subscription in exc.subscriptions:
-                    subscription.end = now_
-                    subscription.save()
-            except SubscriptionError as exc:
-                raise PermissionDenied(detail=str(exc)) from exc
-
-        automatic_charge_succeeded = False
-        reference_payment = (
-            request.user.payments.filter(
-                provider_codename=provider_codename,
-                status=SubscriptionPayment.Status.COMPLETED,
-            )
-            .order_by("created")
-            .last()
-        )
-        if reference_payment:
-            try:
-                payment = provider.charge_automatically(
-                    plan=plan,
-                    amount=plan.charge_amount,
-                    quantity=quantity,
-                    since=now_,
-                    until=now_ + plan.charge_period,
-                    reference_payment=reference_payment,
-                )
-                automatic_charge_succeeded = True
-                redirect_url = getattr(settings, "SUBSCRIPTIONS_SUCCESS_URL", DEFAULT_SUBSCRIPTIONS_SUCCESS_URL)
-            except (PaymentError, NotImplementedError):
-                pass
-            except Exception:
-                log.exception("Background charge error")
-
-        if not automatic_charge_succeeded:
-            trial_period = self.get_trial_period(plan, request.user)
-            payment, redirect_url = provider.charge_interactively(
+        try:
+            payment, redirect_url, automatic_charge_succeeded = subscribe(
                 user=request.user,
                 plan=plan,
-                amount=plan.charge_amount * (0 if trial_period else 1),  # zero with currency
                 quantity=quantity,
-                since=now_,
-                until=now_ + (trial_period or plan.charge_period),
+                provider=provider,
             )
-
-            if trial_period:
-                assert not payment.subscription
-                payment.subscription = Subscription.objects.create(
-                    user=request.user,
-                    plan=plan,
-                    quantity=quantity,
-                    start=now_,
-                    end=now_,
-                    initial_charge_offset=trial_period,  # TODO: ugly
-                )
-                payment.subscription.save()
-                payment.save()
+        except SubscriptionError as exc:
+            raise PermissionDenied(detail=str(exc)) from exc
 
         return Response(
             self.serializer_class(
@@ -235,8 +161,13 @@ class ResourcesView(GenericAPIView):
     pagination_class = None
     schema = AutoSchema()
 
-    def get(self, request, *args, **kwargs) -> Response:
-        return Response({resource.codename: amount for resource, amount in get_remaining_amount(request.user).items()})
+    def get(self, request: Request, *args, **kwargs) -> Response:
+        entries = [{
+            "codename": resource.codename,
+            "amount": amount,
+        } for resource, amount in get_remaining_amount(request.user).items()]
+        serializer = self.get_serializer({"resources": entries})
+        return Response(serializer.data)
 
 
 class PaymentView(RetrieveAPIView):

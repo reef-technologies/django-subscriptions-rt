@@ -12,6 +12,7 @@ from django.test.client import MULTIPART_CONTENT
 from django.utils.timezone import now
 from djmoney.money import Money
 from freezegun import freeze_time
+from moneyed import USD
 from more_itertools import one
 from requests import Response
 from tenacity import Retrying, TryAgain, stop_after_attempt, wait_incrementing
@@ -507,48 +508,34 @@ def test__paddle__subscription__charge_interactively__new_payment_if_no_payment_
 
 
 @pytest.mark.django_db(databases=["actual_db"])
-def test__paddle__reference_payment_non_matching_currency(paddle, user_client, paddle_payment):
-    other_currency_plan = Plan.objects.create(
-        codename="other",
-        name="Other",
-        charge_amount=Money(30, "EUR"),
-        charge_period=relativedelta(days=30),
-    )
-
+def test__paddle__reference_payment_non_matching_currency(paddle, user_client, paddle_payment, plan):
+    assert paddle_payment.amount.currency == USD
     with pytest.raises(BadReferencePayment):
         paddle.charge_automatically(
-            plan=other_currency_plan,
-            amount=Money(30, "USD"),
+            plan=plan,
+            amount=Money(30, "EUR"),
             quantity=1,
             since=now(),
             until=now() + days(10),
             reference_payment=paddle_payment,
         )
 
-
 @pytest.mark.django_db(databases=["actual_db"])
 def test__paddle__subscription__charge_automatically__zero_amount(paddle, user_client, paddle_payment):
     assert SubscriptionPayment.objects.count() == 1
-
-    free_plan = Plan.objects.create(
-        codename="other",
-        name="Other",
-        charge_amount=None,
-        charge_period=relativedelta(days=30),
-    )
-
+    plan = paddle_payment.plan
     paddle.charge_automatically(
-        plan=free_plan,
-        amount=free_plan.charge_amount,
+        plan=plan,
+        amount=paddle_payment.amount * 0,
         quantity=1,
         since=now(),
-        until=now() + free_plan.charge_period,
+        until=now() + plan.charge_period,
         reference_payment=paddle_payment,
     )
     assert SubscriptionPayment.objects.count() == 2
     last_payment = SubscriptionPayment.objects.latest()
-    assert last_payment.plan == free_plan
-    assert last_payment.amount is None
+    assert last_payment.plan == plan
+    assert last_payment.amount == Money(0, "USD")
 
 
 @pytest.mark.django_db(databases=["actual_db"])

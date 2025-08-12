@@ -1,46 +1,41 @@
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import ValidationError
-from django.http import Http404
-from django.views.generic import DetailView, ListView, TemplateView
+from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
+from django.views.generic import DetailView, FormView, ListView, TemplateView
 
-from .exceptions import PaymentError, ProviderNotFound
+from .exceptions import PaymentError
+from .forms import SubscriptionSelectionForm
 from .models import Plan
 from .providers import get_provider_by_codename
+from .models import subscribe
 
 
 class PlanListView(ListView):
     template_name = "subscriptions/plans.html"
-    queryset = Plan.objects.all()
+    queryset = Plan.objects.filter(is_enabled=True)
     context_object_name = "plans"
 
 
 class PlanView(DetailView):
     template_name = "subscriptions/plan.html"
-    model = Plan
-
-    def get_object(self):
-        return self.model.objects.get(id=self.kwargs["id"])
+    queryset = Plan.objects.filter(is_enabled=True)
+    pk_url_kwarg = "id"
 
 
-class PlanSubscriptionView(LoginRequiredMixin, PlanView):
+class PlanSubscriptionView(LoginRequiredMixin, FormView):
     template_name = "subscriptions/subscribe.html"
+    form_class = SubscriptionSelectionForm
 
-    def dispatch(self, request, *args, **kwargs):
-        self.provider_codename = request.GET.get("provider")
-        try:
-            self.payment_provider = get_provider_by_codename(self.provider_codename)
-        except ProviderNotFound:
-            raise Http404()
-
-        self.plan = Plan.objects.get(id=kwargs["id"])
-        self.form = form(request.POST or None) if (form := self.payment_provider.form) else None
-
-        return super().dispatch(request, *args, **kwargs)
-
-    def post(self, request, *args, **kwargs):
+    def post(self, request: HttpRequest, *args, **kwargs) -> HttpResponse:
         if self.form.is_valid():
             try:
-                return self.payment_provider.process_subscription_request(request=request)
+                _, redirect_url, _ = subscribe(
+                    user=request.user,
+                    plan=self.form.cleaned_data["plan"],
+                    quantity=self.form.cleaned_data["quantity"],
+                    provider=get_provider_by_codename(self.form.cleaned_data["provider"]),
+                )
+                return HttpResponseRedirect(redirect_url)
             except PaymentError as exc:
                 self.form.add_error(None, ValidationError(exc.user_message))
 

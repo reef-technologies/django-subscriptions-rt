@@ -16,4 +16,6 @@ from .._internal.models import (  # noqa: F401
     Tier,
     Usage,
     default_initial_charge,
+    get_trial_period,
+    subscribe,
 )

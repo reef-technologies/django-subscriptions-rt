@@ -195,7 +195,12 @@ def test__api__resources__initial(request, use_cache, user_client, subscription,
     with freeze_time(subscription.start, tick=True):
         response = user_client.get("/api/resources/")
         assert response.status_code == 200, response.content
-        assert response.json() == {resource.codename: quota.limit * subscription.quantity}
+        assert response.json() == {
+            "resources": [
+                {"codename": resource.codename, "amount": quota.limit * subscription.quantity}
+            ],
+        }
+
 
 
 @pytest.mark.django_db(databases=["actual_db"])
@@ -218,7 +223,11 @@ def test__api__resources__usage(request, use_cache, user, user_client, subscript
     with freeze_time(subscription.start + days(2), tick=True):
         response = user_client.get("/api/resources")
         assert response.status_code == 200, response.content
-        assert response.json() == {resource.codename: quota.limit * subscription.quantity - 20}
+        assert response.json() == {
+            "resources": [
+                {"codename": resource.codename, "amount": quota.limit * subscription.quantity - 20}
+            ]
+        }
 
 
 @pytest.mark.django_db(databases=["actual_db"])
@@ -235,12 +244,18 @@ def test__api__resources__expiration(request, use_cache, user_client, subscripti
     with freeze_time(subscription.start + quota.burns_in - days(1)):
         response = user_client.get("/api/resources")
         assert response.status_code == 200, response.content
-        assert response.json() == {resource.codename: quota.limit * subscription.quantity}
+        assert response.json() == {
+            "resources": [
+                {"codename": resource.codename, "amount": quota.limit * subscription.quantity}
+            ]
+        }
 
     with freeze_time(subscription.start + quota.burns_in):
         response = user_client.get("/api/resources/")
         assert response.status_code == 200, response.content
-        assert response.json() == {}
+        assert response.json() == {
+            "resources": [],
+        }
 
 
 @pytest.mark.django_db(databases=["actual_db"], transaction=True)
@@ -288,7 +303,12 @@ def test__api__recharge_plan_subscription(
         response = user_client.get("/api/resources/")
         assert response.status_code == 200, response.content
         assert response.json() == {
-            resource.codename: subscription.plan.quotas.last().limit * subscription.quantity + recharge_quota.limit,
+            "resources": [
+                {
+                    "codename": resource.codename,
+                    "amount": subscription.plan.quotas.last().limit * subscription.quantity + recharge_quota.limit,
+                }
+            ]
         }
 
 

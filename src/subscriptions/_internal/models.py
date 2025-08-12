@@ -6,11 +6,12 @@ from datetime import UTC, datetime, timedelta
 from itertools import count, islice
 from logging import getLogger
 from operator import attrgetter
-from typing import TYPE_CHECKING, ClassVar, Self
+from typing import ClassVar, Self
 from uuid import uuid4
 
 from dateutil.relativedelta import relativedelta
 from django.conf import settings
+from django.contrib.auth.base_user import AbstractBaseUser
 from django.db import models
 from django.db.models import (
     DateTimeField,
@@ -28,19 +29,19 @@ from django.utils.timezone import now
 from model_utils import FieldTracker
 from pydantic import BaseModel
 
+from .defaults import DEFAULT_SUBSCRIPTIONS_SUCCESS_URL, DEFAULT_SUBSCRIPTIONS_TRIAL_PERIOD
 from .exceptions import (
     InconsistentQuotaCache,
     PaymentError,
     ProlongationImpossible,
     ProviderNotFound,
+    RecurringSubscriptionsAlreadyExist,
 )
 from .fields import MoneyField, RelativeDurationField
 from .utils import AdvancedJSONEncoder, merge_iter, pre_validate
 
 log = getLogger(__name__)
 
-if TYPE_CHECKING:
-    from .providers import Provider
 
 INFINITY = relativedelta(days=365 * 1000)
 MAX_DATETIME = datetime.max.replace(tzinfo=UTC)
@@ -706,3 +707,86 @@ class Tax(models.Model):
 
 
 from .signals import create_default_subscription_for_new_user  # noqa
+
+
+def get_trial_period(user: AbstractBaseUser, plan: Plan) -> relativedelta:
+    trial_period = getattr(settings, "SUBSCRIPTIONS_TRIAL_PERIOD", DEFAULT_SUBSCRIPTIONS_TRIAL_PERIOD)
+
+    if (
+        trial_period
+        and plan.charge_amount
+        and plan.is_recurring()
+        and not user.payments.filter(status=SubscriptionPayment.Status.COMPLETED).exists()
+        and not user.subscriptions.recurring().exists()
+    ):
+        return trial_period
+
+    return relativedelta()
+
+
+def subscribe(user: AbstractBaseUser, plan: Plan, quantity: int, provider: "Provider") -> tuple[SubscriptionPayment, str, str]:
+    from .validators import get_validators
+
+    now_ = now()
+    active_subscriptions = user.subscriptions.active().order_by("end")
+    for validator in get_validators():
+        try:
+            validator(active_subscriptions, plan)
+        except RecurringSubscriptionsAlreadyExist as exc:
+            # if there are recurring subscriptions and they are conflicting,
+            # we force-terminate them and go on with creating a new one
+            for subscription in exc.subscriptions:
+                subscription.end = now_
+                subscription.save()
+
+    automatic_charge_succeeded = False
+    reference_payment = (
+        user.payments.filter(
+            provider_codename=provider.codename,
+            status=SubscriptionPayment.Status.COMPLETED,
+        )
+        .order_by("created")
+        .last()
+    )
+    if reference_payment:
+        try:
+            payment = provider.charge_automatically(
+                plan=plan,
+                amount=plan.charge_amount,
+                quantity=quantity,
+                since=now_,
+                until=now_ + plan.charge_period,
+                reference_payment=reference_payment,
+            )
+            automatic_charge_succeeded = True
+            redirect_url = getattr(settings, "SUBSCRIPTIONS_SUCCESS_URL", DEFAULT_SUBSCRIPTIONS_SUCCESS_URL)
+        except (PaymentError, NotImplementedError):
+            pass
+        except Exception:
+            log.exception("Background charge error")
+
+    if not automatic_charge_succeeded:
+        trial_period = get_trial_period(user=user, plan=plan)
+        payment, redirect_url = provider.charge_interactively(
+            user=user,
+            plan=plan,
+            amount=plan.charge_amount * (0 if trial_period else 1),  # zero with currency
+            quantity=quantity,
+            since=now_,
+            until=now_ + (trial_period or plan.charge_period),
+        )
+
+        if trial_period:
+            assert not payment.subscription
+            payment.subscription = Subscription.objects.create(
+                user=user,
+                plan=plan,
+                quantity=quantity,
+                start=now_,
+                end=now_,
+                initial_charge_offset=trial_period,  # TODO: ugly
+            )
+            payment.subscription.save()
+            payment.save()
+
+    return payment, redirect_url, automatic_charge_succeeded

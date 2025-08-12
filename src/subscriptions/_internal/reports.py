@@ -139,8 +139,6 @@ class TransactionsReport:
     since: datetime
     until: datetime = field(default_factory=now)
 
-    # TODO: some methods will explode when there are multiple currencies
-
     @classmethod
     def iter_periods(cls, frequency: int, since: datetime, until: datetime, **kwargs) -> Iterator[Self]:
         for start, end in _iter_periods(frequency, since, until):

@@ -3,6 +3,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from django.utils.timezone import now
+from rest_framework.fields import MinValueValidator
 from rest_framework.serializers import (
     BooleanField,
     CharField,
@@ -67,16 +68,16 @@ class SubscriptionSerializer(ModelSerializer):
             "payment_provider",
         )
 
-    def get_next_charge_date(self, obj) -> datetime | None:
-        if not obj.auto_prolong:
+    def get_next_charge_date(self, subscription: Subscription) -> datetime | None:
+        if not subscription.auto_prolong:
             return None
 
         with suppress(StopIteration):
-            return next(obj.iter_charge_dates(since=now()))
+            return next(subscription.iter_charge_dates(since=now()))
 
-    def get_payment_provider(self, obj) -> str | None:
+    def get_payment_provider(self, subscription: Subscription) -> str | None:
         with suppress(SubscriptionPayment.DoesNotExist, ProviderNotFound):
-            reference_payment = obj.get_reference_payment()
+            reference_payment = subscription.get_reference_payment()
             return reference_payment.provider_codename
 
 
@@ -90,10 +91,10 @@ class PaymentProviderListSerializer(Serializer):
 
 class SubscriptionSelectSerializer(Serializer):
     plan = PrimaryKeyRelatedField(queryset=Plan.objects.all())
-    quantity = IntegerField(default=1)
+    quantity = IntegerField(default=1, validators=[MinValueValidator(1)])
     provider = CharField(validators=[validate_provider])
     redirect_url = CharField(read_only=True)
-    automatic_charge_succeeded = BooleanField(default=False)
+    automatic_charge_succeeded = BooleanField(read_only=True, default=False)
     payment_id = CharField(read_only=True)
 
 
@@ -101,8 +102,13 @@ class WebhookSerializer(Serializer):
     pass
 
 
+class ResourcesEntrySerializer(Serializer):
+    codename = CharField()
+    amount = IntegerField()
+
+
 class ResourcesSerializer(Serializer):
-    pass  # TODO
+    resources = ResourcesEntrySerializer(many=True)
 
 
 class SubscriptionPaymentSerializer(ModelSerializer):

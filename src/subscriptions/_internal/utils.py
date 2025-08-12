@@ -1,6 +1,6 @@
 import logging
 from collections.abc import Callable, Iterable, Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from datetime import datetime, timedelta
 from functools import partial, wraps
 from typing import TypeVar
@@ -11,6 +11,7 @@ from django.core.serializers.json import DjangoJSONEncoder
 from django.db import connections, models, router
 from djmoney.money import Money
 from environs import Env
+
 
 from .defaults import DEFAULT_SUBSCRIPTIONS_ADVISORY_LOCK_TIMEOUT, DEFAULT_SUBSCRIPTIONS_CURRENCY
 from .exceptions import ConfigurationError
@@ -34,10 +35,8 @@ def merge_iter(*iterables: Iterable[T], key: Callable = lambda x: x) -> Iterator
     # accumulate first value from each iterable
     for iterable in iterables:
         iterator = iter(iterable)
-        try:
+        with suppress(StopIteration):
             values[iterator] = next(iterator)
-        except StopIteration:
-            pass
 
     last_min_value = None
     while values:
@@ -112,7 +111,7 @@ def pre_validate(fn: Callable) -> Callable:
     """A decorator to validate model fields before saving."""
 
     @wraps(fn)
-    def wrapper(self, *args, **kwargs):
+    def wrapper(self: models.Model, *args, **kwargs):
         self.full_clean()
         return fn(self, *args, **kwargs)
 

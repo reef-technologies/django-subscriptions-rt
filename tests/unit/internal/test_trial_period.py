@@ -6,8 +6,7 @@ from django.utils.timezone import now
 from freezegun import freeze_time
 from more_itertools import one
 
-from subscriptions.v0.api.views import SubscriptionSelectView
-from subscriptions.v0.models import INFINITY, Subscription, SubscriptionPayment
+from subscriptions.v0.models import INFINITY, Subscription, SubscriptionPayment, get_trial_period
 from subscriptions.v0.tasks import check_unfinished_payments
 
 from ..helpers import days
@@ -15,7 +14,7 @@ from ..helpers import days
 
 @pytest.mark.django_db(databases=["actual_db"])
 def test__get_trial_period__disabled(plan, user):
-    assert SubscriptionSelectView.get_trial_period(plan, user) == relativedelta()
+    assert get_trial_period(user, plan) == relativedelta()
 
 
 @pytest.mark.django_db(databases=["actual_db"])
@@ -23,7 +22,7 @@ def test__get_trial_period__no_charge_amount(trial_period, plan, user):
     plan.charge_amount *= 0
     plan.save()
 
-    assert SubscriptionSelectView.get_trial_period(plan, user) == relativedelta()
+    assert get_trial_period(user, plan) == relativedelta()
 
 
 @pytest.mark.django_db(databases=["actual_db"])
@@ -31,7 +30,7 @@ def test__get_trial_period__not_recurring(trial_period, plan, user):
     plan.charge_period = INFINITY
     plan.save()
 
-    assert SubscriptionSelectView.get_trial_period(plan, user) == relativedelta()
+    assert get_trial_period(user, plan) == relativedelta()
 
 
 @pytest.mark.django_db(databases=["actual_db"])
@@ -43,19 +42,19 @@ def test__get_trial_period__already_paid(trial_period, plan, user):
         paid_since=now(),
         paid_until=now() + plan.charge_period,
     )
-    assert SubscriptionSelectView.get_trial_period(plan, user) == trial_period
+    assert get_trial_period(user, plan) == trial_period
 
     payment.status = SubscriptionPayment.Status.COMPLETED
     payment.save()
-    assert SubscriptionSelectView.get_trial_period(plan, user) == relativedelta()
+    assert get_trial_period(user, plan) == relativedelta()
 
 
 @pytest.mark.django_db(databases=["actual_db"])
 def test__get_trial_period__had_no_recurring(trial_period, plan, user):
-    assert SubscriptionSelectView.get_trial_period(plan, user) == trial_period
+    assert get_trial_period(user, plan) == trial_period
 
     Subscription.objects.create(plan=plan, user=user)
-    assert SubscriptionSelectView.get_trial_period(plan, user) == relativedelta()
+    assert get_trial_period(user, plan) == relativedelta()
 
 
 @pytest.mark.django_db(databases=["actual_db"])
