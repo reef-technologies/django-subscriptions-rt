@@ -77,7 +77,7 @@ def test__tasks__charge_expiring__not_charging_twice_if_pending_exists(
     assert SubscriptionPayment.objects.count() == 1
     charge_period = charge_schedule[1:3]
 
-    with freeze_time(subscription.start):
+    with freeze_time(subscription.end + charge_period[0]):
         pending_payment = SubscriptionPayment.objects.create(
             provider_codename=payment.provider_codename,
             subscription=subscription,
@@ -87,15 +87,15 @@ def test__tasks__charge_expiring__not_charging_twice_if_pending_exists(
             paid_since=payment.paid_since,
             paid_until=payment.paid_until,
         )
-    assert SubscriptionPayment.objects.count() == 2
+        assert SubscriptionPayment.objects.count() == 2
 
-    with freeze_time(subscription.end + charge_period[0]):
+    with freeze_time(subscription.end + charge_period[1]):
         charge_expiring(payment_status=SubscriptionPayment.Status.COMPLETED)
         assert SubscriptionPayment.objects.count() == 2
 
     pending_payment.status = SubscriptionPayment.Status.CANCELLED
     pending_payment.save()
-    with freeze_time(subscription.end + charge_period[0]):
+    with freeze_time(subscription.end + charge_period[1]):
         charge_expiring(payment_status=SubscriptionPayment.Status.COMPLETED)
         assert SubscriptionPayment.objects.count() == 3
 

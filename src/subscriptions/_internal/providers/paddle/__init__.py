@@ -160,15 +160,15 @@ class PaddleProvider(Provider):
             paddle_status = metadata.get("status")
             try:
                 status = status_mapping[paddle_status]
-            except KeyError:
-                log.error(
-                    f'Paddle one-off charge status "{paddle_status}" is unknown, '
-                    f"should be from {set(status_mapping.keys())}"
-                )
-                status = SubscriptionPayment.Status.ERROR
-
-            # when status is PENDING, no webhook will come, so we rely on
-            # background task to search for payments
+            except KeyError as exc:
+                raise PaymentError(
+                    "Unknown status from Paddle one-off charge",
+                    debug_info={
+                        "paddle_status": paddle_status,
+                        "user": reference_payment.user,
+                        "subscription": subscription,
+                    },
+                ) from exc
 
         return SubscriptionPayment.objects.create(
             provider_codename=self.codename,

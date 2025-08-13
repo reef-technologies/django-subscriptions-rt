@@ -247,7 +247,7 @@ class Subscription(models.Model):
     plan = models.ForeignKey(Plan, on_delete=models.PROTECT, related_name="subscriptions")
     auto_prolong = models.BooleanField()
     quantity = models.PositiveIntegerField(default=1)
-    initial_charge_offset = RelativeDurationField(blank=True, default=default_initial_charge)
+    initial_charge_offset = RelativeDurationField(blank=True, default=default_initial_charge)  # TODO: rethink this
     start = models.DateTimeField(blank=True)
     end = models.DateTimeField(blank=True)
 
@@ -275,7 +275,7 @@ class Subscription(models.Model):
     def max_end(self) -> datetime:
         return self.start + self.plan.max_duration
 
-    def save(self, *args, **kwargs):
+    def save(self, *args, **kwargs) -> None:
         self.start = self.start or now()
         self.end = self.end or min(self.start + self.plan.charge_period, self.max_end)
         if self.auto_prolong is None:
@@ -283,7 +283,7 @@ class Subscription(models.Model):
         super().save(*args, **kwargs)
         self.adjust_default_subscription()
 
-    def stop(self):
+    def stop(self) -> None:
         self.end = now()
         self.auto_prolong = False
         self.save(update_fields=["end", "auto_prolong"])
@@ -291,22 +291,19 @@ class Subscription(models.Model):
     def prolong(self) -> datetime:
         """Returns next uncovered charge_date or subscription.max_end"""
 
-        next_charge_dates = islice(self.iter_charge_dates(since=self.end), 2)
-        if (first_charge_date := next(next_charge_dates)) and self.end == first_charge_date:
-            try:
-                end = next(next_charge_dates)
-            except StopIteration as exc:
-                raise ProlongationImpossible("No next charge date") from exc
-        else:
-            end = first_charge_date
+        charge_dates = self.iter_charge_dates(since=self.end)
 
-        if end > (max_end := self.max_end):
-            if self.end >= max_end:
-                raise ProlongationImpossible("Current subscription end is already the maximum end")
+        try:
+            next_charge_date = next(charge_dates)
+            if next_charge_date == self.end:
+                next_charge_date = next(charge_dates)
+        except StopIteration as exc:
+            raise ProlongationImpossible("No next charge date") from exc
 
-            end = max_end
+        if self.end >= self.max_end:
+            raise ProlongationImpossible("Reached maximum plan duration")
 
-        return end
+        return min(next_charge_date, self.max_end)
 
     def iter_quota_chunks(
         self,
@@ -325,7 +322,7 @@ class Subscription(models.Model):
         quota: "Quota",
         since: datetime | None = None,
         until: datetime | None = None,
-    ):
+    ) -> Iterator[QuotaChunk]:
         epsilon = timedelta(
             milliseconds=1
         )  # we use epsilon to exclude chunks which start right at `since - quota.burns_in`
@@ -414,7 +411,7 @@ class Subscription(models.Model):
             amount=self.plan.charge_amount,
             quantity=self.quantity,
             since=self.end,
-            until=self.end + self.plan.charge_period,
+            until=self.prolong(),
             subscription=self,
             reference_payment=reference_payment,
         )

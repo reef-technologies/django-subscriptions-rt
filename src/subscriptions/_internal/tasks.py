@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor, wait
 from datetime import datetime, timedelta
 from functools import partial
 from logging import getLogger
+from uuid import UUID, uuid4
 
 from django.conf import settings
 from django.db import transaction
@@ -29,51 +30,40 @@ DEFAULT_CHARGE_ATTEMPTS_SCHEDULE = getattr(
 
 
 @transaction.atomic
-def _charge_recurring_subscription(
-    subscription: Subscription,
+def charge_recurring_subscription(
+    subscription_uid: UUID,
     schedule: Iterable[timedelta],
     at: datetime,
-    lock: bool = True,
-):
-    if lock:
-        # here we lock specific subscription object, so that we don't try charging it twice
-        # at the same time
-        _ = list(
-            Subscription.objects.filter(pk=subscription.pk).select_for_update(of=("self",))
-        )  # TODO: skip_locked=True?
+) -> None:
 
+    # here we lock specific subscription object, so that we don't try charging it twice
+    # at the same time
+    subscription = Subscription.objects.filter(pk=subscription_uid).select_for_update(of=("self",)).get()  # TODO: skip_locked=True?
     log.debug("Processing subscription %s", subscription)
 
-    # expiration_date = next(subscription.iter_charge_dates(since=now_))
-    # TODO: what if `subscription.end_date` expiration_date doesn't match `subscription.iter_charge_dates()`?
-    expiration_date = subscription.end
-
-    charge_dates = [expiration_date + delta for delta in schedule]
+    charge_dates = [subscription.end + delta for delta in schedule]
     charge_periods = pairwise(charge_dates)
 
     try:
         charge_period = first(period for period in charge_periods if period[0] <= at < period[1])
+        log.debug(
+            "Current time %s falls within period %s (delta: %s)",
+            at,
+            [date.isoformat() for date in charge_period],
+            subscription.end - at,
+        )
     except ValueError:
         log.warning("Current time %s doesn't fall within any charge period, skipping", at)
         return
 
-    log.debug(
-        "Current time %s falls within period %s (delta: %s)",
-        at,
-        [date.isoformat() for date in charge_period],
-        expiration_date - at,
-    )
-
     # we don't want to try charging if
     # 1) there is already ANY charge attempt (successful or not) in this charge period
     # (so if there was ERROR charge in this period, we will try again only in next period)
-    # 2) there is already any PENDING charge attempt; all charge attempts should end up
-    # being in COMPLETED/ERROR/ABANDONED etc state, and PENDING payments will be garbage-collected
-    # by a separate task
+    # 2) there is already any PENDING charge attempt in any charge period
     previous_payment_attempts = list(
         subscription.payments.filter(
-            Q(created__gte=charge_period[0], created__lt=charge_period[1])  # any attempt in this period
-            | Q(status=SubscriptionPayment.Status.PENDING)  # any pending attempt
+            Q(created__gte=charge_period[0], created__lt=charge_period[1]) |  # any attempt in this period
+            Q(created__gte=charge_dates[0], created__lt=charge_dates[-1], status=SubscriptionPayment.Status.PENDING)  # any pending attempt within charge window
         )
     )
     if previous_payment_attempts:
@@ -96,28 +86,25 @@ def _charge_recurring_subscription(
 
         return
 
-    log.debug("Trying to prolong subscription %s", subscription)
     try:
-        new_subscription_end = subscription.prolong()  # try extending end date of subscription
-        log.debug("Prolongation of subscription is possible")
-    except ProlongationImpossible as exc:
-        # cannot prolong anymore, disable auto_prolong for this subscription
-        log.debug("Prolongation of subscription is impossible: %s", exc)
+        log.debug("Trying to prolong subscription %s", subscription)
+        payment = subscription.charge_automatically()
+        log.debug("Subscription %s automatically charged: %s", subscription, payment)
+        # even if background subscription succeeds, we are not sure about its status,
+        # so we don't prolong the subscription here but instead let setting
+        # `payment.status = COMPLETED` (by charge_automatically or webhook or whatever)
+        # to auto-prolong subscription itself
+    except ProlongationImpossible:
         subscription.auto_prolong = False
         subscription.save()
         log.debug("Turned off auto-prolongation of subscription %s", subscription)
-        # TODO: send email to user
         return
-
-    try:
-        log.debug("Background-charging subscription %s", subscription)
-        subscription.charge_automatically()
     except PaymentError as exc:
         log.warning("Failed to background-charge subscription", extra=exc.debug_info)
 
         # here we create a failed SubscriptionPayment to indicate that we tried
         # to charge but something went wrong, so that subsequent task calls
-        # won't try charging and sending email again within same charge_period
+        # won't try charging again within same charge_period
         SubscriptionPayment.objects.create(
             provider_codename="auto",
             user=subscription.user,
@@ -126,16 +113,9 @@ def _charge_recurring_subscription(
             subscription=subscription,
             quantity=subscription.quantity,
             paid_since=subscription.end,
-            paid_until=new_subscription_end,
+            paid_until=subscription.prolong(),
             metadata=exc.debug_info,
         )
-        return
-
-    log.debug("Offline charge successfully created for subscription %s", subscription)
-    # even if background subscription succeeds, we are not sure about its status,
-    # so we don't prolong the subscription here but instead let setting
-    # `payment.status = COMPLETED` (by charge_automatically or webhook or whatever)
-    # to auto-prolong subscription itself
 
 
 def notify_stuck_pending_payments(older_than: timedelta = DEFAULT_NOTIFY_PENDING_PAYMENTS_AFTER):
@@ -152,7 +132,6 @@ def charge_recurring_subscriptions(
     subscriptions: SubscriptionQuerySet | None = None,
     schedule: Iterable[timedelta] = DEFAULT_CHARGE_ATTEMPTS_SCHEDULE,
     num_threads: int | None = None,
-    lock: bool = True,
     # TODO: dry-run
 ):
     # TODO: management command
@@ -161,36 +140,24 @@ def charge_recurring_subscriptions(
     if not schedule:
         return
 
-    now_ = now()
+    now_ = now()  # charging all the subscriptions may take time, so we freeze the time at which we initiated charging process
 
     subscriptions = Subscription.objects.all() if subscriptions is None else subscriptions
-    expiring_subscriptions = (
-        subscriptions.filter(  # noqa
-            auto_prolong=True,
-        )
-        .expiring(
-            since=now_ - schedule[-1],
-            within=schedule[-1] - schedule[0],
-        )
-        .select_related(
-            "user",
-            "plan",
-        )
+    expiring_subscriptions = subscriptions.filter(
+        auto_prolong=True,
+    ).expiring(
+        since=now_ - schedule[-1],
+        within=schedule[-1] - schedule[0],
     )
 
     if not expiring_subscriptions.exists():
         log.debug("No subscriptions to charge")
         return
 
-    charge = partial(
-        _charge_recurring_subscription,
-        schedule=schedule,
-        at=now_,
-        lock=lock,
-    )
+    charge = partial(charge_recurring_subscription, schedule=schedule, at=now_)
 
     if num_threads is not None and num_threads < 2:
-        for subscription in expiring_subscriptions:
+        for subscription in expiring_subscriptions.values_list("uid", flat=True):
             try:
                 charge(subscription)
             except Exception:

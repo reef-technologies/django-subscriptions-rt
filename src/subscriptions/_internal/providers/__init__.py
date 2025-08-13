@@ -58,6 +58,7 @@ class Provider:
         reference_payment: SubscriptionPayment,
         subscription: Subscription | None = None,  # TODO: change signature? (remove unrelated to payment fields)
     ) -> SubscriptionPayment:
+        """This method either returns a new SubscriptionPayment object (w/ PENDING or COMPLETED status) or raises PaymentError / InvalidOperationError."""
         raise NotImplementedError
 
     def webhook(self, request: Request, payload: dict) -> Response:
