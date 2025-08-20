@@ -66,7 +66,7 @@ class Migration(migrations.Migration):
                 ('uid', models.UUIDField(default=uuid.uuid4, primary_key=True, serialize=False)),
                 ('auto_prolong', models.BooleanField()),
                 ('quantity', models.PositiveIntegerField(default=1)),
-                ('initial_charge_offset', subscriptions._internal.fields.RelativeDurationField(blank=True, default=subscriptions._internal.models.default_initial_charge, encoder=subscriptions._internal.fields.RelativedeltaEncoder)),
+                ('charge_offset', subscriptions._internal.fields.RelativeDurationField(blank=True, default=subscriptions._internal.models.relativedelta, encoder=subscriptions._internal.fields.RelativedeltaEncoder)),
                 ('start', models.DateTimeField(blank=True)),
                 ('end', models.DateTimeField(blank=True)),
                 ('plan', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='subscriptions', to='subscriptions.plan')),

@@ -1,8 +1,9 @@
 from collections.abc import Iterable
 from datetime import datetime
 from typing import ClassVar
+from uuid import uuid4
 
-from django.contrib.auth.models import AbstractBaseUser
+from django.contrib.auth.base_user import AbstractBaseUser
 from django.forms import Form
 from django.utils.crypto import get_random_string
 from djmoney.money import Money
@@ -10,14 +11,12 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.status import HTTP_200_OK, HTTP_400_BAD_REQUEST, HTTP_404_NOT_FOUND
 
-from ...exceptions import PaymentError
 from ...models import Plan, Subscription, SubscriptionPayment
 from .. import Provider
 from .forms import DummyForm
 
 
 class DummyProvider(Provider):
-    is_external: ClassVar[bool] = False
     form: ClassVar[type[Form] | None] = DummyForm
 
     _payment_url: ClassVar[str] = "/payment/{}/"
@@ -33,8 +32,7 @@ class DummyProvider(Provider):
         subscription: Subscription | None = None,
     ) -> tuple[SubscriptionPayment, str]:
         transaction_id = get_random_string(8)
-
-        payment = SubscriptionPayment.objects.create(  # TODO: limit number of creations per day
+        payment = SubscriptionPayment.objects.create(
             provider_codename=self.codename,
             provider_transaction_id=transaction_id,
             amount=amount,  # type: ignore[misc]
@@ -55,9 +53,9 @@ class DummyProvider(Provider):
         since: datetime,
         until: datetime,
         reference_payment: SubscriptionPayment,
-        subscription: Subscription | None = None,  # TODO: change signature? (remove unrelated to payment fields)
+        subscription: Subscription | None = None,
     ) -> SubscriptionPayment:
-        return SubscriptionPayment.objects.create(  # TODO: limit number of creations per day
+        return SubscriptionPayment.objects.create(
             provider_codename=self.codename,
             provider_transaction_id=get_random_string(8),
             amount=amount,  # type: ignore[misc]

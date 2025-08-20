@@ -3,9 +3,8 @@ from datetime import datetime
 from decimal import Decimal
 
 from django.utils.timezone import now
-from rest_framework.fields import MinValueValidator
+from rest_framework.fields import ChoiceField
 from rest_framework.serializers import (
-    BooleanField,
     CharField,
     DateTimeField,
     IntegerField,
@@ -15,7 +14,6 @@ from rest_framework.serializers import (
     SerializerMethodField,
 )
 
-from ..exceptions import ProviderNotFound
 from ..fields import relativedelta_to_dict
 from ..models import Plan, Subscription, SubscriptionPayment
 from .validators import validate_provider
@@ -54,7 +52,7 @@ class PlanSerializer(ModelSerializer):
 class SubscriptionSerializer(ModelSerializer):
     plan = PlanSerializer()
     next_charge_date = SerializerMethodField()
-    payment_provider = SerializerMethodField()
+    provider = SerializerMethodField(read_only=True)
 
     class Meta:
         model = Subscription
@@ -65,7 +63,7 @@ class SubscriptionSerializer(ModelSerializer):
             "start",
             "end",
             "next_charge_date",
-            "payment_provider",
+            "provider",
         )
 
     def get_next_charge_date(self, subscription: Subscription) -> datetime | None:
@@ -75,8 +73,8 @@ class SubscriptionSerializer(ModelSerializer):
         with suppress(StopIteration):
             return next(subscription.iter_charge_dates(since=now()))
 
-    def get_payment_provider(self, subscription: Subscription) -> str | None:
-        with suppress(SubscriptionPayment.DoesNotExist, ProviderNotFound):
+    def get_provider(self, subscription: Subscription) -> str | None:
+        with suppress(SubscriptionPayment.DoesNotExist):
             reference_payment = subscription.get_reference_payment()
             return reference_payment.provider_codename
 
@@ -91,10 +89,10 @@ class PaymentProviderListSerializer(Serializer):
 
 class SubscriptionSelectSerializer(Serializer):
     plan = PrimaryKeyRelatedField(queryset=Plan.objects.all())
-    quantity = IntegerField(default=1, validators=[MinValueValidator(1)])
+    quantity = IntegerField(default=1, min_value=1)
     provider = CharField(validators=[validate_provider])
     redirect_url = CharField(read_only=True)
-    automatic_charge_succeeded = BooleanField(read_only=True, default=False)
+    status = ChoiceField(choices=[[name.lower()] * 2 for _, name in SubscriptionPayment.Status.choices], read_only=True)
     payment_id = CharField(read_only=True)
 
 

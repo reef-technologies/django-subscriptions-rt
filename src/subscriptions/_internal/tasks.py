@@ -4,7 +4,7 @@ from concurrent.futures import ThreadPoolExecutor, wait
 from datetime import datetime, timedelta
 from functools import partial
 from logging import getLogger
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from django.conf import settings
 from django.db import transaction
@@ -34,11 +34,11 @@ def charge_recurring_subscription(
     subscription_uid: UUID,
     schedule: Iterable[timedelta],
     at: datetime,
+    dry_run: bool,
 ) -> None:
-
     # here we lock specific subscription object, so that we don't try charging it twice
     # at the same time
-    subscription = Subscription.objects.filter(pk=subscription_uid).select_for_update(of=("self",)).get()  # TODO: skip_locked=True?
+    subscription = Subscription.objects.filter(pk=subscription_uid).select_for_update(of=("self",)).get()
     log.debug("Processing subscription %s", subscription)
 
     charge_dates = [subscription.end + delta for delta in schedule]
@@ -62,8 +62,10 @@ def charge_recurring_subscription(
     # 2) there is already any PENDING charge attempt in any charge period
     previous_payment_attempts = list(
         subscription.payments.filter(
-            Q(created__gte=charge_period[0], created__lt=charge_period[1]) |  # any attempt in this period
-            Q(created__gte=charge_dates[0], created__lt=charge_dates[-1], status=SubscriptionPayment.Status.PENDING)  # any pending attempt within charge window
+            Q(created__gte=charge_period[0], created__lt=charge_period[1])  # any attempt in this period
+            | Q(
+                created__gte=charge_dates[0], created__lt=charge_dates[-1], status=SubscriptionPayment.Status.PENDING
+            )  # any pending attempt within charge window
         )
     )
     if previous_payment_attempts:
@@ -117,6 +119,9 @@ def charge_recurring_subscription(
             metadata=exc.debug_info,
         )
 
+    if dry_run:
+        transaction.set_rollback(True)
+
 
 def notify_stuck_pending_payments(older_than: timedelta = DEFAULT_NOTIFY_PENDING_PAYMENTS_AFTER):
     stuck_payments = SubscriptionPayment.objects.filter(
@@ -132,15 +137,15 @@ def charge_recurring_subscriptions(
     subscriptions: SubscriptionQuerySet | None = None,
     schedule: Iterable[timedelta] = DEFAULT_CHARGE_ATTEMPTS_SCHEDULE,
     num_threads: int | None = None,
-    # TODO: dry-run
+    dry_run: bool = False,
 ):
-    # TODO: management command
     log.debug("Background charging according to schedule %s", schedule)
     schedule = sorted(schedule)
     if not schedule:
         return
 
-    now_ = now()  # charging all the subscriptions may take time, so we freeze the time at which we initiated charging process
+    # charging all the subscriptions may take time, so we freeze the time at which we initiated charging process
+    now_ = now()
 
     subscriptions = Subscription.objects.all() if subscriptions is None else subscriptions
     expiring_subscriptions = subscriptions.filter(
@@ -154,7 +159,7 @@ def charge_recurring_subscriptions(
         log.debug("No subscriptions to charge")
         return
 
-    charge = partial(charge_recurring_subscription, schedule=schedule, at=now_)
+    charge = partial(charge_recurring_subscription, schedule=schedule, at=now_, dry_run=dry_run)
 
     if num_threads is not None and num_threads < 2:
         for subscription in expiring_subscriptions.values_list("uid", flat=True):
@@ -219,6 +224,3 @@ def check_duplicated_payments() -> dict[tuple[str, str], list[SubscriptionPaymen
         result[(provider_codename, transaction_id)] = transaction_id_entries
 
     return result
-
-
-# TODO: check for concurrency issues, probably add transactions

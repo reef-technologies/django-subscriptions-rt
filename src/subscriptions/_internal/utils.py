@@ -12,7 +12,6 @@ from django.db import connections, models, router
 from djmoney.money import Money
 from environs import Env
 
-
 from .defaults import DEFAULT_SUBSCRIPTIONS_ADVISORY_LOCK_TIMEOUT, DEFAULT_SUBSCRIPTIONS_CURRENCY
 from .exceptions import ConfigurationError
 

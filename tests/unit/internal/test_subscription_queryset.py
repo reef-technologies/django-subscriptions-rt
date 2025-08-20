@@ -18,7 +18,7 @@ def past_subscription_ending_before_trial_end(plan, user, now_) -> Subscription:
         user=user,
         plan=plan,
         auto_prolong=False,
-        initial_charge_offset=relativedelta(days=5),
+        charge_offset=relativedelta(days=5),
         # Two days long subscription, trial period.
         start=now_ - relativedelta(months=10, days=10),
         end=now_ - relativedelta(months=10, days=8),
@@ -31,7 +31,7 @@ def past_subscription_ending_after_trial_end(plan, user, now_, dummy) -> Subscri
         user=user,
         plan=plan,
         auto_prolong=False,
-        initial_charge_offset=relativedelta(days=5),
+        charge_offset=relativedelta(days=5),
         # Eight days long subscription, past trial period.
         start=now_ - relativedelta(months=9, days=10),
         end=now_ - relativedelta(months=9, days=2),
@@ -77,7 +77,7 @@ def current_subscription_before_trial_end(plan, user, now_) -> Subscription:
         user=user,
         plan=plan,
         auto_prolong=False,
-        initial_charge_offset=relativedelta(days=5),
+        charge_offset=relativedelta(days=5),
         # Trial period not finished yet.
         start=now_ - relativedelta(days=2),
         end=now_ + relativedelta(days=5),
@@ -90,7 +90,7 @@ def current_subscription_after_trial_end(plan, user, now_, dummy) -> Subscriptio
         user=user,
         plan=plan,
         auto_prolong=False,
-        initial_charge_offset=relativedelta(days=5),
+        charge_offset=relativedelta(days=5),
         # The trial period finished two days ago.
         start=now_ - relativedelta(days=7),
         end=now_ + relativedelta(days=5),

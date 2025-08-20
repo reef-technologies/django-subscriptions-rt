@@ -218,8 +218,8 @@ def test__get_trial_period__cheating__simultaneous_payments(
         payment.save()
 
     assert Subscription.objects.count() == 2
-    assert payments[0].subscription.initial_charge_offset == trial_period
-    assert payments[1].subscription.initial_charge_offset == relativedelta(0)
+    assert payments[0].subscription.charge_offset == trial_period
+    assert payments[1].subscription.charge_offset == relativedelta(0)
 
 
 @pytest.mark.django_db(databases=["actual_db"], transaction=True)
@@ -248,9 +248,9 @@ def test__get_trial_period__not_cheating__multiacc(
         payment.save()
 
     assert Subscription.objects.count() == 2
-    assert payments[0].subscription.initial_charge_offset == trial_period
+    assert payments[0].subscription.charge_offset == trial_period
     assert payments[0].subscription.user == user
-    assert payments[1].subscription.initial_charge_offset == trial_period
+    assert payments[1].subscription.charge_offset == trial_period
     assert payments[1].subscription.user == other_user
 
 

@@ -72,7 +72,7 @@ def test__api__subscriptions__authorized(user_client, two_subscriptions):
             "end": datetime_to_api(subscription.end),
             "quantity": 1,
             "next_charge_date": None,
-            "payment_provider": None,  # TODO: wat?
+            "provider": None,
             "plan": {
                 "id": subscription.plan.pk,
                 "codename": subscription.plan.codename,
@@ -147,7 +147,7 @@ def test__api__subscribe__authorized(client, user_client, plan, dummy):
         "payment_id": str(SubscriptionPayment.objects.latest().pk),
         "quantity": 2,
         "redirect_url": result["redirect_url"],
-        "automatic_charge_succeeded": False,
+        "status": "pending",
     }.items() <= result.items()
 
     response = user_client.get("/api/subscriptions/")
@@ -196,11 +196,8 @@ def test__api__resources__initial(request, use_cache, user_client, subscription,
         response = user_client.get("/api/resources/")
         assert response.status_code == 200, response.content
         assert response.json() == {
-            "resources": [
-                {"codename": resource.codename, "amount": quota.limit * subscription.quantity}
-            ],
+            "resources": [{"codename": resource.codename, "amount": quota.limit * subscription.quantity}],
         }
-
 
 
 @pytest.mark.django_db(databases=["actual_db"])
@@ -224,9 +221,7 @@ def test__api__resources__usage(request, use_cache, user, user_client, subscript
         response = user_client.get("/api/resources")
         assert response.status_code == 200, response.content
         assert response.json() == {
-            "resources": [
-                {"codename": resource.codename, "amount": quota.limit * subscription.quantity - 20}
-            ]
+            "resources": [{"codename": resource.codename, "amount": quota.limit * subscription.quantity - 20}]
         }
 
 
@@ -245,9 +240,7 @@ def test__api__resources__expiration(request, use_cache, user_client, subscripti
         response = user_client.get("/api/resources")
         assert response.status_code == 200, response.content
         assert response.json() == {
-            "resources": [
-                {"codename": resource.codename, "amount": quota.limit * subscription.quantity}
-            ]
+            "resources": [{"codename": resource.codename, "amount": quota.limit * subscription.quantity}]
         }
 
     with freeze_time(subscription.start + quota.burns_in):
@@ -292,7 +285,7 @@ def test__api__recharge_plan_subscription(
             "quantity": 1,
             "payment_id": str(SubscriptionPayment.objects.latest().pk),
             "redirect_url": result["redirect_url"],
-            "automatic_charge_succeeded": False,
+            "status": "pending",
         }.items() <= result.items()
 
         transaction_id = SubscriptionPayment.objects.latest().provider_transaction_id
@@ -361,7 +354,7 @@ def test__api__payment(user_client, payment):
             "start": datetime_to_api(payment.subscription.start),
             "end": datetime_to_api(payment.subscription.end),
             "next_charge_date": datetime_to_api(next(payment.subscription.iter_charge_dates(since=now()))),
-            "payment_provider": "dummy",
+            "provider": "dummy",
         },
         "quantity": 2,
         "amount": 100.0,

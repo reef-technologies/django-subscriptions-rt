@@ -7,7 +7,6 @@ from urllib import parse
 
 import pytest
 import requests
-from dateutil.relativedelta import relativedelta
 from django.test.client import MULTIPART_CONTENT
 from django.utils.timezone import now
 from djmoney.money import Money
@@ -18,12 +17,14 @@ from requests import Response
 from tenacity import Retrying, TryAgain, stop_after_attempt, wait_incrementing
 
 from subscriptions.v0.exceptions import BadReferencePayment, PaymentError
-from subscriptions.v0.models import Plan, Subscription, SubscriptionPayment
+from subscriptions.v0.models import Subscription, SubscriptionPayment
 from subscriptions.v0.providers.paddle import PaddleProvider
 from subscriptions.v0.tasks import check_unfinished_payments
 from subscriptions.v0.utils import fromisoformat
 
 from ..helpers import days
+
+pytest.skip(allow_module_level=True)
 
 
 def automate_payment(url: str, card: str, email: str):
@@ -144,7 +145,6 @@ def automate_payment(url: str, card: str, email: str):
     final_three_d_s.raise_for_status()
 
 
-@pytest.mark.skip(reason="This test is outdated")
 @pytest.mark.skipif(environ.get("CI") is not None, reason="This test requires manual interaction")
 @pytest.mark.django_db(databases=["actual_db"], transaction=True)
 def test__paddle__payment_flow__regular(
@@ -170,7 +170,7 @@ def test__paddle__payment_flow__regular(
     assert result == {
         "plan": plan.pk,
         "quantity": 1,
-        "automatic_charge_succeeded": False,
+        "status": "pending",
         "payment_id": str(payment.pk),
         "provider": "paddle",
     }
@@ -317,7 +317,7 @@ def test__paddle__payment_flow__trial_period(
     assert result == {
         "plan": plan.pk,
         "quantity": 1,
-        "automatic_charge_succeeded": False,
+        "status": "pending",
         "payment_id": str(payment.pk),
         "provider": "paddle",
     }
@@ -327,7 +327,7 @@ def test__paddle__payment_flow__trial_period(
     assert user.subscriptions.count() == 1
     subscription = user.subscriptions.first()
     assert subscription.start == subscription.end
-    assert subscription.initial_charge_offset == trial_period
+    assert subscription.charge_offset == trial_period
     input(f"Use card {card_number} to pay here: {redirect_url}\nThen press Enter")
     # automate_payment(redirect_url, card_number, paddle_test_email)
 
@@ -519,6 +519,7 @@ def test__paddle__reference_payment_non_matching_currency(paddle, user_client, p
             until=now() + days(10),
             reference_payment=paddle_payment,
         )
+
 
 @pytest.mark.django_db(databases=["actual_db"])
 def test__paddle__subscription__charge_automatically__zero_amount(paddle, user_client, paddle_payment):

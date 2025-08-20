@@ -6,7 +6,7 @@ from subscriptions.v0.exceptions import (
 from subscriptions.v0.providers.apple_in_app.enums import AppleValidationStatus
 
 
-class AppleInvalidOperation(SubscriptionError):
+class AppleInvalidOperation(SubscriptionError, InvalidOperation):
     def __init__(self):
         super().__init__("Apple subscription provider doesn't support this operation.")
 

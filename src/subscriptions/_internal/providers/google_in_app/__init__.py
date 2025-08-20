@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from functools import cached_property
 from typing import ClassVar
+from uuid import uuid4
 
 import httplib2
 from dateutil.relativedelta import relativedelta
@@ -15,6 +16,7 @@ from django.core.exceptions import SuspiciousOperation
 from django.db import transaction
 from django.utils.timezone import now
 from googleapiclient.discovery import Resource, build
+from moneyed import Money
 from more_itertools import one
 from oauth2client import service_account
 from pydantic import BaseModel, ValidationError
@@ -24,7 +26,7 @@ from rest_framework.response import Response
 from rest_framework.status import HTTP_200_OK, HTTP_400_BAD_REQUEST
 
 from ...api.serializers import SubscriptionPaymentSerializer
-from ...models import Plan, SubscriptionPayment
+from ...models import Plan, Subscription, SubscriptionPayment
 from ...utils import advisory_lock, fromisoformat
 from .. import Provider
 from .exceptions import AmbiguousDataError, InvalidOperation
@@ -72,7 +74,6 @@ class GoogleInAppProvider(Provider):
     """
 
     codename: ClassVar[str] = "google"
-    is_external: ClassVar[bool] = True
     package_name: ClassVar[str] = str(settings.GOOGLE_PLAY_PACKAGE_NAME)
     metadata_class: ClassVar[type[BaseModel]] = Metadata
 
@@ -119,6 +120,9 @@ class GoogleInAppProvider(Provider):
 
     def charge_interactively(self, *args, **kwargs) -> tuple[SubscriptionPayment, str]:
         raise InvalidOperation(f"Interactive charge not supported for {self.codename}")
+
+    def cancel(self, subscription: Subscription) -> None:
+        raise InvalidOperation(f"Cancellation not supported for {self.codename}")
 
     def iter_subscriptions(self) -> Iterator[GoogleSubscription]:
         """Yield all Google in-app products available for users."""
@@ -627,4 +631,4 @@ class GoogleInAppProvider(Provider):
 
         https://developers.google.com/android-publisher/api-ref/rest/v3/purchases.subscriptions/get?hl=en
         """
-        raise NotImplementedError()  # TODO
+        raise NotImplementedError  # TODO

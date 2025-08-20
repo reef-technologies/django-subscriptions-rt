@@ -105,7 +105,7 @@ Changing default plan value will adjust default subscriptions automatically.
 
 ### Trial period
 
-It is possible to postpone user's first payment by some timedelta. When creating a subscription, set `initial_charge_offset`, which will shift all charge dates by this offset:
+It is possible to postpone user's first payment by some timedelta. When creating a subscription, set `charge_offset`, which will shift all charge dates by this offset:
 
 ```python
 from dateutil.relativedelta import relativedelta
@@ -116,7 +116,7 @@ offset = relativedelta(days=7)
 subscription = Subscription.objects.create(
    # ...
    start=now_,
-   initial_charge_offset=offset,
+   charge_offset=offset,
 )
 
 assert next(subscription.iter_charge_dates()) == now_ + offset
@@ -150,7 +150,7 @@ Internally, trial period works like this:
 ------[=======(Payment, cost=0)=======]-------->
                                       ^- trial period end
 ------[]--------------------------------------->
-      ^--- Subscription with initial_charge_offset = trial_period
+      ^--- Subscription with charge_offset = trial_period
 ```
 
 3) Users enters CC details for the payment -> it gets confirmed; when the payment is confirmed, its subscription is extended till the end of trial period:

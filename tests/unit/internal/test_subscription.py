@@ -91,13 +91,13 @@ def test__subscription__iter_charge_dates__main(plan, subscription):
 
 
 @pytest.mark.django_db(databases=["actual_db"])
-def test__subscription__iter_charge_dates__initial_charge_offset(plan, subscription):
+def test__subscription__iter_charge_dates__charge_offset(plan, subscription):
     plan.charge_period = relativedelta(months=1)
     plan.save()
 
     subscription.start = datetime(2021, 11, 30, 12, 00, 00, tzinfo=UTC)
     subscription.end = subscription.start + days(65)
-    subscription.initial_charge_offset = relativedelta(days=10)
+    subscription.charge_offset = relativedelta(days=10)
     subscription.save()
 
     expected_charge_dates = [

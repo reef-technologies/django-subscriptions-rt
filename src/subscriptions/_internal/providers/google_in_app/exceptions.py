@@ -1,8 +1,11 @@
+from ...exceptions import InvalidOperation as BaseInvalidOperation
+
+
 class GoogleInAppException(Exception):
     pass
 
 
-class InvalidOperation(GoogleInAppException):
+class InvalidOperation(GoogleInAppException, BaseInvalidOperation):
     pass
 
 

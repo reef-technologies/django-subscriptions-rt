@@ -1,17 +1,16 @@
 from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from functools import cached_property, lru_cache
 from logging import getLogger
 from typing import ClassVar
+from uuid import uuid4
 
 from django.conf import settings
-from django.contrib.auth.models import AbstractBaseUser
-from django.forms import Form
+from django.contrib.auth.base_user import AbstractBaseUser
 from django.utils.module_loading import import_string
-from django.utils.timezone import now
 from djmoney.money import Money
-from more_itertools import all_unique, first, one
+from more_itertools import all_unique, first
 from pydantic import BaseModel
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -25,7 +24,6 @@ log = getLogger(__name__)
 
 @dataclass
 class Provider:
-    is_external: ClassVar[bool]  # TODO: get rid of this
     metadata_class: ClassVar[type[BaseModel]] = BaseModel
 
     @property
@@ -44,7 +42,7 @@ class Provider:
         quantity: int,
         since: datetime,
         until: datetime,
-        subscription: Subscription | None = None,  # TODO: change signature? (remove unrelated to payment fields)
+        subscription: Subscription | None = None,
     ) -> tuple[SubscriptionPayment, str]:
         raise NotImplementedError
 
@@ -56,10 +54,14 @@ class Provider:
         since: datetime,
         until: datetime,
         reference_payment: SubscriptionPayment,
-        subscription: Subscription | None = None,  # TODO: change signature? (remove unrelated to payment fields)
+        subscription: Subscription | None = None,
     ) -> SubscriptionPayment:
-        """This method either returns a new SubscriptionPayment object (w/ PENDING or COMPLETED status) or raises PaymentError / InvalidOperationError."""
+        """Returns a new SubscriptionPayment (PENDING or COMPLETED) or raises PaymentError / InvalidOperationError."""
         raise NotImplementedError
+
+    def cancel(self, subscription: Subscription) -> None:
+        subscription.auto_prolong = False
+        subscription.save()
 
     def webhook(self, request: Request, payload: dict) -> Response:
         log.warning(f'Webhook for "{self.codename}" triggered without explicit handler')

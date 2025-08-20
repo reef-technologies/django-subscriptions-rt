@@ -4,11 +4,14 @@ from dataclasses import dataclass, field
 from functools import cached_property
 from logging import getLogger
 from typing import TYPE_CHECKING, ClassVar
+from uuid import uuid4
 
+from django.contrib.auth.base_user import AbstractBaseUser
 from django.contrib.auth.models import User
 from django.core.exceptions import SuspiciousOperation
 from django.db import transaction
 from django.utils import timezone
+from moneyed import Money
 from pydantic import (
     BaseModel,
     ValidationError,
@@ -62,7 +65,6 @@ class AppleInAppMetadata(BaseModel):
 class AppleInAppProvider(Provider):
     # This is also name of the field in metadata of the Plan, that stores Apple App Store product id.
     codename: ClassVar[str] = "apple"
-    is_external: ClassVar[bool] = True
     bundle_id: ClassVar[str] = get_setting_or_raise("APPLE_BUNDLE_ID")
     api: AppleAppStoreAPI = field(default_factory=lambda: AppleAppStoreAPI(get_setting_or_raise("APPLE_SHARED_SECRET")))
     metadata_class = AppleInAppMetadata
@@ -78,6 +80,9 @@ class AppleInAppProvider(Provider):
         raise AppleInvalidOperation
 
     def charge_automatically(self, *args, **kwargs) -> SubscriptionPayment:
+        raise AppleInvalidOperation
+
+    def cancel(self, subscription: Subscription) -> None:
         raise AppleInvalidOperation
 
     def webhook(self, request: Request, payload: dict) -> Response:

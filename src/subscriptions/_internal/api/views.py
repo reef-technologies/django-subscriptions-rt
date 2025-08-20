@@ -1,5 +1,4 @@
 import logging
-from contextlib import suppress
 
 from django.db import transaction
 from django.http import QueryDict
@@ -11,9 +10,9 @@ from rest_framework.response import Response
 from rest_framework.schemas.openapi import AutoSchema
 from rest_framework.views import APIView
 
-from ..exceptions import SubscriptionError
+from ..exceptions import InvalidOperation, SubscriptionError
 from ..functions import get_remaining_amount
-from ..models import Plan, Subscription, SubscriptionPayment
+from ..models import Plan, Subscription, SubscriptionPayment, subscribe
 from ..providers import Provider, get_provider, get_provider_by_codename, get_providers_fqns
 from .exceptions import BadRequest
 from .serializers import (
@@ -25,7 +24,6 @@ from .serializers import (
     SubscriptionSerializer,
     WebhookSerializer,
 )
-from ..models import subscribe
 
 log = logging.getLogger(__name__)
 
@@ -82,14 +80,16 @@ class SubscriptionView(DestroyAPIView):
     def get_queryset(self):
         return Subscription.objects.active().filter(user=self.request.user)
 
-    def perform_destroy(self, instance):
-        with suppress(SubscriptionPayment.DoesNotExist):
-            latest_payment = instance.payments.latest()
-            if get_provider_by_codename(latest_payment.provider_codename).is_external:
-                raise BadRequest(detail="Cancellation endpoint is not allowed for this provider")
-
-        instance.auto_prolong = False
-        instance.save()
+    def perform_destroy(self, subscription):
+        try:
+            latest_payment = subscription.payments.latest()
+            provider = get_provider_by_codename(latest_payment.provider_codename)
+            provider.cancel(subscription)
+        except InvalidOperation as exc:
+            raise BadRequest from exc
+        except SubscriptionPayment.DoesNotExist:
+            subscription.auto_prolong = False
+            subscription.save()
 
 
 class SubscriptionSelectView(GenericAPIView):
@@ -108,8 +108,8 @@ class SubscriptionSelectView(GenericAPIView):
         provider = get_provider_by_codename(provider_codename)
 
         try:
-            payment, redirect_url, automatic_charge_succeeded = subscribe(
-                user=request.user,
+            payment, redirect_url = subscribe(
+                user=request.user,  # type: ignore[arg-type]
                 plan=plan,
                 quantity=quantity,
                 provider=provider,
@@ -121,7 +121,7 @@ class SubscriptionSelectView(GenericAPIView):
             self.serializer_class(
                 {
                     "redirect_url": redirect_url,
-                    "automatic_charge_succeeded": automatic_charge_succeeded,
+                    "status": payment.get_status_display().lower(),
                     "quantity": payment.quantity,
                     "plan": payment.plan,
                     "payment_id": payment.pk,
@@ -162,10 +162,13 @@ class ResourcesView(GenericAPIView):
     schema = AutoSchema()
 
     def get(self, request: Request, *args, **kwargs) -> Response:
-        entries = [{
-            "codename": resource.codename,
-            "amount": amount,
-        } for resource, amount in get_remaining_amount(request.user).items()]
+        entries = [
+            {
+                "codename": resource.codename,
+                "amount": amount,
+            }
+            for resource, amount in get_remaining_amount(request.user).items()  # type: ignore[arg-type]
+        ]
         serializer = self.get_serializer({"resources": entries})
         return Response(serializer.data)
 

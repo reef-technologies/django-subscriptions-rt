@@ -31,7 +31,6 @@ log = getLogger(__name__)
 @dataclass
 class PaddleProvider(Provider):
     codename: ClassVar[str] = "paddle"
-    is_external: ClassVar[bool] = False
 
     vendor_id: ClassVar[int] = int(str(settings.PADDLE_VENDOR_ID))
     vendor_auth_code: ClassVar[str] = str(settings.PADDLE_VENDOR_AUTH_CODE)
@@ -42,9 +41,6 @@ class PaddleProvider(Provider):
 
     # if user already created a SubscriptionPayment within this period, reuse it
     ONLINE_CHARGE_DUPLICATE_LOOKUP_TIME = timedelta(hours=1)
-
-    # make staff members pay ~1<currency> instead of real charge amount
-    STAFF_DISCOUNT = True
 
     @cached_property
     def _api(self) -> Paddle:

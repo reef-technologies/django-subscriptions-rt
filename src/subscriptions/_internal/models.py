@@ -3,7 +3,7 @@ from collections.abc import Callable, Iterable, Iterator
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from itertools import count, islice
+from itertools import count
 from logging import getLogger
 from operator import attrgetter
 from typing import ClassVar, Self
@@ -85,7 +85,7 @@ class Tier(models.Model):
 
     features = models.ManyToManyField(Feature)
 
-    objects: ClassVar[Manager["Tier"]] = Manager()  # for mypy
+    objects: ClassVar[Manager[Self]] = Manager()  # for mypy
 
     class Meta(SubscriptionsMeta):
         db_table = "subscriptions_v0_tier"
@@ -111,7 +111,7 @@ class Plan(models.Model):
     metadata = models.JSONField(blank=True, default=dict, encoder=AdvancedJSONEncoder)
     is_enabled = models.BooleanField(default=True)
 
-    objects: ClassVar[Manager["Plan"]] = Manager()  # for mypy
+    objects: ClassVar[Manager[Self]] = Manager()  # for mypy
 
     class Meta(SubscriptionsMeta):
         db_table = "subscriptions_v0_plan"
@@ -148,7 +148,7 @@ class QuotaChunk:
     def includes(self, date: datetime) -> bool:
         return self.start <= date < self.end
 
-    def same_lifetime(self, other: "QuotaChunk") -> bool:
+    def same_lifetime(self, other: Self) -> bool:
         return self.start == other.start and self.end == other.end
 
 
@@ -177,6 +177,34 @@ class QuotaCache:
 
         if any((non_paired := values) for values in cached_chunks.values()):
             raise InconsistentQuotaCache(f"Non-paired cached chunk(s) detected: {non_paired}")
+
+
+class Quota(models.Model):
+    plan = models.ForeignKey(Plan, on_delete=models.CASCADE, related_name="quotas")
+    resource = models.ForeignKey(Resource, on_delete=models.CASCADE, related_name="quotas")
+    limit = models.PositiveIntegerField()
+    recharge_period = RelativeDurationField(
+        blank=True, help_text="leave blank for recharging only after each subscription prolongation (charge)"
+    )
+    burns_in = RelativeDurationField(blank=True, help_text="leave blank to burn each recharge period")
+
+    class Meta(SubscriptionsMeta):
+        db_table = "subscriptions_v0_quota"
+        constraints = [
+            UniqueConstraint(fields=["plan", "resource"], name="unique_quota"),
+        ]
+
+    def __str__(self) -> str:
+        return (
+            f"{self.pk} {self.resource} {self.limit:,}"
+            f"{self.resource.units}/{self.recharge_period}, "
+            f"burns in {self.burns_in}"
+        )
+
+    def save(self, *args, **kwargs) -> None:
+        self.recharge_period = self.recharge_period or self.plan.charge_period
+        self.burns_in = self.burns_in or self.recharge_period
+        return super().save(*args, **kwargs)
 
 
 class SubscriptionQuerySet(models.QuerySet):
@@ -237,17 +265,13 @@ class SubscriptionQuerySet(models.QuerySet):
         return self.filter(start__gte=since, start__lte=until)
 
 
-def default_initial_charge() -> relativedelta:
-    return relativedelta()
-
-
 class Subscription(models.Model):
     uid = models.UUIDField(primary_key=True, default=uuid4)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="subscriptions")
     plan = models.ForeignKey(Plan, on_delete=models.PROTECT, related_name="subscriptions")
     auto_prolong = models.BooleanField()
     quantity = models.PositiveIntegerField(default=1)
-    initial_charge_offset = RelativeDurationField(blank=True, default=default_initial_charge)  # TODO: rethink this
+    charge_offset = RelativeDurationField(blank=True, default=relativedelta)
     start = models.DateTimeField(blank=True)
     end = models.DateTimeField(blank=True)
 
@@ -319,7 +343,7 @@ class Subscription(models.Model):
 
     def _iter_single_quota_chunks(
         self,
-        quota: "Quota",
+        quota: Quota,
         since: datetime | None = None,
         until: datetime | None = None,
     ) -> Iterator[QuotaChunk]:
@@ -359,7 +383,7 @@ class Subscription(models.Model):
         since = since or self.start
 
         for i in count(start=0):
-            charge_date = self.start + self.initial_charge_offset + charge_period * i
+            charge_date = self.start + self.charge_offset + charge_period * i
 
             if charge_date < since:
                 continue
@@ -476,34 +500,6 @@ class Subscription(models.Model):
                 )
 
 
-class Quota(models.Model):
-    plan = models.ForeignKey(Plan, on_delete=models.CASCADE, related_name="quotas")
-    resource = models.ForeignKey(Resource, on_delete=models.CASCADE, related_name="quotas")
-    limit = models.PositiveIntegerField()
-    recharge_period = RelativeDurationField(
-        blank=True, help_text="leave blank for recharging only after each subscription prolongation (charge)"
-    )
-    burns_in = RelativeDurationField(blank=True, help_text="leave blank to burn each recharge period")
-
-    class Meta(SubscriptionsMeta):
-        db_table = "subscriptions_v0_quota"
-        constraints = [
-            UniqueConstraint(fields=["plan", "resource"], name="unique_quota"),
-        ]
-
-    def __str__(self) -> str:
-        return (
-            f"{self.pk} {self.resource} {self.limit:,}"
-            f"{self.resource.units}/{self.recharge_period}, "
-            f"burns in {self.burns_in}"
-        )
-
-    def save(self, *args, **kwargs):
-        self.recharge_period = self.recharge_period or self.plan.charge_period
-        self.burns_in = self.burns_in or self.recharge_period
-        return super().save(*args, **kwargs)
-
-
 class Usage(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="usages")
     resource = models.ForeignKey(Resource, on_delete=models.PROTECT, related_name="usages")
@@ -579,7 +575,7 @@ class AbstractTransaction(models.Model):
         return f"{self.short_id} {self.get_status_display()} {self.amount}"
 
     @property
-    def provider(self) -> "Provider":
+    def provider(self):
         from .providers import get_provider_by_codename
 
         return get_provider_by_codename(self.provider_codename)
@@ -601,7 +597,7 @@ class SubscriptionPayment(AbstractTransaction):
     paid_until = models.DateTimeField()
 
     tracker = FieldTracker()
-    objects: ClassVar[Manager["SubscriptionPayment"]] = Manager()  # for mypy
+    objects: ClassVar[Manager[Self]] = Manager()  # for mypy
 
     class Meta(AbstractTransaction.Meta):
         db_table = "subscriptions_v0_subscriptionpayment"
@@ -681,10 +677,9 @@ class SubscriptionPayment(AbstractTransaction):
 
 class SubscriptionPaymentRefund(AbstractTransaction):
     original_payment = models.ForeignKey(SubscriptionPayment, on_delete=models.PROTECT, related_name="refunds")
-    # TODO: add support by providers
 
     tracker = FieldTracker()
-    objects: ClassVar[Manager["SubscriptionPaymentRefund"]] = Manager()  # for mypy
+    objects: ClassVar[Manager[Self]] = Manager()  # for mypy
 
     class Meta(AbstractTransaction.Meta):
         db_table = "subscriptions_v0_subscriptionpaymentrefund"
@@ -694,7 +689,7 @@ class Tax(models.Model):
     subscription_payment = models.ForeignKey(SubscriptionPayment, on_delete=models.PROTECT, related_name="taxes")
     amount = MoneyField()
 
-    objects: ClassVar[Manager["Tax"]] = Manager()  # for mypy
+    objects: ClassVar[Manager[Self]] = Manager()  # for mypy
 
     class Meta(SubscriptionsMeta):
         db_table = "subscriptions_v0_tax"
@@ -713,19 +708,19 @@ def get_trial_period(user: AbstractBaseUser, plan: Plan) -> relativedelta:
         trial_period
         and plan.charge_amount
         and plan.is_recurring()
-        and not user.payments.filter(status=SubscriptionPayment.Status.COMPLETED).exists()
-        and not user.subscriptions.recurring().exists()
+        and not user.payments.filter(status=SubscriptionPayment.Status.COMPLETED).exists()  # type: ignore[attr-defined]
+        and not user.subscriptions.recurring().exists()  # type: ignore[attr-defined]
     ):
         return trial_period
 
     return relativedelta()
 
 
-def subscribe(user: AbstractBaseUser, plan: Plan, quantity: int, provider: "Provider") -> tuple[SubscriptionPayment, str, str]:
+def subscribe(user: AbstractBaseUser, plan: Plan, quantity: int, provider) -> tuple[SubscriptionPayment, str]:
     from .validators import get_validators
 
     now_ = now()
-    active_subscriptions = user.subscriptions.active().order_by("end")
+    active_subscriptions = user.subscriptions.active().order_by("end")  # type: ignore[attr-defined]
     for validator in get_validators():
         try:
             validator(active_subscriptions, plan)
@@ -736,9 +731,9 @@ def subscribe(user: AbstractBaseUser, plan: Plan, quantity: int, provider: "Prov
                 subscription.end = now_
                 subscription.save()
 
-    automatic_charge_succeeded = False
+    payment = None
     reference_payment = (
-        user.payments.filter(
+        user.payments.filter(  # type: ignore[attr-defined]
             provider_codename=provider.codename,
             status=SubscriptionPayment.Status.COMPLETED,
         )
@@ -755,14 +750,13 @@ def subscribe(user: AbstractBaseUser, plan: Plan, quantity: int, provider: "Prov
                 until=now_ + plan.charge_period,
                 reference_payment=reference_payment,
             )
-            automatic_charge_succeeded = True
             redirect_url = getattr(settings, "SUBSCRIPTIONS_SUCCESS_URL", DEFAULT_SUBSCRIPTIONS_SUCCESS_URL)
         except (PaymentError, NotImplementedError):
             pass
         except Exception:
             log.exception("Background charge error")
 
-    if not automatic_charge_succeeded:
+    if not payment:
         trial_period = get_trial_period(user=user, plan=plan)
         payment, redirect_url = provider.charge_interactively(
             user=user,
@@ -776,14 +770,14 @@ def subscribe(user: AbstractBaseUser, plan: Plan, quantity: int, provider: "Prov
         if trial_period:
             assert not payment.subscription
             payment.subscription = Subscription.objects.create(
-                user=user,
+                user=user,  # type: ignore[misc]
                 plan=plan,
                 quantity=quantity,
                 start=now_,
                 end=now_,
-                initial_charge_offset=trial_period,  # TODO: ugly
+                charge_offset=trial_period,
             )
             payment.subscription.save()
             payment.save()
 
-    return payment, redirect_url, automatic_charge_succeeded
+    return payment, redirect_url

@@ -6,6 +6,9 @@ from ...tasks import charge_recurring_subscriptions
 
 
 class Command(BaseCommand):
-    def handle(self, *args, **options):
+    def add_arguments(self, parser) -> None:
+        parser.add_argument("--dry-run", action="store_true", help="Run in dry-run mode")
+
+    def handle(self, *args, **options) -> None:
         logging.basicConfig(level=logging.DEBUG)
-        charge_recurring_subscriptions()
+        charge_recurring_subscriptions(dry_run=options["dry_run"])
