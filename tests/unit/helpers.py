@@ -12,5 +12,9 @@ def days(n: int):
     return relativedelta(days=n)
 
 
+def months(n: int):
+    return relativedelta(months=n)
+
+
 def datetime_to_api(dt: datetime) -> str:
     return dt.isoformat().replace("+00:00", "Z")  # .replace(microsecond=0)

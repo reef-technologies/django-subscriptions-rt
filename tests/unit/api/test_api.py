@@ -1,6 +1,6 @@
 import logging
 import re
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from dateutil.relativedelta import relativedelta
@@ -30,7 +30,6 @@ def test__api__plans(plan, client):
     assert response.json() == [
         {
             "id": plan.pk,
-            "codename": plan.codename,
             "name": plan.name,
             "charge_amount": plan.charge_amount.amount,
             "charge_amount_currency": str(plan.charge_amount.currency),
@@ -75,7 +74,6 @@ def test__api__subscriptions__authorized(user_client, two_subscriptions):
             "provider": None,
             "plan": {
                 "id": subscription.plan.pk,
-                "codename": subscription.plan.codename,
                 "name": subscription.plan.name,
                 "charge_amount": subscription.plan.charge_amount and subscription.plan.charge_amount.amount,
                 "charge_amount_currency": str(subscription.plan.charge_amount.currency)
@@ -92,28 +90,29 @@ def test__api__subscriptions__authorized(user_client, two_subscriptions):
 
 @pytest.mark.django_db(databases=["actual_db"])
 def test__api__subscriptions__next_charge_date(user_client, subscription):
-    subscription.end = now() + relativedelta(days=90)
+    assert subscription.start == datetime(2025, 1, 1, 12, 0, 0, tzinfo=UTC)
+    subscription.end = datetime(2025, 3, 1, 12, 0, 0, tzinfo=UTC)
     subscription.save()
 
-    with freeze_time(subscription.start):
+    with freeze_time(datetime(2025, 1, 1, 12, 0, 0, tzinfo=UTC)):
         response = user_client.get("/api/subscriptions/")
         assert response.status_code == 200, response.content
         assert response.json()[0]["next_charge_date"] == datetime_to_api(subscription.start)
 
-    with freeze_time(subscription.start + timedelta(days=1)):
+    with freeze_time(datetime(2025, 1, 2, 12, 0, 0, tzinfo=UTC)):
         response = user_client.get("/api/subscriptions/")
         assert response.status_code == 200, response.content
-        assert response.json()[0]["next_charge_date"] == datetime_to_api(subscription.start + relativedelta(days=30))
+        assert response.json()[0]["next_charge_date"] == datetime_to_api(subscription.start + relativedelta(months=1))
 
-    with freeze_time(subscription.start + timedelta(days=31)):
+    with freeze_time(datetime(2025, 2, 2, 12, 0, 0, tzinfo=UTC)):
         response = user_client.get("/api/subscriptions/")
         assert response.status_code == 200, response.content
-        assert response.json()[0]["next_charge_date"] == datetime_to_api(subscription.start + relativedelta(days=60))
+        assert response.json()[0]["next_charge_date"] == datetime_to_api(subscription.start + relativedelta(months=2))
 
 
 @pytest.mark.django_db(databases=["actual_db"])
 def test__api__subscriptions__next_charge_date__not_prolong(user_client, subscription):
-    subscription.end = now() + relativedelta(days=90)
+    subscription.end = subscription.start + relativedelta(days=90)
     subscription.save()
 
     with freeze_time(subscription.start):
@@ -341,12 +340,11 @@ def test__api__payment(user_client, payment):
             "id": str(payment.subscription.pk),
             "plan": {
                 "id": payment.subscription.plan.pk,
-                "codename": "plan",
                 "name": "Plan",
                 "charge_amount": 100.0,
                 "charge_amount_currency": "USD",
-                "charge_period": {"days": 30},
-                "max_duration": {"days": 120},
+                "charge_period": {"months": 1},
+                "max_duration": {"months": 4},
                 "is_recurring": True,
                 "metadata": {"this": "that"},
             },

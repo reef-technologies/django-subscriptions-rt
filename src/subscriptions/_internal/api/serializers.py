@@ -28,7 +28,6 @@ class PlanSerializer(ModelSerializer):
         model = Plan
         fields = (
             "id",
-            "codename",
             "name",
             "charge_amount",
             "charge_amount_currency",

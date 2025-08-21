@@ -2,6 +2,7 @@ from collections import Counter
 from datetime import timedelta
 
 import pytest
+from dateutil.relativedelta import relativedelta
 from django.utils.timezone import now
 from freezegun import freeze_time
 from more_itertools import partition
@@ -15,7 +16,7 @@ from subscriptions.v0.reports import (
 )
 from subscriptions.v0.utils import NO_MONEY
 
-from ..helpers import days, usd
+from ..helpers import days, months, usd
 
 
 def test__reports__subscriptions__iter_periods__microseconds():
@@ -62,20 +63,20 @@ def test__reports__subscriptions__overlapping(reports_subscriptions, eps):
         subs[2],
         subs[3],
     }
-    assert set(SubscriptionsReport(now_ + days(17), now_ + days(30) + eps).overlapping) == {
+    assert set(SubscriptionsReport(now_ + days(17), now_ + months(1) + eps).overlapping) == {
         subs[0],
         subs[1],
         subs[2],
         subs[3],
     }
-    assert set(SubscriptionsReport(now_ + days(17) + timedelta(seconds=1), now_ + days(30) + eps).overlapping) == {
+    assert set(SubscriptionsReport(now_ + days(17) + timedelta(seconds=1), now_ + months(1) + eps).overlapping) == {
         subs[0],
         subs[1],
         subs[2],
     }
 
-    assert set(SubscriptionsReport(now_ + days(30) + timedelta(seconds=1), now_ + days(40)).overlapping) == {subs[1]}
-    assert set(SubscriptionsReport(now_ + days(38), now_ + days(40)).overlapping) == set()
+    assert set(SubscriptionsReport(now_ + months(1) + timedelta(seconds=1), now_ + months(1) + days(2)).overlapping) == {subs[1]}
+    assert set(SubscriptionsReport(now_ + months(1) + days(8), now_ + months(1) + days(10)).overlapping) == set()
 
 
 @pytest.mark.django_db(databases=["actual_db"])
@@ -121,7 +122,7 @@ def test__reports__subscriptions__new__datetimes(reports_subscriptions, eps):
 
     assert set(SubscriptionsReport(now_ - days(2), now_ - days(1)).get_new_datetimes()) == set()
     assert set(SubscriptionsReport(now_ + days(1), now_ + days(3) + eps).get_new_datetimes()) == {now_ + days(3)}
-    assert list(sorted(SubscriptionsReport(now_, now_ + days(7) + eps).get_new_datetimes())) == [
+    assert sorted(SubscriptionsReport(now_, now_ + days(7) + eps).get_new_datetimes()) == [
         now_,
         now_,
         now_ + days(3),
@@ -176,8 +177,8 @@ def test__reports__subscriptions__ended_or_ending__datetimes(reports_subscriptio
 def test__reports__subscriptions__ended_or_ending__ages(reports_subscriptions):
     now_ = reports_subscriptions[0].start
     with freeze_time(now_):
-        assert set(SubscriptionsReport(now_, now_ + days(32)).get_ended_or_ending_ages()) == {
-            timedelta(days=30),
+        assert set(SubscriptionsReport(now_, now_ + months(1) + days(2)).get_ended_or_ending_ages()) == {
+            timedelta(days=31),
             timedelta(days=14),
         }
 
@@ -227,9 +228,9 @@ def test__reports__subscriptions__active__ages(reports_subscriptions):
     assert sorted(SubscriptionsReport(now_ + days(7), now_ + days(17)).get_active_ages()) == sorted(
         [timedelta(days=17), timedelta(days=10), timedelta(days=17)]
     )
-    assert sorted(SubscriptionsReport(now_ + days(31), now_ + days(36)).get_active_ages()) == [timedelta(days=29)]
+    assert sorted(SubscriptionsReport(now_ + months(1) + days(1), now_ + months(1) + days(6)).get_active_ages()) == [timedelta(days=30)]
     with freeze_time(now_):
-        assert sorted(SubscriptionsReport(now_ + days(31), now_ + days(40)).get_active_ages()) == [timedelta(days=30)]
+        assert sorted(SubscriptionsReport(now_ + months(1) + days(1), now_ + months(1) + days(10)).get_active_ages()) == [timedelta(days=31)]
 
 
 @pytest.mark.django_db(databases=["actual_db"])
@@ -440,8 +441,8 @@ def test__reports__transactions__estimated_recurring_charge__by_time(reports_sub
     ).get_estimated_recurring_charge_amounts_by_time() == {
         now_: usd(100) * 3,
         now_ + days(7): usd(200),
-        now_ + days(30): usd(100) * 3,
-        now_ + days(37): usd(200),
+        now_ + months(1): usd(100) * 3,
+        now_ + months(1) + days(7): usd(200),
     }
 
 

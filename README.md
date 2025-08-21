@@ -3,9 +3,10 @@
 
 ## Supported versions
 
-See [noxfile.py](noxfile.py) for list of Python and Django versions supported (variables `PYTHON_VERSIONS` and `DJANGO_VERSIONS`).
+See [ci.yml](.github/workflows/ci.yml) for matrix of supported Python and Django versions.
 
-> Warning: current version only supports Postgres database (PG_ADVISORY_LOCK is used).
+> [!IMPORTANT]
+> Only Postgres database is supported (due to PG_ADVISORY_LOCK requirement).
 
 ## Features
 
@@ -13,12 +14,6 @@ See [noxfile.py](noxfile.py) for list of Python and Django versions supported (v
 * Good-Better-Best. Subscription Plans are defined with products or services sold in feature tiers, with escalating features and pricing for each tier.
 * Per-Seat. Subscription Plans are defined with products or services sold in user/license quantity tiers, with volume pricing for each tier of user/license quantities.
 * Metered Billing. Subscription Plans are defined where customers are billed in arrears based on usage of your product/service as calculated by your platform.
-
-### TODO
-
-* Support more granular plans, as described in [Google Play docs](https://support.google.com/googleplay/android-developer/answer/12154973?hl=en)
-* Grace period
-* Hold / pause
 
 ## Configuration
 
@@ -32,25 +27,98 @@ INSTALLED_APPS = [
 ]
 ```
 
-### Advisory lock
+> [!IMPORTANT]
+> This package uses [ApiVer](#versioning), make sure to import `subscriptions.vX` for guaranteed backward compatibility.
 
-This package uses Postgres Advisory Lock to prevent multiple threads from charging the same subscription or using resources at the same time.
-It may be controlled via environment variables:
+For possible settings and their defaults see [defaults.py](src/subscriptions/_internal/defaults.py).
 
-```env
-# disable advisory lock (debugging only!)
-SUBSCRIPTIONS_ENABLE_ADVISORY_LOCK=0
+### Cache
 
-# set non-default advisory lock timeout (in seconds)
-SUBSCRIPTIONS_ADVISORY_LOCK_TIMEOUT=1
+Cache is required for fast resource calculations.
+
+```python
+settings.CACHES['subscriptions'] = {
+   'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+   'LOCATION': 'subscriptions',
+}
 ```
 
 ## Usage
 
-> [!IMPORTANT]
-> This package uses [ApiVer](#versioning), make sure to import `subscriptions.v0`.
+A `Plan` is some option which gives a user some benefits.
 
-### Subscriptions
+A `Subscription` is a user's belonging to a specific `Plan` for a defined period of time.
+
+```mermaid
+gantt
+   dateFormat YYYY-MM-DD
+
+   section One-time
+      30 days :a1, 2025-01-01, 30d
+   section Recurring
+      30 days :rec1, 2025-01-01, 30d
+      30 days :rec2, after rec1, 30d
+      30 days :after rec2, 30d
+   section Infinite:
+      Infinite :2025-01-01, 90d
+```
+
+```python
+# Create different plans and "attach" them to some user
+
+from dateutil.relativedelta import relativedelta
+from django.contrib.auth.models import User
+
+from subscriptions.v0.models import Plan, Subscription
+
+
+one_time_plan = Plan.objects.create(
+   codename="one-time",
+   name="One-time plan",
+   max_duration=relativedelta(months=1),
+)
+
+recurring_plan = Plan.objects.create(
+   codename="recurring",
+   name="Recurring plan",
+   charge_period=relativedelta(months=1),
+)
+
+infinite_plan = Plan.objects.create(
+   codename="infinite",
+   name="Infinite plan",
+)
+
+user = User.objects.create(username="test", email="test@localhost")
+for plan in [one_time_plan, recurring_plan, infinite_plan]:
+   Subscription.objects.create(user=user, plan=plan)
+```
+
+### Plan immutability
+
+Plan is a groundtruth for all calculations, meaning that once a plan has subscriptions attached, its core attributes (`charge_amount` and `charge_period`) should not change. Trying to change essential plan attributes while having attached subscriptions [will raise a `ValidationError`](tests/unit/internal/test_models.py#ref:plan-immutability).
+
+### Recurring subscriptions
+
+Recurring subscriptions are those that live for a limited period of time and require recharging when approaching its end.
+
+`Plan.charge_period` defines how often subscription charges will happen. It expects [a `relativedelta` object](https://dateutil.readthedocs.io/en/stable/relativedelta.html), so you can specify complex time periods easily - for example, if starting a subscription on _Nov 30st_ with `charge_period=relativedelta(months=1)`, next charge dates will be _Dec 30st_, _Jan 30st_ etc, so real charge period will be not exactly 30 days - [see an example in tests](tests/unit/internal/test_subscription.py#ref:charge-period-relativedelta).
+
+```mermaid
+gantt
+   title Charge period: relativedelta(months=1)
+   dateFormat YYYY-MM-DD
+   axisFormat %b %d
+   1 month (30 days) :2025-11-30, 2025-12-30
+   1 month (31 days) :2025-12-30, 2026-01-30
+   1 month (28 days) :2026-01-30, 2026-02-28
+
+   Dec 30th - end of period 1 :vert, 2025-12-30, 0
+   Jan 30th - end of period 2 :vert, 2026-01-30, 0
+   Feb 28th - end of period 3 :vert, 2026-02-28, 0
+```
+
+### Charges
 
 ```
 |--------subscription-------------------------------------------->
@@ -67,6 +135,26 @@ quota   (quota lifetime)       quota burned
 (quota recharge period) (quota recharge period) |----------------->
 ```
 
+### Money
+
+`NO_MONEY`
+
+### Max duration
+
+`INFINITY`
+
+### Subscripiton qiantity
+
+### Charge period
+
+### Charge amount
+
+### Tiers
+
+### Plan immutability
+
+### Auto_prolong
+
 ### Tracking changes
 
 [django-model-utils](https://django-model-utils.readthedocs.io/en/latest/utilities.html) package is used to track changes in essential models, such as `Subscription`, `SubscriptionPayment`, and `SubscriptionPaymentRefund`. This allows to track changes in subscription status / dates, payment status, and other fields.
@@ -81,6 +169,26 @@ def handler(sender, instance: SubscriptionPayment, **kwargs):
       new_status = instance.status
       print(f'Payment status changed from {old_status} to {new_status}')
 ```
+
+### Validators
+
+### Grace period
+
+If a renewal payment is declined, Google will ask the user to fix the payment issue and periodically retry the renewal charge. By default, this recovery period consists of a grace period, followed by an account hold period. You can specify the length of the grace period, during which the user retains subscription entitlement.
+
+### Account hold
+
+After any grace period has ended with the payment issue unresolved, the subscription can enter an account hold period. You can specify the length of account hold, during which the user should not have subscription entitlement. If the account hold period ends with the payment issue unresolved, the subscription is automatically expired.
+
+### Pausing subscriptions
+
+- subscription.unused_time
+
+### Discounts
+
+### Plan changes
+
+Over time, you can create and modify many subscriptions, base plans, and offers. While some might become obsolete, historical data can be useful for analytics and reporting purposes. Likewise, you might want to create alternatives for experimentation or switch from one offer to another depending on seasons or other factors. The new subscription system supports these use cases with subscription object states. To ensure information is always available for reporting and analysis purposes, you can't delete subscriptions, base plans, and offers, or reuse their IDs.
 
 ### Default plan
 
@@ -160,17 +268,6 @@ Internally, trial period works like this:
                                       ^- trial period end
 ------[===Subscription================]-------->
                                        ^--- Here real price will be charged
-```
-
-### Cache
-
-Cache is required for fast resource calculations.
-
-```python
-settings.CACHES['subscriptions'] = {
-   'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-   'LOCATION': 'subscriptions',
-}
 ```
 
 ### Middleware

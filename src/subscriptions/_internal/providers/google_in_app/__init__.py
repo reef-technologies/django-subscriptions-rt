@@ -6,7 +6,6 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from functools import cached_property
 from typing import ClassVar
-from uuid import uuid4
 
 import httplib2
 from dateutil.relativedelta import relativedelta
@@ -16,7 +15,6 @@ from django.core.exceptions import SuspiciousOperation
 from django.db import transaction
 from django.utils.timezone import now
 from googleapiclient.discovery import Resource, build
-from moneyed import Money
 from more_itertools import one
 from oauth2client import service_account
 from pydantic import BaseModel, ValidationError
@@ -24,6 +22,8 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.status import HTTP_200_OK, HTTP_400_BAD_REQUEST
+
+from ...exceptions import ConfigurationError
 
 from ...api.serializers import SubscriptionPaymentSerializer
 from ...models import Plan, Subscription, SubscriptionPayment
@@ -98,13 +98,17 @@ class GoogleInAppProvider(Provider):
 
     @classmethod
     def get_google_id(cls, plan: Plan) -> str:
-        with suppress(KeyError):
+        try:
             raw_data = plan.metadata[cls.codename]
-            with suppress(ValidationError):
-                google_subscription = GoogleSubscription.parse_obj(raw_data)
-                return google_subscription.productId
+        except KeyError as exc:
+            raise ConfigurationError("Google metadata is missing in Plan") from exc
 
-        return plan.codename
+        try:
+            google_subscription = GoogleSubscription.parse_obj(raw_data)
+        except ValidationError as exc:
+            raise ConfigurationError("Invalid Google metadata in Plan") from exc
+
+        return google_subscription.productId
 
     @classmethod
     def get_plan_by_google_id(cls, google_id: str) -> Plan:

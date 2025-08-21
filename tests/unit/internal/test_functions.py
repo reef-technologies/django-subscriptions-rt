@@ -371,7 +371,7 @@ def test__function__use_resource__advisory_lock(user, subscription, quota, resou
         with use_resource(user, resource, amount):
             pass
 
-    with ThreadPoolExecutor(max_workers=num_parallel_threads) as pool:
+    with ThreadPoolExecutor(max_workers=num_parallel_threads) as pool, freeze_time(subscription.start + days(1), tick=True):
         assert remains() == 100
 
         futures = [pool.submit(_use_resource, 50) for _ in range(num_parallel_threads)]
@@ -486,7 +486,6 @@ def test__functions__cache_backend_correctness(cache_backend, user, two_subscrip
 @pytest.mark.django_db(databases=["actual_db"])
 def test__functions__cache_recalculation_real_case(cache_backend, user, resource, remains):
     plan_pro = Plan.objects.create(
-        codename="11-pro-quarterly",
         name="Pro",
         charge_amount=Money(132, "USD"),
         charge_period=relativedelta(months=3),
@@ -501,7 +500,6 @@ def test__functions__cache_recalculation_real_case(cache_backend, user, resource
     )
 
     plan_endboss = Plan.objects.create(
-        codename="12-endboss-quarterly",
         name="Endboss",
         charge_amount=Money(267, "USD"),
         charge_period=relativedelta(months=3),

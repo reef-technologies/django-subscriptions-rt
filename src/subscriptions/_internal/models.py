@@ -25,12 +25,14 @@ from django.db.models import (
 from django.db.models.functions import Least
 from django.forms import ValidationError
 from django.urls import reverse
+from django.utils.text import slugify
 from django.utils.timezone import now
 from model_utils import FieldTracker
 from pydantic import BaseModel
 
 from .defaults import DEFAULT_SUBSCRIPTIONS_SUCCESS_URL, DEFAULT_SUBSCRIPTIONS_TRIAL_PERIOD
 from .exceptions import (
+    ConfigurationError,
     InconsistentQuotaCache,
     PaymentError,
     ProlongationImpossible,
@@ -95,9 +97,9 @@ class Tier(models.Model):
 
 
 class Plan(models.Model):
-    codename = models.CharField(max_length=255)
     name = models.CharField(max_length=255)
-    charge_amount = MoneyField(blank=True, null=True)
+    slug = models.SlugField(max_length=255, unique=True, blank=True)
+    charge_amount = MoneyField(blank=True, null=True, help_text="null value means 'unknown'")
     charge_period = RelativeDurationField(blank=True, help_text="leave blank for one-time charge")
     max_duration = RelativeDurationField(blank=True, help_text="leave blank to make it an infinite subscription")
     tier = models.ForeignKey(
@@ -111,13 +113,12 @@ class Plan(models.Model):
     metadata = models.JSONField(blank=True, default=dict, encoder=AdvancedJSONEncoder)
     is_enabled = models.BooleanField(default=True)
 
+    tracker = FieldTracker()
+
     objects: ClassVar[Manager[Self]] = Manager()  # for mypy
 
     class Meta(SubscriptionsMeta):
         db_table = "subscriptions_v0_plan"
-        constraints = [
-            UniqueConstraint(fields=["codename"], name="unique_plan_codename"),
-        ]
 
     def __str__(self) -> str:
         return f"{self.pk} {self.name}"
@@ -125,7 +126,13 @@ class Plan(models.Model):
     def get_absolute_url(self) -> str:
         return reverse("plan", kwargs={"plan_id": self.pk})
 
-    def save(self, *args, **kwargs):
+    def clean(self) -> None:
+        if self.pk and self.subscriptions.exists() and any(self.tracker.has_changed(field) for field in ["charge_amount", "charge_period"]):
+            raise ValidationError("Cannot change plan with attached subscriptions")
+
+    @pre_validate
+    def save(self, *args, **kwargs) -> None:
+        self.slug = self.slug or slugify(self.name)
         self.charge_period = self.charge_period or INFINITY
         self.max_duration = self.max_duration or INFINITY
         return super().save(*args, **kwargs)
@@ -328,6 +335,14 @@ class Subscription(models.Model):
             raise ProlongationImpossible("Reached maximum plan duration")
 
         return min(next_charge_date, self.max_end)
+
+    @property
+    def unused_time(self) -> timedelta:
+        try:
+            next_charge_date = next(self.iter_charge_dates(since=self.end))
+            return next_charge_date - self.end
+        except StopIteration:
+            return timedelta()
 
     def iter_quota_chunks(
         self,

@@ -47,7 +47,6 @@ class TierAdmin(admin.ModelAdmin):
 @admin.register(Plan)
 class PlanAdmin(admin.ModelAdmin):
     list_display = (
-        "codename",
         "name",
         "is_recurring",
         "charge_amount",
@@ -58,15 +57,14 @@ class PlanAdmin(admin.ModelAdmin):
     )
     list_filter = ("is_enabled",)
     search_fields = (
-        "codename",
         "name",
     )
     ordering = ("-pk",)
     inlines = (QuotaInline,)
 
     @admin.display(boolean=True, description="recurring")
-    def is_recurring(self, instance):
-        return instance.is_recurring()
+    def is_recurring(self, plan: Plan) -> bool:
+        return plan.is_recurring()
 
 
 class SubscriptionPaymentInline(admin.StackedInline):

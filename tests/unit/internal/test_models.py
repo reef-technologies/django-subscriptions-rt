@@ -1,10 +1,42 @@
+from django.forms import ValidationError
+from moneyed import Money
 import pytest
 from django.utils.timezone import now
 from more_itertools import one
+from dateutil.relativedelta import relativedelta
 
 from subscriptions.v0.models import Subscription, SubscriptionPayment
 
 from ..helpers import days
+
+
+# ref:plan-immutability
+@pytest.mark.django_db(databases=["actual_db"])
+def test__plan__immutability(plan, user):
+
+    # w/o subscriptions -> can modify the plan
+    assert not plan.subscriptions.exists()
+    plan.name = "Plan 7"
+    plan.charge_amount = Money(7, "USD")
+    plan.charge_period = days(7)
+    plan.save()
+
+    Subscription.objects.create(user=user, plan=plan)
+
+    # w/ subscriptions -> can modify name and max duration
+    plan.name = "Plan 8"
+    plan.max_duration = relativedelta(days=100)
+    plan.save()
+
+    # w/ subscriptions -> cannot modify charge amount
+    plan.charge_amount = Money(8, "USD")
+    with pytest.raises(ValidationError):
+        plan.save()
+
+    plan.refresh_from_db()
+    plan.charge_period = relativedelta(days=8)
+    with pytest.raises(ValidationError):
+        plan.save()
 
 
 @pytest.mark.django_db(databases=["actual_db"])

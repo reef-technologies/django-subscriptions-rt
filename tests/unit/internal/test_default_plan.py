@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from constance import config
@@ -132,7 +132,7 @@ def test__default_plan__enable__old_subscription(user, subscription, settings):
     with freeze_time(subscription.end + days(10), tick=True):
         assert user.subscriptions.count() == 1
 
-        default_plan = Plan.objects.create(codename="default", charge_amount=0)
+        default_plan = Plan.objects.create(charge_amount=0, name="Default plan")
         now_ = now()
 
         config.SUBSCRIPTIONS_DEFAULT_PLAN_ID = default_plan.pk
@@ -157,7 +157,7 @@ def test__default_plan__enable__active_subscription(user, subscription, settings
     subscription.end = now() + days(7)
     subscription.save()
 
-    default_plan = Plan.objects.create(codename="default", charge_amount=0)
+    default_plan = Plan.objects.create(charge_amount=0, name="Default plan")
     config.SUBSCRIPTIONS_DEFAULT_PLAN_ID = default_plan.pk
 
     subscriptions = user.subscriptions.order_by("end")
@@ -169,7 +169,7 @@ def test__default_plan__enable__active_subscription(user, subscription, settings
 
 
 @pytest.mark.django_db(databases=["actual_db"])
-def test__default_plan__disabling__active(user, subscription, default_plan):
+def test__default_plan__disabling__active(user, default_plan, subscription):
     """
     -----[subscription][default plan]----->
                                ^-now
@@ -179,7 +179,7 @@ def test__default_plan__disabling__active(user, subscription, default_plan):
     """
 
     with freeze_time(subscription.end + days(10), tick=True):
-        assert user.subscriptions.count() == 2
+        assert user.subscriptions.count() == 3
         assert user.subscriptions.active().count() == 1
 
         active_subscription = one(user.subscriptions.active())
@@ -188,7 +188,7 @@ def test__default_plan__disabling__active(user, subscription, default_plan):
         assert active_subscription.end > now()
 
         config.SUBSCRIPTIONS_DEFAULT_PLAN_ID = 0
-        assert user.subscriptions.count() == 2
+        assert user.subscriptions.count() == 3
         assert not user.subscriptions.active().exists()
         last_subscription = user.subscriptions.order_by("end").last()
         assert last_subscription.plan == default_plan
@@ -231,7 +231,7 @@ def test__default_plan__switch__active(user, default_plan):
     assert subscription.plan == default_plan
     assert subscription.end > now() + days(365)
 
-    new_default_plan = Plan.objects.create(codename="new default", charge_amount=0)
+    new_default_plan = Plan.objects.create(charge_amount=0, name="New default plan")
     config.SUBSCRIPTIONS_DEFAULT_PLAN_ID = new_default_plan.pk
 
     assert user.subscriptions.count() == 2
@@ -261,7 +261,7 @@ def test__default_plan__switch__future(user, subscription, default_plan):
         default_subscription = user.subscriptions.order_by("end").last()
         assert default_subscription.plan == default_plan
 
-        new_default_plan = Plan.objects.create(codename="new default", name="New default", charge_amount=0)
+        new_default_plan = Plan.objects.create(charge_amount=0, name="New default plan")
         config.SUBSCRIPTIONS_DEFAULT_PLAN_ID = new_default_plan.pk
 
         assert user.subscriptions.count() == 2
@@ -316,7 +316,7 @@ def test__default_plan__non_recurring__ignore_when_adding_default(user, recharge
     )
     assert user.subscriptions.active().count() == 1
 
-    new_default_plan = Plan.objects.create(codename="new default", charge_amount=0)
+    new_default_plan = Plan.objects.create(charge_amount=0, name="New default plan")
     config.SUBSCRIPTIONS_DEFAULT_PLAN_ID = new_default_plan.pk
 
     assert user.subscriptions.active().count() == 2

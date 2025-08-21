@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from functools import wraps
 
 import pytest
@@ -10,6 +10,7 @@ from django.core.cache import caches
 from django.test import Client
 from django.utils.timezone import now
 from djmoney.money import Money
+from freezegun import freeze_time
 
 from subscriptions.v0.functions import (
     get_remaining_amount,
@@ -70,11 +71,11 @@ def resource() -> Resource:
 @pytest.fixture
 def plan(resource) -> Plan:
     return Plan.objects.create(
-        codename="plan",
         name="Plan",
+        slug="plan",
         charge_amount=usd(100),  # type: ignore[misc]
-        charge_period=days(30),
-        max_duration=days(120),
+        charge_period=relativedelta(months=1),
+        max_duration=relativedelta(months=4),
         metadata={
             "this": "that",
         },
@@ -93,10 +94,10 @@ def quota(plan, resource) -> Quota:
 @pytest.fixture
 def bigger_plan(resource) -> Plan:
     return Plan.objects.create(
-        codename="bigger-plan",
         name="Bigger plan",
+        slug="bigger-plan",
         charge_amount=usd(200),  # type: ignore[misc]
-        charge_period=days(30),
+        charge_period=relativedelta(months=1),
     )
 
 
@@ -113,8 +114,8 @@ def bigger_quota(bigger_plan, resource) -> Quota:
 def recharge_plan(resource) -> Plan:
     # $10 for 10 resources, expires in 14 days
     return Plan.objects.create(
-        codename="recharge-plan",
         name="Recharge plan",
+        slug="recharge-plan",
         charge_amount=usd(10),  # type: ignore[misc]
         charge_period=INFINITY,
         max_duration=days(14),
@@ -136,6 +137,7 @@ def subscription(user, plan) -> Subscription:
         user=user,
         plan=plan,
         quantity=2,  # so limit = 50 * 2 = 100 in total
+        start=datetime(2025, 1, 1, 12, 0, 0, tzinfo=UTC),
     )
 
 
@@ -206,7 +208,7 @@ def two_subscriptions(user, resource) -> list[Subscription]:
 
     now_ = now()
 
-    plan1 = Plan.objects.create(codename="plan1", name="Plan 1")
+    plan1 = Plan.objects.create(name="Plan 1")
     subscription1 = Subscription.objects.create(
         user=user,
         plan=plan1,
@@ -221,7 +223,7 @@ def two_subscriptions(user, resource) -> list[Subscription]:
         burns_in=days(7),
     )
 
-    plan2 = Plan.objects.create(codename="plan2", name="Plan 2", charge_amount=Money(10, "EUR"))  # type: ignore[misc]
+    plan2 = Plan.objects.create(name="Plan 2", charge_amount=Money(10, "EUR"))  # type: ignore[misc]
     subscription2 = Subscription.objects.create(
         user=user,
         plan=plan2,
@@ -363,7 +365,8 @@ def default_plan(settings) -> Plan:
         name="Default Plan",
         charge_amount=usd(0),  # type: ignore[misc]
     )
-    config.SUBSCRIPTIONS_DEFAULT_PLAN_ID = plan.pk
+    with freeze_time(datetime(2000, 1, 1, 0, 0, 0, tzinfo=UTC)):
+        config.SUBSCRIPTIONS_DEFAULT_PLAN_ID = plan.pk
     return plan
 
 
@@ -378,4 +381,4 @@ def enable_advisory_lock(request, monkeypatch):
     """Set advisory lock, this fixture must be used with `parametrize`"""
     if request.param is not None:
         monkeypatch.setenv("SUBSCRIPTIONS_ENABLE_ADVISORY_LOCK", request.param)
-    yield request.param
+    return request.param

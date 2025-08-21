@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 import pytest
 from django.utils.timezone import now
 
@@ -27,7 +28,7 @@ def reports_subscriptions(db, user, other_user, plan, bigger_plan, recharge_plan
 
     days:--0----3---7----------17-------30---37-------------------------->
     """
-    now_ = now().replace(microsecond=0)
+    now_ = datetime(2025, 1, 1, 12, 0, 0, tzinfo=UTC).replace(microsecond=0)
     return [
         Subscription.objects.create(user=user, plan=plan, start=now_, auto_prolong=False),
         Subscription.objects.create(user=user, plan=bigger_plan, start=now_ + days(7)),
