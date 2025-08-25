@@ -221,7 +221,7 @@ def use_resource(
         remains = available - amount
 
         if remains < 0 and raises:
-            raise QuotaLimitExceeded(f"Not enough {resource}: tried to use {amount}, but only {available} is available")
+            raise QuotaLimitExceeded(resource=resource, amount_requested=amount, amount_available=available)
 
         Usage.objects.create(
             user_id=user.pk,

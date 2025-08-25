@@ -69,7 +69,7 @@ gantt
 from dateutil.relativedelta import relativedelta
 from django.contrib.auth.models import User
 
-from subscriptions.v0.models import Plan, Subscription
+from subscriptions.v0.models import Plan, Subscription, INFINITY
 
 
 one_time_plan = Plan.objects.create(
@@ -87,6 +87,7 @@ recurring_plan = Plan.objects.create(
 infinite_plan = Plan.objects.create(
    codename="infinite",
    name="Infinite plan",
+   charge_period=INFINITY,
 )
 
 user = User.objects.create(username="test", email="test@localhost")
@@ -98,11 +99,40 @@ for plan in [one_time_plan, recurring_plan, infinite_plan]:
 
 Plan is a groundtruth for all calculations, meaning that once a plan has subscriptions attached, its core attributes (`charge_amount` and `charge_period`) should not change. Trying to change essential plan attributes while having attached subscriptions [will raise a `ValidationError`](tests/unit/internal/test_models.py#ref:plan-immutability).
 
+### One-time charge plans
+
+These are plans that are charged only once (at the beginning of the subscription). Set `charge_period=INFINITY` to never charge again:
+
+```python
+from moneyed import Money
+from subscriptions.v0.models import plan, INFINITY
+
+infinite_plan = Plan.objects.create(
+   name="Infinite plan",
+   charge_amount=Money(100, "USD"),
+   charge_period=INFINITY,
+)
+```
+
+### Free plans
+
+Free plans are those that have no cost. Use `NO_MONEY` constant to indicate zero cost:
+
+```python
+from subscriptions.v0.models import Plan, NO_MONEY
+
+free_plan = Plan.objects.create(
+   name="Free plan",
+   charge_amount=NO_MONEY,
+   charge_period=INFINITY,
+)
+```
+
 ### Recurring subscriptions
 
 Recurring subscriptions are those that live for a limited period of time and require recharging when approaching its end.
 
-`Plan.charge_period` defines how often subscription charges will happen. It expects [a `relativedelta` object](https://dateutil.readthedocs.io/en/stable/relativedelta.html), so you can specify complex time periods easily - for example, if starting a subscription on _Nov 30st_ with `charge_period=relativedelta(months=1)`, next charge dates will be _Dec 30st_, _Jan 30st_ etc, so real charge period will be not exactly 30 days - [see an example in tests](tests/unit/internal/test_subscription.py#ref:charge-period-relativedelta).
+`Plan.charge_period` defines how often subscription charges will happen. It expects either `INFINITY` or [a `relativedelta` object](https://dateutil.readthedocs.io/en/stable/relativedelta.html), so you can specify complex time periods easily - for example, if starting a subscription on _Nov 30st_ with `charge_period=relativedelta(months=1)`, next charge dates will be _Dec 30st_, _Jan 30st_ etc, so real charge period will be not exactly 30 days - [see an example in tests](tests/unit/internal/test_subscription.py#ref:charge-period-relativedelta).
 
 ```mermaid
 gantt
@@ -118,42 +148,215 @@ gantt
    Feb 28th - end of period 3 :vert, 2026-02-28, 0
 ```
 
-### Charges
+Near the end of subscription, it should be extended (prolonged) by charging user. The task `charge_recurring_subscriptions` does exactly that:
 
-```
-|--------subscription-------------------------------------------->
-start             (subscription duration)                end or inf
+```python
+from subscriptions.v0.tasks import charge_recurring_subscriptions
 
-|-----------------------------|---------------------------|------>
-charge   (charge period)    charge                      charge
-
-|------------------------------x
-quota   (quota lifetime)       quota burned
-
-(quota recharge period) |------------------------------x
-
-(quota recharge period) (quota recharge period) |----------------->
+charge_recurring_subscriptions()
 ```
 
-### Money
+This task should be called periodically (via celery or other task runner). Default schedule starts trying charging few days in advance, but it can be customized as needed - for example, having different charge attempts' periods for different subscriptions:
 
-`NO_MONEY`
+```python
+base_subscriptions = Subscription.objects.filter(plan=base_plan)
+pro_subscriptions = Subscription.objects.filter(plan=pro_plan)
 
-### Max duration
+# start charging base subscriptions 7 days in advance, try each day until success
+charge_recurring_subscriptions(
+   subscriptions=base_subscriptions,
+   schedule=[
+      timedelta(days=-7),
+      timedelta(days=-6),
+      timedelta(days=-5),
+      timedelta(days=-4),
+      timedelta(days=-3),
+      timedelta(days=-2),
+      timedelta(days=-1),
+      timedelta(days=0),
+   ],
+)
 
-`INFINITY`
+# try charging pro subscriptions 1 day in advance, if it fails then try to charge even after expiration, but only once
+charge_recurring_subscriptions(
+   subscriptions=pro_subscriptions,
+   schedule=[
+      timedelta(days=-1),
+      timedelta(days=0),
+      timedelta(days=1),
+   ],
+)
+```
 
-### Subscripiton qiantity
+Only subscriptions with `auto_prolong` set to `True` will be charged and prolonged. When user cancels a subscription, we simply set `auto_prolong = False`, so that subscription still exists but is not prolonged at expiration.
 
-### Charge period
 
-### Charge amount
+### Limited plan duration
 
-### Tiers
+These are plans that have a maximum duration and cannot be used indefinitely. For example, let's create a promo plan that can last only for 3 months and won't be auto-prolonged at the end of that period:
 
-### Plan immutability
+```python
+from subscriptions.v0.models import Plan
+from dateutil.relativedelta import relativedelta
 
-### Auto_prolong
+promo_plan = Plan.objects.create(
+   name="Promo plan",
+   charge_amount=Money(50, "USD"),
+   charge_period=relativedelta(months=1),
+   max_duration=relativedelta(months=3),
+)
+```
+
+When a user subscribes to this plan, they will be charged $50 USD at the start of the subscription and then every month for up to 3 months. After 3 months, the subscription will automatically end and will not be renewed.
+
+Technically speaking, user could manually re-subscribe to the promo plan after it ends, but 1) it won't be automatic, and 2) we may configure validators to disallow subscribing to promo plan more than once.
+
+
+### Features & tiers
+
+A `Feature` is a specific functionality or benefit that a user can access while subscribed to a plan. Plans may have `Feature`s attached to them through a `Tier`.
+
+```mermaid
+classDiagram
+
+Base_Tier -- Base_Plan_Monthly
+Base_Tier -- Base_Plan_Yearly
+Pro_Tier -- Pro_Plan_Monthly
+Pro_Tier -- Pro_Plan_Yearly
+
+Base_Feature_1 -- Base_Tier
+Base_Feature_2 -- Base_Tier
+Pro_Feature_1 -- Pro_Tier
+Pro_Feature_2 -- Pro_Tier
+```
+
+```python
+from subscriptions.v0.models import Plan, Feature, Tier
+
+base1, base2, pro1, pro2 = Feature.objects.bulk_create([
+   Feature(codename='base1'),
+   Feature(codename='base2'),
+   Feature(codename='pro1'),
+   Feature(codename='pro2'),
+])
+
+base_tier, pro_tier = Tier.objects.bulk_create([
+   Tier(codename='base'),
+   Tier(codename='pro'),
+])
+
+base_tier.features.add(base1)
+base_tier.features.add(base2)
+pro_tier.features.add(pro1)
+pro_tier.features.add(pro2)
+
+plan_base_m, plan_base_y, plan_pro_m, plan_pro_y = Plan.objects.bulk_create([
+   Plan(name='Base (monthly)', tier=base_tier, charge_period=relativedelta(months=1)),
+   Plan(name='Base (yearly)',  tier=base_tier, charge_period=relativedelta(years=1)),
+   Plan(name='Pro (monthly)',  tier=pro_tier,  charge_period=relativedelta(months=1)),
+   Plan(name='Pro (yearly)',   tier=pro_tier,  charge_period=relativedelta(years=1)),
+])
+```
+
+One should create business logic to handle different features available with each subscription:
+
+```python
+user_subscriptions = Subscription.objects.filter(user=user).active()
+user_features = user_subscriptions.features()
+if user_features.filter(codename='base1').exists():
+   print("User has access to Base Feature 1")
+```
+
+### Quotas
+
+Unlike features, quotas are numeric limits imposed on a user's subscription. They define the maximum usage allowed for specific resources, such as API calls, storage space, or other measurable units. Quotas can be set at the plan level.
+
+An example of some mobile plan
+:
+```python
+from moneyed import Money
+from dateutil.relativedelta import relativedelta
+from subscriptions.v0.models import Resource, Plan, Quota
+
+call = Resource.objects.create(codename='call', units='s')  # seconds
+sms = Resource.objects.create(codename='sms', units='pcs')  # pieces
+data = Resource.objects.create(codename='data', units='b')  # bytes
+
+plan = Plan.objects.create(
+   name='Default plan',
+   charge_amount=Money(50, "USD"),
+   charge_period=relativedelta(months=1),
+)
+
+Quota.objects.bulk_create([
+   Quota(
+      plan=plan,
+      resource=call, limit=120*60,  # 120 mins of calls
+      recharge_period=relativedelta(months=1),  # add another 120 mins each month
+      burns_in=relativedelta(months=1),  # unused mins will be lost
+   ),
+   Quota(
+      plan=plan,
+      resource=sms, amount=20,  # 20 SMS messages
+      recharge_period=relativedelta(weeks=2),  # add another 10 SMS each 2 weeks
+      burns_in=relativedelta(weeks=2),  # unused SMS are lost
+   ),
+   Quota(
+      plan=plan,
+      resource=data, amount=5*1024**3, # 5 GB of data
+      recharge_period=relativedelta(months=1),  # add another 5 GB each month
+      burns_in=relativedelta(months=2),  # unused data will be preserved for the next month
+   ),
+])
+```
+
+```mermaid
+gantt
+
+dateFormat YYYY-MM-DD
+
+   section Calls
+      120 mins: 2025-01-01, 2025-01-31
+      120 mins: 2025-01-31, 2025-02-28
+      120 mins: 2025-02-28, 2025-03-31
+
+   section SMS
+      20 SMS: 2025-01-01, 2025-01-15
+      20 SMS: 2025-01-15, 2025-01-29
+      20 SMS: 2025-01-29, 2025-02-12
+      20 SMS: 2025-02-12, 2025-02-26
+      20 SMS: 2025-02-26, 2025-03-12
+      20 SMS: 2025-03-12, 2025-03-26
+      20 SMS: 2025-03-26, 2025-03-31
+
+   section Data:
+      5 Gb: 2025-01-01, 2025-02-28
+      5 Gb: 2025-02-01, 2025-03-31
+      5 Gb: 2025-03-01, 2025-03-31
+
+   Jan 31st - end of month: vert, 2025-01-31, 0
+   Feb 28th - end of month: vert, 2025-02-28, 0
+   Mar 31st - end of month: vert, 2025-03-31, 0
+```
+
+One should call `use_resource` to safely subtract from user's quota:
+
+```python
+from subscriptions.v0.functions import get_remaining_amount, use_resource
+
+assert get_remaining_amount(user)[data] == 5 * 1024**3
+
+with use_resource(user=user, resource=data, amount=1024**3) as remains:
+   print(f"Used 1 GB of {data}, remaining: {remains}")
+
+assert get_remaining_amount(user)[data] == 4 * 1024**3
+
+try:
+   with use_resource(user=user, resource=data, amount=5*1024**3) as remains:
+      print(f"Used 5 GB of {data}, remaining: {remains}")
+except QuotaLimitExceeded as exc:
+   print(f"Failed to use {exc.amount_requested} of {exc.resource}, only {exc.amount_available} available")
+```
 
 ### Tracking changes
 

@@ -5,7 +5,10 @@ if TYPE_CHECKING:
 
 
 class QuotaLimitExceeded(Exception):
-    pass
+    def __init__(self, resource, amount_requested: int, amount_available: int):
+        self.resource = resource
+        self.amount_requested = amount_requested
+        self.amount_available = amount_available
 
 
 class InconsistentQuotaCache(Exception):

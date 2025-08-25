@@ -20,6 +20,7 @@ from django.db.models import (
     Index,
     Manager,
     Q,
+    QuerySet,
     UniqueConstraint,
 )
 from django.db.models.functions import Least
@@ -32,7 +33,6 @@ from pydantic import BaseModel
 
 from .defaults import DEFAULT_SUBSCRIPTIONS_SUCCESS_URL, DEFAULT_SUBSCRIPTIONS_TRIAL_PERIOD
 from .exceptions import (
-    ConfigurationError,
     InconsistentQuotaCache,
     PaymentError,
     ProlongationImpossible,
@@ -270,6 +270,9 @@ class SubscriptionQuerySet(models.QuerySet):
     def new(self, since: datetime, until: datetime) -> Self:
         """Newly created subscriptions within selected period."""
         return self.filter(start__gte=since, start__lte=until)
+
+    def features(self) -> QuerySet[Feature]:
+        return Feature.objects.filter(tier__plans__subscriptions=self).distinct()
 
 
 class Subscription(models.Model):
