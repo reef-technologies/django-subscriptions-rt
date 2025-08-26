@@ -331,12 +331,12 @@ dateFormat YYYY-MM-DD
 
    section Data:
       5 Gb: 2025-01-01, 2025-02-28
-      5 Gb: 2025-02-01, 2025-03-31
-      5 Gb: 2025-03-01, 2025-03-31
+      5 Gb: 2025-01-31, 2025-03-31
+      5 Gb: 2025-02-28, 2025-03-31
 
-   Jan 31st - end of month: vert, 2025-01-31, 0
-   Feb 28th - end of month: vert, 2025-02-28, 0
-   Mar 31st - end of month: vert, 2025-03-31, 0
+    Jan 31st - end of month: vert, 2025-01-31, 0
+    Feb 28th - end of month: vert, 2025-02-28, 0
+    Mar 31st - end of month: vert, 2025-03-31, 0
 ```
 
 One should call `use_resource` to safely subtract from user's quota:
@@ -375,13 +375,112 @@ def handler(sender, instance: SubscriptionPayment, **kwargs):
 
 ### Validators
 
+Business logic constraints on subscriptions may be set via `SUBSCRIPTIONS_VALIDATORS`:
+
+```python
+# settings.py
+SUBSCRIPTIONS_VALIDATORS = [
+   "subscriptions.v0.validators.OnlyEnabledPlans",
+   "subscriptions.v0.validators.AtLeastOneRecurringSubscription",
+   "subscriptions.v0.validators.SingleRecurringSubscription",
+]
+```
+
+Each validator accepts existing user's subscriptions and desired plan, and raises `SubscriptionError` if subscribing to the plan would violate any constraints, for example here is a validator which allows at most one recurring subscription:
+
+```python
+from subscriptions.v0.models import SubscriptionQuerySet, Plan
+from subscriptions.v0.validators import SubscriptionValidator
+
+@dataclass(frozen=True)
+class SingleRecurringSubscription(SubscriptionValidator):
+    def __call__(
+        self,
+        active_subscriptions: SubscriptionQuerySet,
+        requested_plan: Plan,
+    ):
+        if requested_plan.is_recurring() and active_subscriptions.recurring().exists():
+            raise RecurringSubscriptionAlreadyExist
+```
+
 ### Grace period
 
-If a renewal payment is declined, Google will ask the user to fix the payment issue and periodically retry the renewal charge. By default, this recovery period consists of a grace period, followed by an account hold period. You can specify the length of the grace period, during which the user retains subscription entitlement.
+Grace period is a period of time during which a user can fix a payment issue without losing access to their subscription, in other words it's an extension of subscription beyond its original end date.
 
-### Account hold
+There is no special functionality for grace period. Let's create a configuration for a 30-days recurring plan with a 3 days grace period:
 
-After any grace period has ended with the payment issue unresolved, the subscription can enter an account hold period. You can specify the length of account hold, during which the user should not have subscription entitlement. If the account hold period ends with the payment issue unresolved, the subscription is automatically expired.
+```python
+plan_with_grace = Plan.objects.create(
+    name="Plan with grace period",
+    charge_amount=Money(100, "USD"),
+    charge_period=relativedelta(months=1),
+)
+
+GRACE_PERIOD = timedelta(days=3)
+
+@receiver(pre_save, sender=Subscription)
+def handler(sender, subscription: Subscription, **kwargs):
+    if subscription.plan != plan_with_grace:
+        return
+
+    try:
+        charge_date = next(subscription.iter_charge_dates(since=subscription.end))
+    except StopIteration:
+        return
+
+    # if subscription ends exactly on charge date, automatically extend it by grace period
+    if subscription.end == charge_date:
+        subscription.end += GRACE_PERIOD
+
+REGULAR_CHARGE_SCHEDULE = [
+    timedelta(days=-3),
+    timedelta(days=-2),
+    timedelta(days=-1),
+    timedelta(0),
+]
+# now we should adjust charging schedule bc charge schedule is relative to subscription end
+# and the latter is extended by grace period, so we should shift charging schedule back
+CHARGE_SCHEDULE_WITH_GRACE = [delta - GRACE_PERIOD for delta in REGULAR_CHARGE_SCHEDULE] + [
+    # we also need to try charging during grace period - let's try charging 3 times during grace period
+    -GRACE_PERIOD * 2/3,  # -2 days
+    -GRACE_PERIOD * 1/3,  # -1 days
+    -GRACE_PERIOD * 0/3,  # end date
+]
+
+subscriptions_with_grace = Subscription.objects.filter(plan=plan_with_grace)
+
+charge_recurring_subscriptions(
+    subscriptions=subscriptions_with_grace,
+    schedule=CHARGE_SCHEDULE_WITH_GRACE,
+)
+```
+
+```mermaid
+gantt
+
+dateFormat YYYY-MM-DD
+
+    Section Subscription
+        ... original subscription (truncated from start): 2025-01-26, 2025-01-31
+        Grace period: 2025-01-31, 2025-02-03
+
+
+    Section Charge attempts
+        #1: 2025-01-28, 2025-01-29
+        #2: 2025-01-29, 2025-01-30
+        #3: 2025-01-30, 2025-01-31
+        #4: 2025-01-31, 2025-02-01
+        #5: 2025-02-01, 2025-02-02
+        #6: 2025-02-02, 2025-02-03
+
+    -6 days: vert, 2025-01-28, 0
+    -5 days: vert, 2025-01-29, 0
+    -4 days: vert, 2025-01-30, 0
+    Original end: vert, 2025-01-31, 0
+    -2 days: vert, 2025-02-01, 0
+    -1 days: vert, 2025-02-02, 0
+    End of grace: vert, 2025-02-03, 0
+```
 
 ### Pausing subscriptions
 
