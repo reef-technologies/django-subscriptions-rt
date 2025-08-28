@@ -10,9 +10,9 @@ DEFAULT_SUBSCRIPTIONS_PAYMENT_PROVIDERS = [
 DEFAULT_SUBSCRIPTIONS_SUCCESS_URL = reverse_lazy("plan_subscription_success")
 
 DEFAULT_SUBSCRIPTIONS_VALIDATORS = [
-    "subscriptions._internal.validators.OnlyEnabledPlans",
-    "subscriptions._internal.validators.AtLeastOneRecurringSubscription",
-    "subscriptions._internal.validators.SingleRecurringSubscription",
+    "subscriptions.v0.validators.plan_is_enabled",
+    "subscriptions.v0.validators.not_recurring_requires_recurring",
+    "subscriptions.v0.validators.exclusive_recurring_subscription",
 ]
 
 DEFAULT_SUBSCRIPTIONS_OFFLINE_CHARGE_ATTEMPTS_SCHEDULE = (

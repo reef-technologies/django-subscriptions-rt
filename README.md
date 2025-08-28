@@ -20,10 +20,10 @@ See [ci.yml](.github/workflows/ci.yml) for matrix of supported Python and Django
 ```python
 # settings.py
 INSTALLED_APPS = [
-   # ...,
-   "subscriptions.v0.apps.AppConfig",
-   "pgactivity",
-   "pglock",
+    # ...,
+    "subscriptions.v0.apps.AppConfig",
+    "pgactivity",
+    "pglock",
 ]
 ```
 
@@ -38,8 +38,8 @@ Cache is required for fast resource calculations.
 
 ```python
 settings.CACHES['subscriptions'] = {
-   'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-   'LOCATION': 'subscriptions',
+    'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+    'LOCATION': 'subscriptions',
 }
 ```
 
@@ -51,16 +51,16 @@ A `Subscription` is a user's belonging to a specific `Plan` for a defined period
 
 ```mermaid
 gantt
-   dateFormat YYYY-MM-DD
+    dateFormat YYYY-MM-DD
 
-   section One-time
-      30 days :a1, 2025-01-01, 30d
-   section Recurring
-      30 days :rec1, 2025-01-01, 30d
-      30 days :rec2, after rec1, 30d
-      30 days :after rec2, 30d
-   section Infinite:
-      Infinite :2025-01-01, 90d
+    section One-time
+        30 days :a1, 2025-01-01, 30d
+    section Recurring
+        30 days :rec1, 2025-01-01, 30d
+        30 days :rec2, after rec1, 30d
+        30 days :after rec2, 30d
+    section Infinite:
+        Infinite :2025-01-01, 90d
 ```
 
 ```python
@@ -73,26 +73,26 @@ from subscriptions.v0.models import Plan, Subscription, INFINITY
 
 
 one_time_plan = Plan.objects.create(
-   codename="one-time",
-   name="One-time plan",
-   max_duration=relativedelta(months=1),
+    codename="one-time",
+    name="One-time plan",
+    max_duration=relativedelta(months=1),
 )
 
 recurring_plan = Plan.objects.create(
-   codename="recurring",
-   name="Recurring plan",
-   charge_period=relativedelta(months=1),
+    codename="recurring",
+    name="Recurring plan",
+    charge_period=relativedelta(months=1),
 )
 
 infinite_plan = Plan.objects.create(
-   codename="infinite",
-   name="Infinite plan",
-   charge_period=INFINITY,
+    codename="infinite",
+    name="Infinite plan",
+    charge_period=INFINITY,
 )
 
 user = User.objects.create(username="test", email="test@localhost")
 for plan in [one_time_plan, recurring_plan, infinite_plan]:
-   Subscription.objects.create(user=user, plan=plan)
+    Subscription.objects.create(user=user, plan=plan)
 ```
 
 ### Plan immutability
@@ -108,9 +108,9 @@ from moneyed import Money
 from subscriptions.v0.models import plan, INFINITY
 
 infinite_plan = Plan.objects.create(
-   name="Infinite plan",
-   charge_amount=Money(100, "USD"),
-   charge_period=INFINITY,
+    name="Infinite plan",
+    charge_amount=Money(100, "USD"),
+    charge_period=INFINITY,
 )
 ```
 
@@ -122,10 +122,51 @@ Free plans are those that have no cost. Use `NO_MONEY` constant to indicate zero
 from subscriptions.v0.models import Plan, NO_MONEY
 
 free_plan = Plan.objects.create(
-   name="Free plan",
-   charge_amount=NO_MONEY,
-   charge_period=INFINITY,
+    name="Free plan",
+    charge_amount=NO_MONEY,
+    charge_period=INFINITY,
 )
+```
+
+### Payments
+
+`SubscriptionPayment` represents payment for subscription creation or prolongation, and the period "covered" by specific payment is represented by `payment.paid_since` and `payment.paid_until`.
+
+Payments and subscriptions don't affect each other except one case: if a payment changed its status to `Subscription.Status.COMPLETED`, it will automatically extend the associated subscription (or create a new one if it doesn't exist or doesn't intersect with `(paid_since, paid_until)` period).
+
+```mermaid
+gantt
+    title Subscription auto-extension
+    dateFormat YYYY-MM-DD
+
+    Section Before
+        Subscription: 2025-01-01, 2025-01-31
+
+    Section Pending
+        Subscription: 2025-01-01, 2025-01-31
+        Payment (PENDING): 2025-01-31, 2025-02-28
+
+    Section Completed
+        Subscription: 2025-01-01, 2025-02-28
+      Payment (COMPLETED): 2025-01-31, 2025-02-28
+```
+
+```mermaid
+gantt
+    title Subscription auto-creation
+    dateFormat YYYY-MM-DD
+
+    Section Before
+        Subscription: 2025-01-01, 2025-01-31
+
+    Section Pending
+        Subscription: 2025-01-01, 2025-01-31
+        Payment (PENDING): 2025-03-01, 2025-03-31
+
+    Section Completed
+        Subscription: 2025-01-01, 2025-01-31
+        Subscription: 2025-03-01, 2025-03-31
+        Payment (COMPLETED): 2025-03-01, 2025-03-31
 ```
 
 ### Recurring subscriptions
@@ -136,16 +177,16 @@ Recurring subscriptions are those that live for a limited period of time and req
 
 ```mermaid
 gantt
-   title Charge period: relativedelta(months=1)
-   dateFormat YYYY-MM-DD
-   axisFormat %b %d
-   1 month (30 days) :2025-11-30, 2025-12-30
-   1 month (31 days) :2025-12-30, 2026-01-30
-   1 month (28 days) :2026-01-30, 2026-02-28
+    title Charge period: relativedelta(months=1)
+    dateFormat YYYY-MM-DD
+    axisFormat %b %d
+    1 month (30 days) :2025-11-30, 2025-12-30
+    1 month (31 days) :2025-12-30, 2026-01-30
+    1 month (28 days) :2026-01-30, 2026-02-28
 
-   Dec 30th - end of period 1 :vert, 2025-12-30, 0
-   Jan 30th - end of period 2 :vert, 2026-01-30, 0
-   Feb 28th - end of period 3 :vert, 2026-02-28, 0
+    Dec 30th - end of period 1 :vert, 2025-12-30, 0
+    Jan 30th - end of period 2 :vert, 2026-01-30, 0
+    Feb 28th - end of period 3 :vert, 2026-02-28, 0
 ```
 
 Near the end of subscription, it should be extended (prolonged) by charging user. The task `charge_recurring_subscriptions` does exactly that:
@@ -164,27 +205,27 @@ pro_subscriptions = Subscription.objects.filter(plan=pro_plan)
 
 # start charging base subscriptions 7 days in advance, try each day until success
 charge_recurring_subscriptions(
-   subscriptions=base_subscriptions,
-   schedule=[
-      timedelta(days=-7),
-      timedelta(days=-6),
-      timedelta(days=-5),
-      timedelta(days=-4),
-      timedelta(days=-3),
-      timedelta(days=-2),
-      timedelta(days=-1),
-      timedelta(days=0),
-   ],
+    subscriptions=base_subscriptions,
+    schedule=[
+        timedelta(days=-7),
+        timedelta(days=-6),
+        timedelta(days=-5),
+        timedelta(days=-4),
+        timedelta(days=-3),
+        timedelta(days=-2),
+        timedelta(days=-1),
+        timedelta(days=0),
+    ],
 )
 
 # try charging pro subscriptions 1 day in advance, if it fails then try to charge even after expiration, but only once
 charge_recurring_subscriptions(
-   subscriptions=pro_subscriptions,
-   schedule=[
-      timedelta(days=-1),
-      timedelta(days=0),
-      timedelta(days=1),
-   ],
+    subscriptions=pro_subscriptions,
+    schedule=[
+        timedelta(days=-1),
+        timedelta(days=0),
+        timedelta(days=1),
+    ],
 )
 ```
 
@@ -200,10 +241,10 @@ from subscriptions.v0.models import Plan
 from dateutil.relativedelta import relativedelta
 
 promo_plan = Plan.objects.create(
-   name="Promo plan",
-   charge_amount=Money(50, "USD"),
-   charge_period=relativedelta(months=1),
-   max_duration=relativedelta(months=3),
+    name="Promo plan",
+    charge_amount=Money(50, "USD"),
+    charge_period=relativedelta(months=1),
+    max_duration=relativedelta(months=3),
 )
 ```
 
@@ -234,15 +275,15 @@ Pro_Feature_2 -- Pro_Tier
 from subscriptions.v0.models import Plan, Feature, Tier
 
 base1, base2, pro1, pro2 = Feature.objects.bulk_create([
-   Feature(codename='base1'),
-   Feature(codename='base2'),
-   Feature(codename='pro1'),
-   Feature(codename='pro2'),
+    Feature(codename='base1'),
+    Feature(codename='base2'),
+    Feature(codename='pro1'),
+    Feature(codename='pro2'),
 ])
 
 base_tier, pro_tier = Tier.objects.bulk_create([
-   Tier(codename='base'),
-   Tier(codename='pro'),
+    Tier(codename='base'),
+    Tier(codename='pro'),
 ])
 
 base_tier.features.add(base1)
@@ -251,10 +292,10 @@ pro_tier.features.add(pro1)
 pro_tier.features.add(pro2)
 
 plan_base_m, plan_base_y, plan_pro_m, plan_pro_y = Plan.objects.bulk_create([
-   Plan(name='Base (monthly)', tier=base_tier, charge_period=relativedelta(months=1)),
-   Plan(name='Base (yearly)',  tier=base_tier, charge_period=relativedelta(years=1)),
-   Plan(name='Pro (monthly)',  tier=pro_tier,  charge_period=relativedelta(months=1)),
-   Plan(name='Pro (yearly)',   tier=pro_tier,  charge_period=relativedelta(years=1)),
+    Plan(name='Base (monthly)', tier=base_tier, charge_period=relativedelta(months=1)),
+    Plan(name='Base (yearly)',  tier=base_tier, charge_period=relativedelta(years=1)),
+    Plan(name='Pro (monthly)',  tier=pro_tier,  charge_period=relativedelta(months=1)),
+    Plan(name='Pro (yearly)',   tier=pro_tier,  charge_period=relativedelta(years=1)),
 ])
 ```
 
@@ -264,7 +305,7 @@ One should create business logic to handle different features available with eac
 user_subscriptions = Subscription.objects.filter(user=user).active()
 user_features = user_subscriptions.features()
 if user_features.filter(codename='base1').exists():
-   print("User has access to Base Feature 1")
+    print("User has access to Base Feature 1")
 ```
 
 ### Quotas
@@ -283,60 +324,59 @@ sms = Resource.objects.create(codename='sms', units='pcs')  # pieces
 data = Resource.objects.create(codename='data', units='b')  # bytes
 
 plan = Plan.objects.create(
-   name='Default plan',
-   charge_amount=Money(50, "USD"),
-   charge_period=relativedelta(months=1),
+    name='Default plan',
+    charge_amount=Money(50, "USD"),
+    charge_period=relativedelta(months=1),
 )
 
 Quota.objects.bulk_create([
-   Quota(
-      plan=plan,
-      resource=call, limit=120*60,  # 120 mins of calls
-      recharge_period=relativedelta(months=1),  # add another 120 mins each month
-      burns_in=relativedelta(months=1),  # unused mins will be lost
-   ),
-   Quota(
-      plan=plan,
-      resource=sms, amount=20,  # 20 SMS messages
-      recharge_period=relativedelta(weeks=2),  # add another 10 SMS each 2 weeks
-      burns_in=relativedelta(weeks=2),  # unused SMS are lost
-   ),
-   Quota(
-      plan=plan,
-      resource=data, amount=5*1024**3, # 5 GB of data
-      recharge_period=relativedelta(months=1),  # add another 5 GB each month
-      burns_in=relativedelta(months=2),  # unused data will be preserved for the next month
-   ),
+    Quota(
+        plan=plan,
+        resource=call, limit=120*60,  # 120 mins of calls
+        recharge_period=relativedelta(months=1),  # add another 120 mins each month
+        burns_in=relativedelta(months=1),  # unused mins will be lost
+    ),
+    Quota(
+        plan=plan,
+        resource=sms, amount=20,  # 20 SMS messages
+        recharge_period=relativedelta(weeks=2),  # add another 10 SMS each 2 weeks
+        burns_in=relativedelta(weeks=2),  # unused SMS are lost
+    ),
+    Quota(
+        plan=plan,
+        resource=data, amount=5*1024**3, # 5 GB of data
+        recharge_period=relativedelta(months=1),  # add another 5 GB each month
+        burns_in=relativedelta(months=2),  # unused data will be preserved for the next month
+),
 ])
 ```
 
 ```mermaid
 gantt
+    dateFormat YYYY-MM-DD
 
-dateFormat YYYY-MM-DD
+    section Calls
+        120 mins: 2025-01-01, 2025-01-31
+        120 mins: 2025-01-31, 2025-02-28
+        120 mins: 2025-02-28, 2025-03-31
 
-   section Calls
-      120 mins: 2025-01-01, 2025-01-31
-      120 mins: 2025-01-31, 2025-02-28
-      120 mins: 2025-02-28, 2025-03-31
+    section SMS
+        20 SMS: 2025-01-01, 2025-01-15
+        20 SMS: 2025-01-15, 2025-01-29
+        20 SMS: 2025-01-29, 2025-02-12
+        20 SMS: 2025-02-12, 2025-02-26
+        20 SMS: 2025-02-26, 2025-03-12
+        20 SMS: 2025-03-12, 2025-03-26
+        20 SMS: 2025-03-26, 2025-03-31
 
-   section SMS
-      20 SMS: 2025-01-01, 2025-01-15
-      20 SMS: 2025-01-15, 2025-01-29
-      20 SMS: 2025-01-29, 2025-02-12
-      20 SMS: 2025-02-12, 2025-02-26
-      20 SMS: 2025-02-26, 2025-03-12
-      20 SMS: 2025-03-12, 2025-03-26
-      20 SMS: 2025-03-26, 2025-03-31
+    section Data:
+        5 Gb: 2025-01-01, 2025-02-28
+        5 Gb: 2025-01-31, 2025-03-31
+        5 Gb: 2025-02-28, 2025-03-31
 
-   section Data:
-      5 Gb: 2025-01-01, 2025-02-28
-      5 Gb: 2025-01-31, 2025-03-31
-      5 Gb: 2025-02-28, 2025-03-31
-
-    Jan 31st - end of month: vert, 2025-01-31, 0
-    Feb 28th - end of month: vert, 2025-02-28, 0
-    Mar 31st - end of month: vert, 2025-03-31, 0
+        Jan 31st - end of month: vert, 2025-01-31, 0
+        Feb 28th - end of month: vert, 2025-02-28, 0
+        Mar 31st - end of month: vert, 2025-03-31, 0
 ```
 
 One should call `use_resource` to safely subtract from user's quota:
@@ -347,15 +387,15 @@ from subscriptions.v0.functions import get_remaining_amount, use_resource
 assert get_remaining_amount(user)[data] == 5 * 1024**3
 
 with use_resource(user=user, resource=data, amount=1024**3) as remains:
-   print(f"Used 1 GB of {data}, remaining: {remains}")
+    print(f"Used 1 GB of {data}, remaining: {remains}")
 
 assert get_remaining_amount(user)[data] == 4 * 1024**3
 
 try:
-   with use_resource(user=user, resource=data, amount=5*1024**3) as remains:
-      print(f"Used 5 GB of {data}, remaining: {remains}")
+    with use_resource(user=user, resource=data, amount=5*1024**3) as remains:
+        print(f"Used 5 GB of {data}, remaining: {remains}")
 except QuotaLimitExceeded as exc:
-   print(f"Failed to use {exc.amount_requested} of {exc.resource}, only {exc.amount_available} available")
+    print(f"Failed to use {exc.amount_requested} of {exc.resource}, only {exc.amount_available} available")
 ```
 
 ### Tracking changes
@@ -367,10 +407,11 @@ This is an example of how to do some processing when subscription payment status
 ```python
 @receiver(post_save, sender=SubscriptionPayment)
 def handler(sender, instance: SubscriptionPayment, **kwargs):
-   if instance.tracker.has_changed("status"):
-      old_status = instance.tracker.previous("status")
-      new_status = instance.status
-      print(f'Payment status changed from {old_status} to {new_status}')
+    if instance.tracker.has_changed("status"):
+        old_status = instance.tracker.previous("status")
+        new_status = instance.status
+        print(f'Payment status changed from {old_status} to {new_status}')
+        send_mail.delay(...)
 ```
 
 ### Validators
@@ -380,28 +421,21 @@ Business logic constraints on subscriptions may be set via `SUBSCRIPTIONS_VALIDA
 ```python
 # settings.py
 SUBSCRIPTIONS_VALIDATORS = [
-   "subscriptions.v0.validators.OnlyEnabledPlans",
-   "subscriptions.v0.validators.AtLeastOneRecurringSubscription",
-   "subscriptions.v0.validators.SingleRecurringSubscription",
+    "subscriptions.v0.validators.plan_is_enabled",
+    "subscriptions.v0.validators.not_recurring_requires_recurring",
+    "subscriptions.v0.validators.exclusive_recurring_subscription",
 ]
 ```
 
-Each validator accepts existing user's subscriptions and desired plan, and raises `SubscriptionError` if subscribing to the plan would violate any constraints, for example here is a validator which allows at most one recurring subscription:
+Each validator is a function `def foo(self: Subscription, user_subscriptions: SubscriptionQuerySet) -> None:`, where `self` is subscription to be validated (may be not yet in the database) and `user_subscriptions` are subscriptions for that specific user. `SubscriptionError` is raised if an ycheck is failed.
 
 ```python
-from subscriptions.v0.models import SubscriptionQuerySet, Plan
-from subscriptions.v0.validators import SubscriptionValidator
-
-@dataclass(frozen=True)
-class SingleRecurringSubscription(SubscriptionValidator):
-    def __call__(
-        self,
-        active_subscriptions: SubscriptionQuerySet,
-        requested_plan: Plan,
-    ):
-        if requested_plan.is_recurring() and active_subscriptions.recurring().exists():
-            raise RecurringSubscriptionAlreadyExist
+def exclusive_recurring_subscription(self: Subscription, user_subscriptions: SubscriptionQuerySet) -> None:
+    if self.plan.is_recurring() and user_subscriptions.recurring().exists():
+        raise RecurringSubscriptionsAlreadyExist("Only one recurring subscription is allowed")
 ```
+
+Validation is protected by advisory lock and `SELECT FOR UPDATE`, so other actions don't interfere the validation process. Remember that validation is done on application level, but for better data integrity one could additionally implement database-level constraints.
 
 ### Grace period
 
@@ -462,7 +496,7 @@ dateFormat YYYY-MM-DD
 
     Section Subscription
         ... original subscription (truncated from start): 2025-01-26, 2025-01-31
-        Grace period: 2025-01-31, 2025-02-03
+        Grace period: active, 2025-01-31, 2025-02-03
 
 
     Section Charge attempts
@@ -484,54 +518,275 @@ dateFormat YYYY-MM-DD
 
 ### Pausing subscriptions
 
-- subscription.unused_time
+`Subscription`s are continuous, i.e. they last from `start` till `end` with no gaps in between. Thus "pausing a subscription" is simply ending current subscription and creating a new one with adjusted `start` and `end` dates.
+
+For example, this is an already-lasting subscription:
+```python
+plan = Plan.objects.create(
+    name="Monthly plan",
+    charge_period=relativedelta(days=30),
+)
+
+subscription = Subscription.objects.create(
+    user=user,
+    plan=plan,
+    start=now() - timedelta(days=15),
+)
+```
+
+```mermaid
+gantt
+    dateFormat YYYY-MM-DD
+
+    Subscription: 2025-01-01, 2025-01-30
+
+    Initial charge: vert, 2025-01-01, 0
+    Now: vert, 2025-01-15, 0
+    Planned charge: vert, 2025-01-30, 0
+```
+
+Pause the subscription, leaving 15 "unused" days of subscription:
+```python
+subscription.end = now()
+subscription.save()
+```
+
+```mermaid
+gantt
+    dateFormat YYYY-MM-DD
+
+    Subscription: 2025-01-01, 2025-01-15
+    unused:active, 2025-01-15, 2025-01-30
+
+    Initial charge: vert, 2025-01-01, 0
+    Now: vert, 2025-01-15, 0
+    Planned charge: vert, 2025-01-30, 0
+```
+
+Resume the subscription. Since the new subscription starts with a leftover period, initial charge for this subscription should be shifted by that period.
+
+```python
+planned_charge_date = next(subscription.iter_charge_dates(since=subscription.end))
+unused_subscription_time = planned_charge_date - subscription.end
+
+now_ = now()
+resumed_subscription = Subscription.objects.create(
+    user=subscription.user,
+    plan=subscription.plan,
+    start=now_,
+    end=now_ + unused_subscription_time,
+    charge_offset=unused_subscription_time,
+)
+```
+
+```mermaid
+gantt
+    dateFormat YYYY-MM-DD
+
+    Subscription: 2025-01-01, 2025-01-15
+    Subscription: active, 2025-01-16, 2025-01-31
+
+    Initial charge: vert, 2025-01-01, 0
+    Now: vert, 2025-01-16, 0
+    New planned charge: vert, 2025-01-31, 0
+```
 
 ### Discounts
 
-### Plan changes
+Discounts are not supported out-of-box but can be achieved by using additional payment plans:
 
-Over time, you can create and modify many subscriptions, base plans, and offers. While some might become obsolete, historical data can be useful for analytics and reporting purposes. Likewise, you might want to create alternatives for experimentation or switch from one offer to another depending on seasons or other factors. The new subscription system supports these use cases with subscription object states. To ensure information is always available for reporting and analysis purposes, you can't delete subscriptions, base plans, and offers, or reuse their IDs.
+```python
+plan = Plan.objects.create(
+    name="Default plan",
+    charge_period=relativedelta(months=1),
+    charge_amount=Money(100, "USD"),
+)
+
+discount_plan = Plan.objects.create(
+    name="Discount plan",
+    charge_period=plan.charge_period,
+    charge_amount=plan.charge_amount - Money(20, "USD"),
+)
+```
 
 ### Default plan
+
+Default plan is a plan that is applied automatically to every subscription unless there is some recurring subscription which then substitutes the default plan.
 
 Use `pip install django-subscriptions-rt[default_plan]` to install constance as dependency.
 
 Setup default plan like this:
 
 ```python
+# settings.py
 INSTALLED_APPS = [
-   ...
-   'constance',
-   'constance.backends.database',
+    ...
+    'constance',
+    'constance.backends.database',
 ]
 
 CONSTANCE_BACKEND = 'constance.backends.database.DatabaseBackend'
 CONSTANCE_CONFIG = {
-   'SUBSCRIPTIONS_DEFAULT_PLAN_ID': (0, 'Default plan ID', int),
+    'SUBSCRIPTIONS_DEFAULT_PLAN_ID': (0, 'Default plan ID', int),
 }
 ```
 
-Changing default plan value will adjust default subscriptions automatically.
+`0` value means "no default subscription".
 
-### Trial period
+As soon as constance config is saved, the default plan will be applied to every user. When new user is created, default infinite subscription will be automatically attached.
 
-It is possible to postpone user's first payment by some timedelta. When creating a subscription, set `charge_offset`, which will shift all charge dates by this offset:
+#### Adding default plan
+
+If switching from no default plan to a specific plan, all users will be assigned a default subscription effective now or after last subscription.
+
+```mermaid
+gantt
+    title No active subscription (default applied now)
+    dateFormat YYYY-MM-DD
+    Now: vert, 2025-01-16, 0
+
+    Section Default ID: 0
+        Subscription: 2025-01-01, 2025-01-14
+
+    Section Default ID: N
+        Subscription: 2025-01-01, 2025-01-14
+        Default: 2025-01-16, 2025-01-31
+```
+
+```mermaid
+gantt
+    title With active subscription (default scheduled after current subscription)
+    dateFormat YYYY-MM-DD
+    Now: vert, 2025-01-13, 0
+
+    Section Default ID: 0
+        Subscription: 2025-01-01, 2025-01-14
+
+    Section Default ID: N
+        Subscription: 2025-01-01, 2025-01-14
+        Default: 2025-01-14, 2025-01-31
+```
+
+#### Switching default plan
+
+If changing default plan from one to another, all current and future default subscriptions will be stopped and replaced with new default subscriptions:
+
+```mermaid
+gantt
+    title Current default subscription changing
+    dateFormat YYYY-MM-DD
+    Now: vert, 2025-01-13, 0
+
+    Section Default ID: M
+        Default (M): 2025-01-01, 2025-01-31
+
+    Section Default ID: N
+        Default (M): 2025-01-01, 2025-01-13
+        Default (N): 2025-01-13, 2025-01-31
+```
+
+```mermaid
+gantt
+    title Future default subscription changing
+    dateFormat YYYY-MM-DD
+    Now: vert, 2025-01-13, 0
+
+    Section Default ID: M
+        Subscription: 2025-01-01, 2025-01-20
+        Default (M): 2025-01-20, 2025-01-31
+
+    Section Default ID: N
+        Subscription: 2025-01-01, 2025-01-20
+        Default (N): 2025-01-20, 2025-01-31
+```
+
+#### Disabling default plan
+
+Setting default plan to 0 (== disabling default plan) will immediately stop all current & future default subscriptions.
+
+```mermaid
+gantt
+    title Future default subscription stop
+    dateFormat YYYY-MM-DD
+    Now: vert, 2025-01-13, 0
+
+    Section Default ID: M
+        Subscription: 2025-01-01, 2025-01-20
+        Default (M): 2025-01-20, 2025-01-31
+
+    Section Default ID: 0
+        Subscription: 2025-01-01, 2025-01-20
+```
+
+```mermaid
+gantt
+    title Current default subscription stop
+    dateFormat YYYY-MM-DD
+    Now: vert, 2025-01-13, 0
+
+    Section Default ID: M
+        Default (M): 2025-01-01, 2025-01-31
+
+    Section Default ID: 0
+        Default (M): 2025-01-01, 2025-01-13
+```
+
+#### Interaction with recurring subscriptions
+
+Any recurring subscription will push out default subscription:
+
+```mermaid
+gantt
+    title Pushing out default subscription
+    dateFormat YYYY-MM-DD
+    Now: vert, 2025-01-13, 0
+
+    Section Before
+        Default: 2025-01-01, 2025-01-31
+
+    Section After
+        Default: 2025-01-01, 2025-01-13
+        Subscription: active, 2025-01-13, 2025-01-25
+        Default: 2025-01-25, 2025-01-31
+```
+
+A gap after shrinking recurring subscription will be filled with default one:
+
+```mermaid
+gantt
+    title Shrinking recurring subscription
+    dateFormat YYYY-MM-DD
+    Now: vert, 2025-01-13, 0
+
+    Section Before
+        Subscription: 2025-01-01, 2025-01-20
+        Default: 2025-01-20, 2025-01-31
+
+    Section After
+        Subscription: 2025-01-01, 2025-01-10
+        Default: 2025-01-10, 2025-01-31
+```
+
+### Charge offset
+
+It is possible to postpone subscription's first payment by some timedelta: `charge_offset` will shift charge schedule.
 
 ```python
 from dateutil.relativedelta import relativedelta
-from django.utils.timezone import now
 
-now_ = now()
 offset = relativedelta(days=7)
 subscription = Subscription.objects.create(
-   # ...
-   start=now_,
-   charge_offset=offset,
+    plan=plan,
+    charge_offset=offset,
 )
 
-assert next(subscription.iter_charge_dates()) == now_ + offset
+assert next(subscription.iter_charge_dates()) == subscription.start + offset
 ```
 
+This is handy when unpausing a subscription or implementing trial period.
+
+### Trial period
+<><><><><><><><><><><><>
 There is a handy setting `SUBSCRIPTIONS_TRIAL_PERIOD`:
 
 ```python

@@ -40,7 +40,7 @@ from .exceptions import (
     RecurringSubscriptionsAlreadyExist,
 )
 from .fields import MoneyField, RelativeDurationField
-from .utils import AdvancedJSONEncoder, merge_iter, pre_validate
+from .utils import AdvancedJSONEncoder, merge_iter, advisory_lock
 
 log = getLogger(__name__)
 
@@ -130,11 +130,11 @@ class Plan(models.Model):
         if self.pk and self.subscriptions.exists() and any(self.tracker.has_changed(field) for field in ["charge_amount", "charge_period"]):
             raise ValidationError("Cannot change plan with attached subscriptions")
 
-    @pre_validate
     def save(self, *args, **kwargs) -> None:
         self.slug = self.slug or slugify(self.name)
         self.charge_period = self.charge_period or INFINITY
         self.max_duration = self.max_duration or INFINITY
+        self.full_clean()
         return super().save(*args, **kwargs)
 
     def is_recurring(self) -> bool:
@@ -309,12 +309,23 @@ class Subscription(models.Model):
     def max_end(self) -> datetime:
         return self.start + self.plan.max_duration
 
+    def run_validators(self, user_subscriptions: SubscriptionQuerySet) -> None:
+        from .validators import get_validators
+
+        for validate in get_validators():
+            validate(self, user_subscriptions)
+
     def save(self, *args, **kwargs) -> None:
         self.start = self.start or now()
         self.end = self.end or min(self.start + self.plan.charge_period, self.max_end)
         if self.auto_prolong is None:
             self.auto_prolong = self.plan.is_recurring()
-        super().save(*args, **kwargs)
+        with advisory_lock(f"Subscription.save:{self.pk}"):
+            # lock all subscriptions for this user
+            user_subscriptions = self.objects.filter(user=self.user).select_for_update()
+            user_subscriptions.exists()  # force evaluate the query
+            self.run_validators(user_subscriptions)
+            super().save(*args, **kwargs)
         self.adjust_default_subscription()
 
     def stop(self) -> None:
@@ -338,14 +349,6 @@ class Subscription(models.Model):
             raise ProlongationImpossible("Reached maximum plan duration")
 
         return min(next_charge_date, self.max_end)
-
-    @property
-    def unused_time(self) -> timedelta:
-        try:
-            next_charge_date = next(self.iter_charge_dates(since=self.end))
-            return next_charge_date - self.end
-        except StopIteration:
-            return timedelta()
 
     def iter_quota_chunks(
         self,
@@ -674,8 +677,8 @@ class SubscriptionPayment(AbstractTransaction):
                 end=self.paid_until,
             )
 
-    @pre_validate
     def save(self, *args, **kwargs) -> None:
+        self.full_clean()
         if self.tracker.has_changed("status") and self.status == self.Status.COMPLETED:
             self.extend_or_create_subscription()
 
@@ -735,6 +738,7 @@ def get_trial_period(user: AbstractBaseUser, plan: Plan) -> relativedelta:
 
 
 def subscribe(user: AbstractBaseUser, plan: Plan, quantity: int, provider) -> tuple[SubscriptionPayment, str]:
+    <><><><><><><><>><><><><><><>
     from .validators import get_validators
 
     now_ = now()

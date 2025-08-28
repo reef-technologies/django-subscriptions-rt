@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from collections.abc import Callable
 from functools import lru_cache
 
 from django.conf import settings
@@ -6,44 +6,26 @@ from django.utils.module_loading import import_string
 
 from .defaults import DEFAULT_SUBSCRIPTIONS_VALIDATORS
 from .exceptions import RecurringSubscriptionsAlreadyExist, SubscriptionError
-from .models import Plan, SubscriptionQuerySet
+from .models import Subscription, SubscriptionQuerySet
 
 
-@dataclass(frozen=True)
-class SubscriptionValidator:
-    def __call__(self, active_subscriptions: SubscriptionQuerySet, requested_plan: Plan):
-        pass
+def plan_is_enabled(self: Subscription, user_subscriptions: SubscriptionQuerySet) -> None:
+    if not self.plan.is_enabled:
+        raise SubscriptionError("Requested plan is disabled")
 
 
-@dataclass(frozen=True)
-class OnlyEnabledPlans(SubscriptionValidator):
-    def __call__(self, active_subscriptions: SubscriptionQuerySet, requested_plan: Plan):
-        if not requested_plan.is_enabled:
-            raise SubscriptionError("Requested plan is disabled")
+def not_recurring_requires_recurring(self: Subscription, user_subscriptions: SubscriptionQuerySet) -> None:
+    if not self.plan.is_recurring() and not user_subscriptions.recurring().exists():
+        raise SubscriptionError("No recurring subscription exists")
 
 
-@dataclass(frozen=True)
-class AtLeastOneRecurringSubscription(SubscriptionValidator):
-    def __call__(self, active_subscriptions: SubscriptionQuerySet, requested_plan: Plan):
-        if not requested_plan.is_recurring() and not active_subscriptions.recurring().exists():
-            raise SubscriptionError("Need any recurring subscription first")
+def exclusive_recurring_subscription(self: Subscription, user_subscriptions: SubscriptionQuerySet) -> None:
+    if self.plan.is_recurring() and user_subscriptions.recurring().exists():
+        raise RecurringSubscriptionsAlreadyExist("Only one recurring subscription is allowed")
 
 
-@dataclass(frozen=True)
-class SingleRecurringSubscription(SubscriptionValidator):
-    def __call__(self, active_subscriptions: SubscriptionQuerySet, requested_plan: Plan):
-        if not requested_plan.is_recurring():
-            return
-
-        if active_recurring_subscriptions := list(active_subscriptions.recurring()):
-            raise RecurringSubscriptionsAlreadyExist(
-                f"{len(active_recurring_subscriptions)} recurring subscription(s) already exist",
-                subscriptions=active_recurring_subscriptions,
-            )
-
-
-@lru_cache(maxsize=1)
-def get_validators() -> list[SubscriptionValidator]:
+@lru_cache
+def get_validators() -> list[Callable]:
     return [
         import_string(module)()
         for module in getattr(settings, "SUBSCRIPTIONS_VALIDATORS", DEFAULT_SUBSCRIPTIONS_VALIDATORS)
