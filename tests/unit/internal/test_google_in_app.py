@@ -21,16 +21,39 @@ from subscriptions.v0.utils import fromisoformat
 from ..helpers import days
 
 
-def test__google__iter_subscriptions(google_in_app):
-    list(google_in_app.iter_subscriptions())
-
-
 @dataclass
 class Executable:
     result: Any | None = None
 
     def execute(self) -> Any:
         return self.result
+
+
+def test__google__iter_subscriptions(google_in_app):
+    with mock.patch.object(
+        google_in_app.subscriptions_api,
+        "list",
+        return_value=Executable(
+            {
+                "subscriptions": [
+                    {
+                        "packageName": "some package",
+                        "productId": "123",
+                        "basePlans": [
+                            {
+                                "basePlanId": "base_plan_1",
+                                "state": "ACTIVE",
+                                "regionalConfigs": [],
+                                "autoRenewingBasePlanType": None,
+                                "prepaidBasePlanType": None,
+                            }
+                        ],
+                    }
+                ],
+            }
+        ),
+    ):
+        list(google_in_app.iter_subscriptions())
 
 
 @pytest.mark.skip()

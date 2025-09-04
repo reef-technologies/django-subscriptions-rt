@@ -93,7 +93,7 @@ class GoogleInAppProvider(Provider):
 
     @cached_property
     def subscriptions_api(self) -> Resource:
-        return self.api.monetization().subscriptions()  # type: ignore[attr-defined]
+        return self.api.monetization().subscriptions()
 
     @classmethod
     def get_google_id(cls, plan: Plan) -> str:
@@ -133,7 +133,7 @@ class GoogleInAppProvider(Provider):
         # https://developers.google.com/android-publisher/api-ref/rest/v3/monetization.subscriptions
         page_token = None
         while True:
-            response = self.subscriptions_api.list(  # type: ignore[attr-defined]
+            response = self.subscriptions_api.list(
                 packageName=self.package_name,
                 showArchived=True,
                 pageToken=page_token,
@@ -178,7 +178,7 @@ class GoogleInAppProvider(Provider):
             assert plan_subscription
             plan_subscription_dict = plan_subscription.dict()
             # https://googleapis.github.io/google-api-python-client/docs/dyn/androidpublisher_v3.monetization.subscriptions.html#create
-            _ = self.subscriptions_api.create(  # type: ignore[attr-defined]
+            _ = self.subscriptions_api.create(
                 packageName=self.package_name,
                 body=plan_subscription_dict,
             ).execute()
@@ -190,7 +190,7 @@ class GoogleInAppProvider(Provider):
             if one(google_subscription.basePlans).state == GoogleBasePlanState.ACTIVE:
                 log.warning("Disabling google subscription %s which has no corresponding plan", google_subscription)
 
-                self.subscriptions_api.basePlans().deactivate(  # type: ignore[attr-defined]
+                self.subscriptions_api.basePlans().deactivate(
                     packageName=self.package_name,
                     productId=google_subscription.productId,
                     basePlanId=one(google_subscription.basePlans).basePlanId,
@@ -218,14 +218,14 @@ class GoogleInAppProvider(Provider):
             base_plan = one(google_subscription.basePlans)
             google_id = self.get_google_id(plan)
             if base_plan.state == GoogleBasePlanState.ACTIVE and not plan.is_enabled:
-                self.subscriptions_api.basePlans().deactivate(  # type: ignore[attr-defined]
+                self.subscriptions_api.basePlans().deactivate(
                     packageName=self.package_name,
                     productId=google_id,
                     basePlanId=google_id,
                 ).execute()
                 base_plan.state = GoogleBasePlanState.INACTIVE
             elif base_plan.state == GoogleBasePlanState.INACTIVE and plan.is_enabled:
-                self.subscriptions_api.basePlans().activate(  # type: ignore[attr-defined]
+                self.subscriptions_api.basePlans().activate(
                     packageName=self.package_name,
                     productId=google_id,
                     basePlanId=google_id,
@@ -236,7 +236,7 @@ class GoogleInAppProvider(Provider):
             plan_subscription_dict = plan_subscription.dict()
             # https://googleapis.github.io/google-api-python-client/docs/dyn/androidpublisher_v3.monetization.subscriptions.html#patch
             # https://developers.google.com/android-publisher/api-ref/rest/v3/monetization.subscriptions/patch
-            _ = self.subscriptions_api.patch(  # type: ignore[attr-defined]
+            _ = self.subscriptions_api.patch(
                 packageName=self.package_name,
                 productId=plan_subscription.productId,
                 body=plan_subscription_dict,
@@ -364,7 +364,7 @@ class GoogleInAppProvider(Provider):
     def get_purchase(self, purchase_token: str) -> GoogleSubscriptionPurchaseV2:
         # https://github.com/googleapis/google-api-python-client/blob/main/docs/start.md
         subscription_purchase_dict = (
-            self.api.purchases()  # type: ignore[attr-defined]
+            self.api.purchases()
             .subscriptionsv2()
             .get(
                 packageName=self.package_name,

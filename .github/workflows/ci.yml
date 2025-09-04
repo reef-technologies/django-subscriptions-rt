@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [master, main]
 
+env:
+  POSTGRES_PORT: 5432
+  POSTGRES_DB: testdb
+  POSTGRES_USER: testuser
+  POSTGRES_PASSWORD: testpass
+
 jobs:
   linter:
     runs-on: ubuntu-latest
@@ -21,13 +27,9 @@ jobs:
       - name: Run linters
         run: uvx --with pyyaml nox -vs lint
   test:
+    needs: linter
     timeout-minutes: 10
     runs-on: ${{ matrix.os }}
-    env:
-      POSTGRES_PORT: 5432
-      POSTGRES_DB: testdb
-      POSTGRES_USER: testuser
-      POSTGRES_PASSWORD: testpass
     services:
       postgres:
         image: postgres:15
@@ -39,9 +41,9 @@ jobs:
           --health-timeout 5s
           --health-retries 5
         env:
-          POSTGRES_DB: testdb
-          POSTGRES_USER: testuser
-          POSTGRES_PASSWORD: testpass
+          POSTGRES_DB: ${{ env.POSTGRES_DB }}
+          POSTGRES_USER: ${{ env.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ env.POSTGRES_PASSWORD }}
     strategy:
       fail-fast: false
       matrix:
@@ -73,6 +75,9 @@ jobs:
         env:
           UV_NO_MANAGED_PYTHON: "1"
           UV_PYTHON_DOWNLOADS: "never"
-          GOOGLE_PLAY_PACKAGE_NAME: ${{ secrets.GOOGLE_PLAY_PACKAGE_NAME }}
-          GOOGLE_PLAY_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT }}
+          APPLE_BUNDLE_ID: ${{ vars.APPLE_BUNDLE_ID }}
+          APPLE_SHARED_SECRET: ${{ vars.APPLE_SHARED_SECRET }}
+          GOOGLE_PLAY_PACKAGE_NAME: ${{ vars.GOOGLE_PLAY_PACKAGE_NAME }}
+          GOOGLE_PLAY_SERVICE_ACCOUNT: ${{ vars.GOOGLE_PLAY_SERVICE_ACCOUNT }}
+          PADDLE_VENDOR_ID: ${{ vars.PADDLE_VENDOR_ID }}
         run: uvx --with pyyaml nox -vs "test(django='${{ matrix.django-version }}')"

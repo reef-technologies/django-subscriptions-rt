@@ -1,17 +1,13 @@
 import datetime
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
-from functools import cached_property
 from logging import getLogger
-from typing import TYPE_CHECKING, ClassVar
-from uuid import uuid4
+from typing import ClassVar
 
-from django.contrib.auth.base_user import AbstractBaseUser
 from django.contrib.auth.models import User
 from django.core.exceptions import SuspiciousOperation
 from django.db import transaction
 from django.utils import timezone
-from moneyed import Money
 from pydantic import (
     BaseModel,
     ValidationError,
