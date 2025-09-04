@@ -14,7 +14,7 @@ from more_itertools import first, pairwise
 
 from .defaults import (
     DEFAULT_NOTIFY_PENDING_PAYMENTS_AFTER,
-    DEFAULT_SUBSCRIPTIONS_OFFLINE_CHARGE_ATTEMPTS_SCHEDULE,
+    DEFAULT_SUBSCRIPTIONS_CHARGE_ATTEMPTS_SCHEDULE,
 )
 from .exceptions import PaymentError, ProlongationImpossible
 from .models import Subscription, SubscriptionPayment, SubscriptionQuerySet
@@ -24,8 +24,8 @@ log = getLogger(__name__)
 
 DEFAULT_CHARGE_ATTEMPTS_SCHEDULE = getattr(
     settings,
-    "SUBSCRIPTIONS_OFFLINE_CHARGE_ATTEMPTS_SCHEDULE",
-    DEFAULT_SUBSCRIPTIONS_OFFLINE_CHARGE_ATTEMPTS_SCHEDULE,
+    "SUBSCRIPTIONS_CHARGE_ATTEMPTS_SCHEDULE",
+    DEFAULT_SUBSCRIPTIONS_CHARGE_ATTEMPTS_SCHEDULE,
 )
 
 
@@ -54,6 +54,10 @@ def charge_recurring_subscription(
         )
     except ValueError:
         log.warning("Current time %s doesn't fall within any charge period, skipping", at)
+        return
+
+    if at < subscription.start + subscription.charge_offset:
+        log.debug("Subscription %s is still in charge offset period, skipping", subscription)
         return
 
     # we don't want to try charging if

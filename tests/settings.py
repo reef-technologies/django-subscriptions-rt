@@ -75,6 +75,7 @@ SUBSCRIPTIONS_PAYMENT_PROVIDERS = [
     "subscriptions.v0.providers.google_in_app.GoogleInAppProvider",
     "subscriptions.v0.providers.apple_in_app.AppleInAppProvider",
 ]
+SUBSCRIPTIONS_VALIDATORS: list[str] = []
 
 PADDLE_VENDOR_ID = environ.get("PADDLE_VENDOR_ID")
 PADDLE_VENDOR_AUTH_CODE = environ.get("PADDLE_VENDOR_AUTH_CODE")

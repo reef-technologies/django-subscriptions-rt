@@ -1,19 +1,17 @@
-from django.forms import ValidationError
-from moneyed import Money
 import pytest
-from django.utils.timezone import now
-from more_itertools import one
 from dateutil.relativedelta import relativedelta
+from django.forms import ValidationError
+from django.utils.timezone import now
+from moneyed import Money
+from more_itertools import one
 
 from subscriptions.v0.models import Subscription, SubscriptionPayment
 
 from ..helpers import days
 
 
-# ref:plan-immutability
 @pytest.mark.django_db(databases=["actual_db"])
 def test__plan__immutability(plan, user):
-
     # w/o subscriptions -> can modify the plan
     assert not plan.subscriptions.exists()
     plan.name = "Plan 7"

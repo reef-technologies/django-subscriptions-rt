@@ -1,17 +1,17 @@
 from subscriptions.v0.exceptions import (
     InvalidOperation,
     PaymentError,
-    SubscriptionError,
+    SubscriptionsError,
 )
 from subscriptions.v0.providers.apple_in_app.enums import AppleValidationStatus
 
 
-class AppleInvalidOperation(SubscriptionError, InvalidOperation):
+class AppleInvalidOperation(InvalidOperation):
     def __init__(self):
         super().__init__("Apple subscription provider doesn't support this operation.")
 
 
-class AppleSubscriptionNotCompletedError(SubscriptionError):
+class AppleSubscriptionNotCompletedError(SubscriptionsError):
     def __init__(self, transaction_id: str):
         super().__init__(
             f"Apple subscription for transaction ID {transaction_id} found to be not in a COMPLETED state."

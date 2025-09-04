@@ -4,7 +4,6 @@ from datetime import datetime
 from functools import cached_property, lru_cache
 from logging import getLogger
 from typing import ClassVar
-from uuid import uuid4
 
 from django.conf import settings
 from django.contrib.auth.base_user import AbstractBaseUser
@@ -15,8 +14,8 @@ from pydantic import BaseModel
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from ..defaults import DEFAULT_SUBSCRIPTIONS_PAYMENT_PROVIDERS
-from ..exceptions import ProviderNotFound
+from ..defaults import DEFAULT_SUBSCRIPTIONS_PAYMENT_PROVIDERS, DEFAULT_SUBSCRIPTIONS_SUCCESS_URL
+from ..exceptions import PaymentError, ProviderNotFound
 from ..models import Plan, Subscription, SubscriptionPayment
 
 log = getLogger(__name__)
@@ -56,8 +55,54 @@ class Provider:
         reference_payment: SubscriptionPayment,
         subscription: Subscription | None = None,
     ) -> SubscriptionPayment:
-        """Returns a new SubscriptionPayment (PENDING or COMPLETED) or raises PaymentError / InvalidOperationError."""
+        """Returns a new SubscriptionPayment (PENDING or COMPLETED) or raises PaymentError / InvalidOperation."""
         raise NotImplementedError
+
+    def charge(
+        self,
+        user: AbstractBaseUser,
+        plan: Plan,
+        amount: Money,
+        quantity: int,
+        since: datetime,
+        until: datetime,
+        subscription: Subscription | None = None,
+    ) -> tuple[SubscriptionPayment, str]:
+        """Try automatic charge, then interactive one."""
+
+        try:
+            reference_payment = SubscriptionPayment.get_reference_payment(
+                user=user,
+                provider_codename=self.codename,
+            )
+            payment = self.charge_automatically(
+                plan=plan,
+                amount=amount,
+                quantity=quantity,
+                since=since,
+                until=until,
+                reference_payment=reference_payment,
+                subscription=subscription,
+            )
+            redirect_url = getattr(settings, "SUBSCRIPTIONS_SUCCESS_URL", DEFAULT_SUBSCRIPTIONS_SUCCESS_URL)
+            return payment, redirect_url
+        except (SubscriptionPayment.DoesNotExist, NotImplementedError):
+            log.debug("No reference payment found or automatic charging not supported")
+        except PaymentError:
+            log.exception("Payment error occurred")
+        except Exception:
+            log.exception("Background charge error")
+
+        payment, redirect_url = self.charge_interactively(
+            user=user,
+            plan=plan,
+            amount=amount,
+            quantity=quantity,
+            since=since,
+            until=until,
+            subscription=subscription,
+        )
+        return payment, redirect_url
 
     def cancel(self, subscription: Subscription) -> None:
         subscription.auto_prolong = False

@@ -56,9 +56,7 @@ class PlanAdmin(admin.ModelAdmin):
         "is_enabled",
     )
     list_filter = ("is_enabled",)
-    search_fields = (
-        "name",
-    )
+    search_fields = ("name",)
     ordering = ("-pk",)
     inlines = (QuotaInline,)
 

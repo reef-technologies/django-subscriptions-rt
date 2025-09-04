@@ -31,16 +31,14 @@ from django.utils.timezone import now
 from model_utils import FieldTracker
 from pydantic import BaseModel
 
-from .defaults import DEFAULT_SUBSCRIPTIONS_SUCCESS_URL, DEFAULT_SUBSCRIPTIONS_TRIAL_PERIOD
 from .exceptions import (
     InconsistentQuotaCache,
     PaymentError,
     ProlongationImpossible,
     ProviderNotFound,
-    RecurringSubscriptionsAlreadyExist,
 )
 from .fields import MoneyField, RelativeDurationField
-from .utils import AdvancedJSONEncoder, merge_iter, advisory_lock
+from .utils import AdvancedJSONEncoder, advisory_lock, merge_iter
 
 log = getLogger(__name__)
 
@@ -127,7 +125,11 @@ class Plan(models.Model):
         return reverse("plan", kwargs={"plan_id": self.pk})
 
     def clean(self) -> None:
-        if self.pk and self.subscriptions.exists() and any(self.tracker.has_changed(field) for field in ["charge_amount", "charge_period"]):
+        if (
+            not self._state.adding
+            and self.subscriptions.exists()
+            and any(self.tracker.has_changed(field) for field in ["charge_amount", "charge_period"])
+        ):
             raise ValidationError("Cannot change plan with attached subscriptions")
 
     def save(self, *args, **kwargs) -> None:
@@ -309,11 +311,11 @@ class Subscription(models.Model):
     def max_end(self) -> datetime:
         return self.start + self.plan.max_duration
 
-    def run_validators(self, user_subscriptions: SubscriptionQuerySet) -> None:
+    def run_validators(self) -> None:
         from .validators import get_validators
 
         for validate in get_validators():
-            validate(self, user_subscriptions)
+            validate(self)
 
     def save(self, *args, **kwargs) -> None:
         self.start = self.start or now()
@@ -322,9 +324,8 @@ class Subscription(models.Model):
             self.auto_prolong = self.plan.is_recurring()
         with advisory_lock(f"Subscription.save:{self.pk}"):
             # lock all subscriptions for this user
-            user_subscriptions = self.objects.filter(user=self.user).select_for_update()
-            user_subscriptions.exists()  # force evaluate the query
-            self.run_validators(user_subscriptions)
+            self.user.subscriptions.select_for_update().exists()  # force evaluate the query
+            self.run_validators()
             super().save(*args, **kwargs)
         self.adjust_default_subscription()
 
@@ -695,6 +696,21 @@ class SubscriptionPayment(AbstractTransaction):
     def meta(self, value: BaseModel) -> None:
         self.metadata = value.dict()
 
+    @classmethod
+    def get_reference_payment(cls, user: AbstractBaseUser, provider_codename: str) -> Self:
+        payment = (
+            cls.objects.filter(
+                user=user,
+                provider_codename=provider_codename,
+                status=SubscriptionPayment.Status.COMPLETED,
+            )
+            .order_by("created")
+            .last()
+        )
+        if not payment:
+            raise cls.DoesNotExist
+        return payment
+
 
 class SubscriptionPaymentRefund(AbstractTransaction):
     original_payment = models.ForeignKey(SubscriptionPayment, on_delete=models.PROTECT, related_name="refunds")
@@ -720,86 +736,3 @@ class Tax(models.Model):
 
 
 from .signals import create_default_subscription_for_new_user  # noqa
-
-
-def get_trial_period(user: AbstractBaseUser, plan: Plan) -> relativedelta:
-    trial_period = getattr(settings, "SUBSCRIPTIONS_TRIAL_PERIOD", DEFAULT_SUBSCRIPTIONS_TRIAL_PERIOD)
-
-    if (
-        trial_period
-        and plan.charge_amount
-        and plan.is_recurring()
-        and not user.payments.filter(status=SubscriptionPayment.Status.COMPLETED).exists()  # type: ignore[attr-defined]
-        and not user.subscriptions.recurring().exists()  # type: ignore[attr-defined]
-    ):
-        return trial_period
-
-    return relativedelta()
-
-
-def subscribe(user: AbstractBaseUser, plan: Plan, quantity: int, provider) -> tuple[SubscriptionPayment, str]:
-    <><><><><><><><>><><><><><><>
-    from .validators import get_validators
-
-    now_ = now()
-    active_subscriptions = user.subscriptions.active().order_by("end")  # type: ignore[attr-defined]
-    for validator in get_validators():
-        try:
-            validator(active_subscriptions, plan)
-        except RecurringSubscriptionsAlreadyExist as exc:
-            # if there are recurring subscriptions and they are conflicting,
-            # we force-terminate them and go on with creating a new one
-            for subscription in exc.subscriptions:
-                subscription.end = now_
-                subscription.save()
-
-    payment = None
-    reference_payment = (
-        user.payments.filter(  # type: ignore[attr-defined]
-            provider_codename=provider.codename,
-            status=SubscriptionPayment.Status.COMPLETED,
-        )
-        .order_by("created")
-        .last()
-    )
-    if reference_payment:
-        try:
-            payment = provider.charge_automatically(
-                plan=plan,
-                amount=plan.charge_amount,
-                quantity=quantity,
-                since=now_,
-                until=now_ + plan.charge_period,
-                reference_payment=reference_payment,
-            )
-            redirect_url = getattr(settings, "SUBSCRIPTIONS_SUCCESS_URL", DEFAULT_SUBSCRIPTIONS_SUCCESS_URL)
-        except (PaymentError, NotImplementedError):
-            pass
-        except Exception:
-            log.exception("Background charge error")
-
-    if not payment:
-        trial_period = get_trial_period(user=user, plan=plan)
-        payment, redirect_url = provider.charge_interactively(
-            user=user,
-            plan=plan,
-            amount=plan.charge_amount * (0 if trial_period else 1),  # zero with currency
-            quantity=quantity,
-            since=now_,
-            until=now_ + (trial_period or plan.charge_period),
-        )
-
-        if trial_period:
-            assert not payment.subscription
-            payment.subscription = Subscription.objects.create(
-                user=user,  # type: ignore[misc]
-                plan=plan,
-                quantity=quantity,
-                start=now_,
-                end=now_,
-                charge_offset=trial_period,
-            )
-            payment.subscription.save()
-            payment.save()
-
-    return payment, redirect_url

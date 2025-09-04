@@ -70,7 +70,7 @@ with suppress(ImportError):
             else:
                 subscription.delete()
 
-        # current subscriptions will be split into two groups:
+        # current subscriptions will be split into two subscriptions:
         # old default plan until now, new default plan since now
         current_subscriptions = Subscription.objects.filter(
             plan_id=old_value,

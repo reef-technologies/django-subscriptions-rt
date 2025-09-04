@@ -8,13 +8,6 @@ See [ci.yml](.github/workflows/ci.yml) for matrix of supported Python and Django
 > [!IMPORTANT]
 > Only Postgres database is supported (due to PG_ADVISORY_LOCK requirement).
 
-## Features
-
-* Basic Recurring. Subscription Plans are defined for the same products/services on a fixed, recurring charge.
-* Good-Better-Best. Subscription Plans are defined with products or services sold in feature tiers, with escalating features and pricing for each tier.
-* Per-Seat. Subscription Plans are defined with products or services sold in user/license quantity tiers, with volume pricing for each tier of user/license quantities.
-* Metered Billing. Subscription Plans are defined where customers are billed in arrears based on usage of your product/service as calculated by your platform.
-
 ## Configuration
 
 ```python
@@ -97,11 +90,11 @@ for plan in [one_time_plan, recurring_plan, infinite_plan]:
 
 ### Plan immutability
 
-Plan is a groundtruth for all calculations, meaning that once a plan has subscriptions attached, its core attributes (`charge_amount` and `charge_period`) should not change. Trying to change essential plan attributes while having attached subscriptions [will raise a `ValidationError`](tests/unit/internal/test_models.py#ref:plan-immutability).
+Plan is a groundtruth for all calculations, meaning that once a plan has subscriptions attached, its core attributes (`charge_amount` and `charge_period`) should not change. Trying to change essential plan attributes while having attached subscriptions will raise a `ValidationError`.
 
 ### One-time charge plans
 
-These are plans that are charged only once (at the beginning of the subscription). Set `charge_period=INFINITY` to never charge again:
+These are plans that are charged only once (at the beginning of the subscription). Set `charge_period=INFINITY` (or `None`, or omit it) to never charge again:
 
 ```python
 from moneyed import Money
@@ -173,7 +166,7 @@ gantt
 
 Recurring subscriptions are those that live for a limited period of time and require recharging when approaching its end.
 
-`Plan.charge_period` defines how often subscription charges will happen. It expects either `INFINITY` or [a `relativedelta` object](https://dateutil.readthedocs.io/en/stable/relativedelta.html), so you can specify complex time periods easily - for example, if starting a subscription on _Nov 30st_ with `charge_period=relativedelta(months=1)`, next charge dates will be _Dec 30st_, _Jan 30st_ etc, so real charge period will be not exactly 30 days - [see an example in tests](tests/unit/internal/test_subscription.py#ref:charge-period-relativedelta).
+`Plan.charge_period` defines how often subscription charges will happen. It expects either `INFINITY` or [a `relativedelta` object](https://dateutil.readthedocs.io/en/stable/relativedelta.html), so you can specify complex time periods easily - for example, if starting a subscription on _Nov 30st_ with `charge_period=relativedelta(months=1)`, next charge dates will be _Dec 30st_, _Jan 30st_ etc, so real charge period will be not exactly 30 days.
 
 ```mermaid
 gantt
@@ -197,7 +190,9 @@ from subscriptions.v0.tasks import charge_recurring_subscriptions
 charge_recurring_subscriptions()
 ```
 
-This task should be called periodically (via celery or other task runner). Default schedule starts trying charging few days in advance, but it can be customized as needed - for example, having different charge attempts' periods for different subscriptions:
+This task should be called periodically (via celery or other task runner). Default schedule starts trying charging few days in advance (use `SUBSCRIPTIONS_CHARGE_ATTEMPTS_SCHEDULE` setting to change the default schedule).
+
+Charging may be customized as needed - for example, having different charge attempts' periods for different subscriptions:
 
 ```python
 base_subscriptions = Subscription.objects.filter(plan=base_plan)
@@ -231,8 +226,70 @@ charge_recurring_subscriptions(
 
 Only subscriptions with `auto_prolong` set to `True` will be charged and prolonged. When user cancels a subscription, we simply set `auto_prolong = False`, so that subscription still exists but is not prolonged at expiration.
 
+Also charge won't be performed if it falls into `charge_offset` period.
 
-### Limited plan duration
+### Charge offset
+
+It is possible to postpone subscription's first payment by some timedelta: `charge_offset` will shift charge schedule.
+
+```python
+from dateutil.relativedelta import relativedelta
+
+offset = relativedelta(days=7)
+subscription = Subscription.objects.create(
+    plan=plan,
+    charge_offset=offset,
+)
+
+assert next(subscription.iter_charge_dates()) == subscription.start + offset
+```
+
+This is handy when unpausing a subscription or implementing trial period.
+
+Please note that `charge_recurring_subscriptions` task won't try to charge within `charge_offset` period:
+
+```python
+# try charging daily 3 days in advance,
+# and 2 days past deadline
+CHARGE_SCHEDULE = [
+    timedelta(days=-3),
+    timedelta(days=-2),
+    timedelta(days=-1),
+    timedelta(0),
+    timedelta(days=1),
+    timedelta(days=2),
+]
+
+
+# create a 7-days subscription with 6-days charge offset
+now_ = now()
+subscription = Subscription.objects.create(
+    # ...
+    start=now_,
+    end=now_ + relativedelta(days=7),
+    charge_offset=relativedelta(days=6),
+)
+```
+
+```mermaid
+gantt
+    dateFormat YYYY-MM-DD
+
+    Subscription: 2025-01-01, 2025-01-08
+    Regular charge period: crit, 2025-01-05, 2025-01-10
+
+    -3 days: vert, 2025-01-05, 0
+    -2 days: vert, 2025-01-06, 0
+    -1 day: vert, 2025-01-07, 0
+    End: vert, 2025-01-08, 0
+    +1 day: vert, 2025-01-09, 0
+    +2 days: vert, 2025-01-10, 0
+
+    Charge offset: 2025-01-01, 2025-01-07
+    Real charge period: crit, 2025-01-07, 2025-01-10
+```
+
+### Limited duration plans
 
 These are plans that have a maximum duration and cannot be used indefinitely. For example, let's create a promo plan that can last only for 3 months and won't be auto-prolonged at the end of that period:
 
@@ -299,7 +356,7 @@ plan_base_m, plan_base_y, plan_pro_m, plan_pro_y = Plan.objects.bulk_create([
 ])
 ```
 
-One should create business logic to handle different features available with each subscription:
+One should create business logic to handle different features provided by each subscription:
 
 ```python
 user_subscriptions = Subscription.objects.filter(user=user).active()
@@ -427,12 +484,23 @@ SUBSCRIPTIONS_VALIDATORS = [
 ]
 ```
 
-Each validator is a function `def foo(self: Subscription, user_subscriptions: SubscriptionQuerySet) -> None:`, where `self` is subscription to be validated (may be not yet in the database) and `user_subscriptions` are subscriptions for that specific user. `SubscriptionError` is raised if an ycheck is failed.
+Each validator is a function `def foo(self: Subscription) -> None:`, where `self` is subscription to be validated (may be not yet in the database). Subclass of `SubscriptionsError` and `ValidationError` is raised if any check fails.
 
 ```python
-def exclusive_recurring_subscription(self: Subscription, user_subscriptions: SubscriptionQuerySet) -> None:
-    if self.plan.is_recurring() and user_subscriptions.recurring().exists():
-        raise RecurringSubscriptionsAlreadyExist("Only one recurring subscription is allowed")
+from django.forms import ValidationError
+from subscriptions.v0.exceptions import SubscriptionsError
+from subscriptions.v0.models import Subscription
+
+
+class PlanDisabled(SubscriptionsError, ValidationError):
+    def __init__(self, plan: Plan) -> None:
+        self.plan = plan
+
+
+def plan_is_enabled(self: Subscription) -> None:
+    # when creating new subscription, chosen plan should be enabled
+    if self._state.adding and not self.plan.is_enabled:
+        raise PlanDisabled(self.plan)
 ```
 
 Validation is protected by advisory lock and `SELECT FOR UPDATE`, so other actions don't interfere the validation process. Remember that validation is done on application level, but for better data integrity one could additionally implement database-level constraints.
@@ -631,7 +699,7 @@ CONSTANCE_CONFIG = {
 }
 ```
 
-`0` value means "no default subscription".
+`0` value means "no default plan".
 
 As soon as constance config is saved, the default plan will be applied to every user. When new user is created, default infinite subscription will be automatically attached.
 
@@ -767,83 +835,96 @@ gantt
         Default: 2025-01-10, 2025-01-31
 ```
 
-### Charge offset
-
-It is possible to postpone subscription's first payment by some timedelta: `charge_offset` will shift charge schedule.
-
-```python
-from dateutil.relativedelta import relativedelta
-
-offset = relativedelta(days=7)
-subscription = Subscription.objects.create(
-    plan=plan,
-    charge_offset=offset,
-)
-
-assert next(subscription.iter_charge_dates()) == subscription.start + offset
-```
-
-This is handy when unpausing a subscription or implementing trial period.
-
 ### Trial period
-<><><><><><><><><><><><>
-There is a handy setting `SUBSCRIPTIONS_TRIAL_PERIOD`:
+
+Trial period is a feature that allows users to try out a subscription plan for a limited time without being charged. It may be implemented like this:
+- create subscription with either
+    - no payment (and later ask user to pay)
+    - a zero-amount payment (and later just use payment details to auto-charge)
+- set `charge_offset` to the desired trial period length
 
 ```python
+# settings.py
 from dateutil.relativedelta import relativedelta
 
 SUBSCRIPTIONS_TRIAL_PERIOD = relativedelta(days=7)
 ```
 
-If
-* subscription is created via `POST` request to `SubscriptionSelectView` (which by default is at path `/subscribe/`),
-* selected plan's `charge_amount` is non-zero,
-* selected plan is recurring,
-* user hasn't completed ANY payments (even zero ones),
-* user never had any recurring subscriptions,
+```python
+# views.py
+class PlanTrialSubscriptionView(LoginRequiredMixin, FormView):
+    template_name = "subscriptions/subscribe.html"
+    form_class = SubscriptionSelectionForm
 
-then charge amount will become zero, thus user only enters CC info without paying anything. The set of rules mentioned above may be changed by redefining `get_trial_period` method.
+    def post(self, request: HttpRequest, *args, **kwargs) -> HttpResponse:
+        if (form := self.get_form()).is_valid():
+            plan = form.cleaned_data["plan"]
+            quantity = form.cleaned_data["quantity"]
 
-> Remember that "external" providers may not respect this setting at all.
+            try:
+                Subscription(user=request.user, plan=plan, quantity=quantity).run_validators()
 
-Internally, trial period works like this:
+                provider = get_provider_by_codename(form.cleaned_data["provider"])
+                now_ = now()
+                _, redirect_url = provider.charge(
+                    user=request.user,
+                    plan=plan,
+                    amount=plan.charge_amount * 0,  # zero amount (but currency is preserved)
+                    quantity=quantity,
+                    since=now_,
+                    until=now_ + settings.SUBSCRIPTIONS_TRIAL_PERIOD,
+                )
+                return HttpResponseRedirect(redirect_url)
+            except ValidationError as exc:
+                form.add_error("plan", exc)
+            except PaymentError as exc:
+                form.add_error(None, ValidationError(exc.user_message))
 
-1) User asks API to create new subscription
-2) If situation is eligible for trial period, a new zero-amount `SubscriptionPayment` is requested, as well as corresponding `Subscription` is created with zero duration:
-
+        return super().get(request, *args, **kwargs)
 ```
-------[=======(Payment, cost=0)=======]-------->
-                                      ^- trial period end
-------[]--------------------------------------->
-      ^--- Subscription with charge_offset = trial_period
-```
 
-3) Users enters CC details for the payment -> it gets confirmed; when the payment is confirmed, its subscription is extended till the end of trial period:
-
-```
-------[=======(Payment, cost=0)=======]-------->
-                                      ^- trial period end
-------[===Subscription================]-------->
-                                       ^--- Here real price will be charged
+```python
+# models.py
+@receiver(post_save, sender=SubscriptionPayment)
+def handler(sender, payment: SubscriptionPayment, **kwargs):
+    if (
+        payment.tracker.has_changed("status") and
+        payment.status == SubscriptionPayment.Status.COMPLETED and
+        payment.amount.amount == 0
+    ):
+        payment.subscription.charge_offset = settings.SUBSCRIPTIONS_TRIAL_PERIOD
+        payment.subscription.save()
 ```
 
 ### Middleware
 
-It is costy - calculates resources for each authenticated user's request! May be handy in html templates, but better not to use it too much.
+```python
+MIDDLEWARE = [
+    # ...
+    "subscriptions.v0.middleware.SubscriptionsMiddleware",
+]
+```
+
+This will add
+- `request.user.active_subscriptions: QuerySet[Subscription]` and
+- `request.user.quotas: dict[Resource, int]`
+
+for each authenticated user's request, so it may be handy for development but not ready for production.
 
 ## Payment providers
 
-There is a clear distinction between "self-hosted" vs "external" subscription solutions. "Self-hosted" means that everything (plans, upgrade/downgrade rules, charging schedules etc) is set up on backend side, and payment provider is only used to store CC information and charge money when  backend asks to do so. However, some payment providers don't allow that, thus it is called "external" - everything is configured in provider dashboard, and it's a provider who does periodic charges etc. The only thing backend does - receives webhook (or periodically fetches information itself, or both altogether), and updates subscriptions (changes timespan, pauses, resumes etc).
+Different payment providers allow different level of control.
+- You may ask some of them to do one-off charges by demand, and handle subscriptions and quotas yourself using this framework;
+- Some providers allow advanced features like subscriptions and trial period, you may use this framework as addition to their capabilities;
+- Other providers don't allow anything and handle everything on their side - you have no control over the process but at least can fetch information about subscriptions and their status into local database.
 
-"Self-hosted" provider means that backend is the command center, and it is capable of implementing custom logic of any complexity. The drawback here is that backend is responsible for periodic checks and charges, which requires monitoring and extra setup.
-
-"External" providers are limited to whatever logic is provided by third-party developers. However, it is much easier to setup and maintain it.
+This framework comes with reference implementations for several payment providers.
 
 ### Paddle
 
 Uses [paddle.com](https://paddle.com) as payment provider.
 
-This implementation is self-hosted. Paddle does not provide a lot of control over charges, however it has an undocumented opportunity to create a zero-cost subscription with infinite charge period. After this subscription is created, user can be charged by backend at any moment with any amount.
+This implementation exploits an undocumented opportunity to create a zero-cost subscription with infinite charge period. After this subscription is created, user can be charged by backend at any moment with any amount.
 
 ### App store
 

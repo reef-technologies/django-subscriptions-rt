@@ -6,7 +6,6 @@ from dateutil.relativedelta import relativedelta
 from django.db import connections
 from django.utils.timezone import now
 
-from subscriptions.v0.models import Plan
 from subscriptions.v0.exceptions import PaymentError, ProlongationImpossible
 from subscriptions.v0.models import Quota, QuotaChunk, Subscription, SubscriptionPayment
 
@@ -54,7 +53,6 @@ def test__subscription__unlimited_plan_duration(user, plan):
         assert subscription.end == subscription.start + i * days(300)
 
 
-# ref:charge-period-relativedelta
 @pytest.mark.django_db(databases=["actual_db"])
 def test__subscription__iter_charge_dates__main(plan, subscription):
     subscription.start = datetime(2021, 11, 30, 12, 00, 00, tzinfo=UTC)
@@ -117,9 +115,7 @@ def test__subscription__iter_charge_dates__performance(subscription, django_asse
 
 
 @pytest.mark.django_db(databases=["actual_db"])
-def test__subscription__iter_charge_dates___no_charge_period(plan, subscription):
-    plan.charge_period = None
-    plan.save(update_fields=["charge_period"])
+def test__subscription__iter_charge_dates___no_charge_period(unlimited_plan, subscription):
     assert list(subscription.iter_charge_dates()) == [subscription.start]
 
 

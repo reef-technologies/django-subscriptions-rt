@@ -2,7 +2,7 @@ import logging
 from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager, suppress
 from datetime import datetime, timedelta
-from functools import partial, wraps
+from functools import partial
 from typing import TypeVar
 
 import pglock

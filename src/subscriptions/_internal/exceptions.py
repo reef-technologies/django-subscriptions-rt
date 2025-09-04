@@ -1,39 +1,31 @@
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from .models import Subscription
+from django.db.models import QuerySet
+from django.forms import ValidationError
 
 
-class QuotaLimitExceeded(Exception):
+class SubscriptionsError(Exception):
+    pass
+
+
+class QuotaLimitExceeded(SubscriptionsError):
     def __init__(self, resource, amount_requested: int, amount_available: int):
         self.resource = resource
         self.amount_requested = amount_requested
         self.amount_available = amount_available
 
 
-class InconsistentQuotaCache(Exception):
+class InconsistentQuotaCache(SubscriptionsError):
     pass
 
 
-class ProviderNotFound(Exception):
+class ProviderNotFound(SubscriptionsError):
     pass
 
 
-class ProlongationImpossible(Exception):
+class ProlongationImpossible(SubscriptionsError):
     pass
 
 
-class SubscriptionError(Exception):
-    pass
-
-
-class RecurringSubscriptionsAlreadyExist(SubscriptionError):
-    def __init__(self, message, subscriptions: list["Subscription"]):
-        super().__init__(message)
-        self.subscriptions = subscriptions
-
-
-class PaymentError(Exception):
+class PaymentError(SubscriptionsError):
     def __init__(self, message, user_message: str = "", debug_info: dict | None = None):
         super().__init__(message)
         self.user_message = user_message
@@ -47,9 +39,23 @@ class BadReferencePayment(PaymentError):
     pass
 
 
-class InvalidOperation(Exception):
+class InvalidOperation(SubscriptionsError):
     pass
 
 
-class ConfigurationError(Exception):
+class ConfigurationError(SubscriptionsError):
     pass
+
+
+class PlanDisabled(SubscriptionsError, ValidationError):
+    pass
+
+
+class RecurringSubscriptionRequired(SubscriptionsError, ValidationError):
+    pass
+
+
+class MultipleRecurringSubscriptions(SubscriptionsError, ValidationError):
+    def __init__(self, message: str, conflicting_subscriptions: QuerySet):
+        self.conflicting_subscriptions = conflicting_subscriptions
+        super().__init__(message)

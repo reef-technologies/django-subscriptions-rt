@@ -371,7 +371,10 @@ def test__function__use_resource__advisory_lock(user, subscription, quota, resou
         with use_resource(user, resource, amount):
             pass
 
-    with ThreadPoolExecutor(max_workers=num_parallel_threads) as pool, freeze_time(subscription.start + days(1), tick=True):
+    with (
+        ThreadPoolExecutor(max_workers=num_parallel_threads) as pool,
+        freeze_time(subscription.start + days(1), tick=True),
+    ):
         assert remains() == 100
 
         futures = [pool.submit(_use_resource, 50) for _ in range(num_parallel_threads)]

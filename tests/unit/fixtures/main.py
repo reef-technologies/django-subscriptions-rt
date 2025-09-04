@@ -12,6 +12,7 @@ from django.utils.timezone import now
 from djmoney.money import Money
 from freezegun import freeze_time
 
+from subscriptions.v0.defaults import DEFAULT_SUBSCRIPTIONS_VALIDATORS
 from subscriptions.v0.functions import (
     get_remaining_amount,
     get_remaining_chunks,
@@ -83,6 +84,12 @@ def plan(resource) -> Plan:
 
 
 @pytest.fixture
+def unlimited_plan(plan) -> Plan:
+    plan.charge_period = None
+    plan.save(update_fields=["charge_period"])
+
+
+@pytest.fixture
 def quota(plan, resource) -> Quota:
     return Quota.objects.create(
         plan=plan,
@@ -139,6 +146,11 @@ def subscription(user, plan) -> Subscription:
         quantity=2,  # so limit = 50 * 2 = 100 in total
         start=datetime(2025, 1, 1, 12, 0, 0, tzinfo=UTC),
     )
+
+
+@pytest.fixture
+def validators(settings) -> None:
+    settings.SUBSCRIPTIONS_VALIDATORS = DEFAULT_SUBSCRIPTIONS_VALIDATORS
 
 
 @pytest.fixture
@@ -368,12 +380,6 @@ def default_plan(settings) -> Plan:
     with freeze_time(datetime(2000, 1, 1, 0, 0, 0, tzinfo=UTC)):
         config.SUBSCRIPTIONS_DEFAULT_PLAN_ID = plan.pk
     return plan
-
-
-@pytest.fixture
-def trial_period(settings) -> relativedelta:
-    settings.SUBSCRIPTIONS_TRIAL_PERIOD = trial_period = relativedelta(days=7)
-    return trial_period
 
 
 @pytest.fixture

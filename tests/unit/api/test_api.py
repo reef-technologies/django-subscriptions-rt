@@ -251,13 +251,20 @@ def test__api__resources__expiration(request, use_cache, user_client, subscripti
 
 
 @pytest.mark.django_db(databases=["actual_db"], transaction=True)
-def test__api__recurring_plan_switch(user, user_client, subscription, payment, bigger_plan, dummy):
+def test__api__recurring_plan_switch(
+    validators, user, user_client, subscription, payment, bigger_plan, dummy
+):  # payment is a reference payment
     with freeze_time(subscription.start):
         assert one(user.subscriptions.active()).plan == subscription.plan
 
     with freeze_time(subscription.start + days(2), tick=True):
         response = user_client.post("/api/subscribe/", {"plan": bigger_plan.pk, "provider": dummy.codename})
-        assert response.status_code == 200, response.content
+        assert response.status_code == 400, response.content
+
+        subscription.end = now()
+        subscription.save()
+
+        response = user_client.post("/api/subscribe/", {"plan": bigger_plan.pk, "provider": dummy.codename})
         assert one(user.subscriptions.active()).plan == bigger_plan
 
 

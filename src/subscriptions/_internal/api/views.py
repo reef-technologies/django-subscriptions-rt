@@ -1,8 +1,8 @@
 import logging
 
-from django.db import transaction
+from django.forms import ValidationError
 from django.http import QueryDict
-from rest_framework.exceptions import PermissionDenied
+from django.utils.timezone import now
 from rest_framework.generics import DestroyAPIView, GenericAPIView, ListAPIView, RetrieveAPIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.request import Request
@@ -10,9 +10,9 @@ from rest_framework.response import Response
 from rest_framework.schemas.openapi import AutoSchema
 from rest_framework.views import APIView
 
-from ..exceptions import InvalidOperation, SubscriptionError
+from ..exceptions import InvalidOperation, PaymentError
 from ..functions import get_remaining_amount
-from ..models import Plan, Subscription, SubscriptionPayment, subscribe
+from ..models import Plan, Subscription, SubscriptionPayment
 from ..providers import Provider, get_provider, get_provider_by_codename, get_providers_fqns
 from .exceptions import BadRequest
 from .serializers import (
@@ -97,7 +97,6 @@ class SubscriptionSelectView(GenericAPIView):
     serializer_class = SubscriptionSelectSerializer
     schema = AutoSchema()
 
-    @transaction.atomic(durable=True)
     def post(self, request: Request, *args, **kwargs) -> Response:
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -108,14 +107,18 @@ class SubscriptionSelectView(GenericAPIView):
         provider = get_provider_by_codename(provider_codename)
 
         try:
-            payment, redirect_url = subscribe(
+            Subscription(user=request.user, plan=plan, quantity=quantity).run_validators()  # type: ignore[misc]
+            now_ = now()
+            payment, redirect_url = provider.charge(
                 user=request.user,  # type: ignore[arg-type]
                 plan=plan,
+                amount=plan.charge_amount,
                 quantity=quantity,
-                provider=provider,
+                since=now_,
+                until=now_ + plan.charge_period,
             )
-        except SubscriptionError as exc:
-            raise PermissionDenied(detail=str(exc)) from exc
+        except (ValidationError, PaymentError) as exc:
+            raise BadRequest(detail=str(exc)) from exc
 
         return Response(
             self.serializer_class(

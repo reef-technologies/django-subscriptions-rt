@@ -6,10 +6,16 @@ from django.utils.timezone import now
 from freezegun import freeze_time
 from more_itertools import one
 
-from subscriptions.v0.models import INFINITY, Subscription, SubscriptionPayment, get_trial_period
+from subscriptions.v0.models import INFINITY, Subscription, SubscriptionPayment
 from subscriptions.v0.tasks import check_unfinished_payments
 
 from ..helpers import days
+
+pytestmark = pytest.mark.skip(reason="feature removed")
+
+
+def get_trial_period(user, plan) -> relativedelta:
+    return relativedelta()
 
 
 @pytest.mark.django_db(databases=["actual_db"])

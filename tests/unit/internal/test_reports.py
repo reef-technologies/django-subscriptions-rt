@@ -2,7 +2,6 @@ from collections import Counter
 from datetime import timedelta
 
 import pytest
-from dateutil.relativedelta import relativedelta
 from django.utils.timezone import now
 from freezegun import freeze_time
 from more_itertools import partition
@@ -75,7 +74,9 @@ def test__reports__subscriptions__overlapping(reports_subscriptions, eps):
         subs[2],
     }
 
-    assert set(SubscriptionsReport(now_ + months(1) + timedelta(seconds=1), now_ + months(1) + days(2)).overlapping) == {subs[1]}
+    assert set(
+        SubscriptionsReport(now_ + months(1) + timedelta(seconds=1), now_ + months(1) + days(2)).overlapping
+    ) == {subs[1]}
     assert set(SubscriptionsReport(now_ + months(1) + days(8), now_ + months(1) + days(10)).overlapping) == set()
 
 
@@ -228,9 +229,13 @@ def test__reports__subscriptions__active__ages(reports_subscriptions):
     assert sorted(SubscriptionsReport(now_ + days(7), now_ + days(17)).get_active_ages()) == sorted(
         [timedelta(days=17), timedelta(days=10), timedelta(days=17)]
     )
-    assert sorted(SubscriptionsReport(now_ + months(1) + days(1), now_ + months(1) + days(6)).get_active_ages()) == [timedelta(days=30)]
+    assert sorted(SubscriptionsReport(now_ + months(1) + days(1), now_ + months(1) + days(6)).get_active_ages()) == [
+        timedelta(days=30)
+    ]
     with freeze_time(now_):
-        assert sorted(SubscriptionsReport(now_ + months(1) + days(1), now_ + months(1) + days(10)).get_active_ages()) == [timedelta(days=31)]
+        assert sorted(
+            SubscriptionsReport(now_ + months(1) + days(1), now_ + months(1) + days(10)).get_active_ages()
+        ) == [timedelta(days=31)]
 
 
 @pytest.mark.django_db(databases=["actual_db"])
