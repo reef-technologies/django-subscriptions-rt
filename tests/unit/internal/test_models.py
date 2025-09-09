@@ -1,11 +1,16 @@
+from datetime import timedelta
+from unittest.mock import patch
+from uuid import uuid4
+
 import pytest
 from dateutil.relativedelta import relativedelta
+from django.contrib.auth.models import User
 from django.forms import ValidationError
 from django.utils.timezone import now
 from moneyed import Money
 from more_itertools import one
 
-from subscriptions.v0.models import Subscription, SubscriptionPayment
+from subscriptions.v0.models import Plan, Subscription, SubscriptionPayment
 
 from ..helpers import days
 
@@ -146,6 +151,7 @@ def test__models__payment__no_sync_with_subscription(plan, user, dummy, subscrip
         user=user,
         plan=plan,
         subscription=subscription,
+        quantity=subscription.quantity,
         provider_codename=dummy.codename,
         provider_transaction_id="12345",
         status=SubscriptionPayment.Status.PENDING,
@@ -155,3 +161,167 @@ def test__models__payment__no_sync_with_subscription(plan, user, dummy, subscrip
     subscription = one(Subscription.objects.all())
     assert subscription.start == subsciption_initial_start
     assert subscription.end == subscription_initial_end
+
+
+@pytest.mark.django_db(databases=["actual_db"])
+def test__payment__clean_subscription__clean__called(plan, user, dummy):
+    with patch.object(SubscriptionPayment, "clean") as mock:
+        SubscriptionPayment.objects.create(
+            user=user,
+            plan=plan,
+            subscription=None,
+            provider_codename=dummy.codename,
+            provider_transaction_id="12345",
+            status=SubscriptionPayment.Status.PENDING,
+            paid_since=now(),
+            paid_until=now() + timedelta(days=7),
+        )
+    mock.assert_called_once()
+
+
+@pytest.mark.django_db(databases=["actual_db"])
+def test__payment__clean_subscription__clean__plan_mismatch(subscription, user, dummy):
+    other_plan = Plan.objects.create(name="Other plan")
+    with pytest.raises(ValidationError):
+        SubscriptionPayment.objects.create(
+            user=user,
+            plan=other_plan,
+            subscription=subscription,
+            quantity=subscription.quantity,
+            provider_codename=dummy.codename,
+            provider_transaction_id="12345",
+            status=SubscriptionPayment.Status.PENDING,
+            paid_since=now(),
+            paid_until=now() + timedelta(days=7),
+        )
+
+
+@pytest.mark.django_db(databases=["actual_db"])
+def test__payment__clean_subscription__clean__user_mismatch(subscription, user, dummy):
+    other_user = User.objects.create(username="other_user")
+    with pytest.raises(ValidationError):
+        SubscriptionPayment.objects.create(
+            user=other_user,
+            plan=subscription.plan,
+            quantity=subscription.quantity,
+            subscription=subscription,
+            provider_codename=dummy.codename,
+            provider_transaction_id="12345",
+            status=SubscriptionPayment.Status.PENDING,
+            paid_since=now(),
+            paid_until=now() + timedelta(days=7),
+        )
+
+
+@pytest.mark.django_db(databases=["actual_db"])
+def test__payment__clean_subscription__clean__quantity_mismatch(subscription, user, dummy):
+    with pytest.raises(ValidationError):
+        SubscriptionPayment.objects.create(
+            user=subscription.user,
+            plan=subscription.plan,
+            quantity=subscription.quantity + 1,
+            subscription=subscription,
+            provider_codename=dummy.codename,
+            provider_transaction_id="12345",
+            status=SubscriptionPayment.Status.PENDING,
+            paid_since=now(),
+            paid_until=now() + timedelta(days=7),
+        )
+
+
+@pytest.mark.django_db(databases=["actual_db"])
+def test__payment__clean_subscription__clean__period_mismatch(subscription, user, dummy):
+    with pytest.raises(ValidationError):
+        SubscriptionPayment.objects.create(
+            user=subscription.user,
+            plan=subscription.plan,
+            quantity=subscription.quantity,
+            subscription=subscription,
+            provider_codename=dummy.codename,
+            provider_transaction_id="12345",
+            status=SubscriptionPayment.Status.PENDING,
+            paid_since=subscription.end + timedelta(seconds=1),
+            paid_until=subscription.end + timedelta(days=7),
+        )
+
+    with pytest.raises(ValidationError):
+        SubscriptionPayment.objects.create(
+            user=subscription.user,
+            plan=subscription.plan,
+            quantity=subscription.quantity,
+            subscription=subscription,
+            provider_codename=dummy.codename,
+            provider_transaction_id="12345",
+            status=SubscriptionPayment.Status.PENDING,
+            paid_since=subscription.start - timedelta(days=7),
+            paid_until=subscription.start - timedelta(seconds=1),
+        )
+
+    SubscriptionPayment.objects.create(
+        user=subscription.user,
+        plan=subscription.plan,
+        quantity=subscription.quantity,
+        subscription=subscription,
+        provider_codename=dummy.codename,
+        provider_transaction_id="12345",
+        status=SubscriptionPayment.Status.PENDING,
+        paid_since=subscription.end,
+        paid_until=subscription.end + timedelta(days=7),
+    )
+
+
+@pytest.mark.django_db(databases=["actual_db"])
+def test__payment__clean_subscription__clean__bad_period(subscription, user, dummy):
+    with pytest.raises(ValidationError):
+        SubscriptionPayment.objects.create(
+            user=subscription.user,
+            plan=subscription.plan,
+            quantity=subscription.quantity,
+            subscription=subscription,
+            provider_codename=dummy.codename,
+            provider_transaction_id="12345",
+            status=SubscriptionPayment.Status.PENDING,
+            paid_since=subscription.end - timedelta(days=1),
+            paid_until=subscription.end - timedelta(days=2),
+        )
+
+
+@pytest.mark.django_db(databases=["actual_db"])
+def test__get_reference_payment(dummy, plan, user):
+    other_user = User.objects.create(username="other_user")
+
+    params = dict(
+        user=user,
+        plan=plan,
+        provider_codename=dummy.codename,
+        provider_transaction_id="12345",
+        status=SubscriptionPayment.Status.COMPLETED,
+        paid_since=now(),
+        paid_until=now() + timedelta(days=7),
+        created=now(),
+        updated=now(),
+    )
+
+    SubscriptionPayment.objects.bulk_create(
+        [
+            SubscriptionPayment(**params | {"uid": uuid4(), "user": other_user}),
+            SubscriptionPayment(**params | {"uid": uuid4(), "status": SubscriptionPayment.Status.ERROR}),
+            SubscriptionPayment(**params | {"uid": uuid4(), "status": SubscriptionPayment.Status.PENDING}),
+            SubscriptionPayment(**params | {"uid": uuid4(), "provider_codename": "other-provider"}),
+        ]
+    )
+
+    with pytest.raises(SubscriptionPayment.DoesNotExist):
+        SubscriptionPayment.get_reference_payment(user=user, provider_codename=dummy.codename)
+
+    SubscriptionPayment.objects.bulk_create(
+        [
+            SubscriptionPayment(**params | {"uid": uuid4(), "created": now() - timedelta(days=1)}),
+            SubscriptionPayment(**params | {"uid": uuid4()}),
+        ]
+    )
+    reference_payment = SubscriptionPayment.get_reference_payment(user=user, provider_codename=dummy.codename)
+    assert reference_payment.user == user
+    assert reference_payment.provider_codename == dummy.codename
+    assert reference_payment.status == SubscriptionPayment.Status.COMPLETED
+    assert reference_payment.created > now() - timedelta(minutes=1)

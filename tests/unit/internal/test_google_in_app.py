@@ -110,6 +110,7 @@ def test__google__dismiss_token(google_in_app, user, subscription, purchase_toke
         status=SubscriptionPayment.Status.COMPLETED,
         user=user,
         plan=subscription.plan,
+        quantity=subscription.quantity,
         subscription=subscription,
         paid_since=subscription.end,
         paid_until=subscription.prolong(),
@@ -121,6 +122,7 @@ def test__google__dismiss_token(google_in_app, user, subscription, purchase_toke
         status=SubscriptionPayment.Status.COMPLETED,
         user=user,
         plan=subscription.plan,
+        quantity=subscription.quantity,
         subscription=subscription,
         paid_since=subscription.end,
         paid_until=subscription.prolong(),
@@ -441,11 +443,12 @@ def test__google__subscriptions__cancel__google(
         user=user,
         plan=subscription.plan,
         subscription=subscription,
+        quantity=subscription.quantity,
         provider_codename=google_in_app.codename,
         provider_transaction_id="12345",
         status=SubscriptionPayment.Status.PENDING,
-        paid_since=now() + days(10),
-        paid_until=now() + days(40),
+        paid_since=subscription.end,
+        paid_until=subscription.end + days(30),
     )
 
     assert user.subscriptions.active().count() == 1
@@ -479,18 +482,21 @@ def test__google__subscriptions__voided_purchase(
     google_rtdn_voided_purchase_notification,
     purchase_token,
 ):
-    subscription.end = now() + days(10)
+    now_ = now()
+
+    subscription.end = now_ + days(10)
     subscription.save()
 
     SubscriptionPayment.objects.create(
         user=user,
         plan=subscription.plan,
+        quantity=subscription.quantity,
         subscription=subscription,
         provider_codename=google_in_app.codename,
         provider_transaction_id=purchase_token,
         status=SubscriptionPayment.Status.PENDING,
-        paid_since=now() + days(10),
-        paid_until=now() + days(40),
+        paid_since=now_ + days(10),
+        paid_until=now_ + days(40),
     )
 
     assert user.subscriptions.active().count() == 1

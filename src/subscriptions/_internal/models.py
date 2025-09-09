@@ -329,11 +329,6 @@ class Subscription(models.Model):
             super().save(*args, **kwargs)
         self.adjust_default_subscription()
 
-    def stop(self) -> None:
-        self.end = now()
-        self.auto_prolong = False
-        self.save(update_fields=["end", "auto_prolong"])
-
     def prolong(self) -> datetime:
         """Returns next uncovered charge_date or subscription.max_end"""
 
@@ -418,31 +413,11 @@ class Subscription(models.Model):
 
             yield charge_date
 
-    def get_reference_payment(
-        self,
-        lookback: timedelta = timedelta(days=90),
-    ) -> "SubscriptionPayment":
-        """Find a payment to take credentials from for automatic charging"""
-
-        last_successful_payment = (
-            SubscriptionPayment.objects.filter(
-                status=SubscriptionPayment.Status.COMPLETED,
-                user_id=self.user.pk,
-                updated__gte=now() - lookback,
-            )
-            .order_by("updated")
-            .last()
-        )
-        if not last_successful_payment:
-            raise SubscriptionPayment.DoesNotExist
-
-        return last_successful_payment
-
     def charge_automatically(self) -> "SubscriptionPayment":
         from .providers import get_provider_by_codename
 
         try:
-            reference_payment = self.get_reference_payment()
+            reference_payment = SubscriptionPayment.get_reference_payment(user=self.user, provider_codename=None)
         except SubscriptionPayment.DoesNotExist:
             raise PaymentError("There is no previous successful payment to take credentials from")
 
@@ -637,7 +612,7 @@ class SubscriptionPayment(AbstractTransaction):
             f"{self.user} {self.amount} from={self.paid_since} until={self.paid_until}"
         )
 
-    def clean_subscription(self) -> None:
+    def clean(self) -> None:
         if not self.subscription:
             return
 
@@ -649,10 +624,6 @@ class SubscriptionPayment(AbstractTransaction):
 
         if self.subscription.quantity != self.quantity:
             raise ValidationError("Subscription quantity does not match payment quantity")
-
-    def clean_paid_until(self) -> None:
-        if not self.subscription:
-            return
 
         if self.paid_until < self.subscription.start or self.paid_since > self.subscription.end:
             raise ValidationError("Payment period does not overlap with subscription period")
@@ -697,17 +668,15 @@ class SubscriptionPayment(AbstractTransaction):
         self.metadata = value.dict()
 
     @classmethod
-    def get_reference_payment(cls, user: AbstractBaseUser, provider_codename: str) -> Self:
-        payment = (
-            cls.objects.filter(
-                user=user,
-                provider_codename=provider_codename,
-                status=SubscriptionPayment.Status.COMPLETED,
-            )
-            .order_by("created")
-            .last()
-        )
-        if not payment:
+    def get_reference_payment(cls, user: AbstractBaseUser, provider_codename: str | None) -> Self:
+        params = {
+            "user": user,
+            "status": SubscriptionPayment.Status.COMPLETED,
+        }
+        if provider_codename:
+            params["provider_codename"] = provider_codename
+
+        if not (payment := cls.objects.filter(**params).order_by("created").last()):
             raise cls.DoesNotExist
         return payment
 

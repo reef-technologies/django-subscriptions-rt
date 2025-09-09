@@ -318,6 +318,7 @@ def test__charge_automatically(subscription, dummy):
             provider_codename=dummy.codename,
             provider_transaction_id="0000",
             amount=subscription.plan.charge_amount,
+            quantity=subscription.quantity,
             user=subscription.user,
             plan=subscription.plan,
             subscription=subscription,

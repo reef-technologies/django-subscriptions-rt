@@ -345,6 +345,7 @@ def test__default_plan__subscription_payment__num_subscriptions(user, default_pl
         user=user,
         subscription=subscription,
         plan=plan,
+        quantity=subscription.quantity,
         status=SubscriptionPayment.Status.COMPLETED,
         paid_since=subscription.end,
         paid_until=subscription.prolong(),

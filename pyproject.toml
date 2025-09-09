@@ -58,6 +58,7 @@ default_plan = [
 
 [dependency-groups]
 test = [
+    "coverage>=7.10.6",
     "freezegun>=1.5.2",
     "ipdb>=0.13.13",
     "psycopg2-binary>=2.9.10",
@@ -188,3 +189,9 @@ module = [
     "googleapiclient.discovery",
 ]
 ignore_missing_imports = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "def __str__",
+    "def __init__",
+]

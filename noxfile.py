@@ -22,6 +22,7 @@ MAIN_BRANCH_NAME = "master"
 PYTHON_VERSIONS = ci["jobs"]["test"]["strategy"]["matrix"]["python-version"]
 DJANGO_VERSIONS = ci["jobs"]["test"]["strategy"]["matrix"]["django-version"]
 PYTHON_DEFAULT_VERSION = PYTHON_VERSIONS[-1]
+MIN_COVERAGE = 80
 nox.options.default_venv_backend = "uv"
 nox.options.stop_on_first_error = True
 nox.options.reuse_existing_virtualenvs = not CI
@@ -151,7 +152,11 @@ def test(session, django: str):
         # we cannot specify this rule in pyproject's dependencies section so
         # instead we don't pin djangorestframework version there
         session.install("djangorestframework<3.15")
-    session.run("pytest", "-vv", *session.posargs)  # "-n", "auto", *session.posargs)
+    session.run("coverage", "run", "--source", "subscriptions._internal", "-m", "pytest", "-vv", *session.posargs)
+    if CI:
+        session.run("coverage", "report", "--fail-under", str(MIN_COVERAGE))
+    else:
+        session.run("coverage", "html", "-d", tempfile.gettempdir())
 
 
 @nox.session(python=PYTHON_DEFAULT_VERSION)

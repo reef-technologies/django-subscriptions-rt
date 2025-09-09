@@ -74,7 +74,10 @@ class SubscriptionSerializer(ModelSerializer):
 
     def get_provider(self, subscription: Subscription) -> str | None:
         with suppress(SubscriptionPayment.DoesNotExist):
-            reference_payment = subscription.get_reference_payment()
+            reference_payment = SubscriptionPayment.get_reference_payment(
+                user=subscription.user,
+                provider_codename=None,
+            )
             return reference_payment.provider_codename
 
 

@@ -4,7 +4,6 @@ from datetime import timedelta
 from unittest import mock
 
 import pytest
-from django.utils.timezone import now
 from freezegun import freeze_time
 from more_itertools import spy
 
@@ -82,6 +81,7 @@ def test__tasks__charge_expiring__not_charging_twice_if_pending_exists(
             provider_codename=payment.provider_codename,
             subscription=subscription,
             plan=subscription.plan,
+            quantity=subscription.quantity,
             user=subscription.user,
             status=SubscriptionPayment.Status.PENDING,
             paid_since=payment.paid_since,
@@ -284,61 +284,66 @@ def test__tasks__charge_expiring__payment_failure(
 def test__tasks__notify_stuck_pending_payments(subscription, user, caplog, dummy):
     min_age = days(3)
 
-    with freeze_time(now() - min_age - days(10)):
+    with freeze_time(subscription.end - min_age - days(10)):
         _ = SubscriptionPayment.objects.create(
             provider_codename=dummy,
             plan=subscription.plan,
+            quantity=subscription.quantity,
             user=user,
             status=SubscriptionPayment.Status.PENDING,
-            paid_since=now(),
-            paid_until=now() + subscription.plan.charge_period,
+            paid_since=subscription.end,
+            paid_until=subscription.end + subscription.plan.charge_period,
         )
 
-    with freeze_time(now() - min_age - days(10)):
+    with freeze_time(subscription.end - min_age - days(10)):
         very_old_payment = SubscriptionPayment.objects.create(
             provider_codename=dummy,
             subscription=subscription,
             plan=subscription.plan,
+            quantity=subscription.quantity,
             user=user,
             status=SubscriptionPayment.Status.PENDING,
-            paid_since=now(),
-            paid_until=now() + subscription.plan.charge_period,
+            paid_since=subscription.end,
+            paid_until=subscription.end + subscription.plan.charge_period,
         )
 
-    with freeze_time(now() - min_age - timedelta(seconds=1)):
+    with freeze_time(subscription.end - min_age - timedelta(seconds=1)):
         slightly_old_payment = SubscriptionPayment.objects.create(
             provider_codename=dummy,
             subscription=subscription,
             plan=subscription.plan,
+            quantity=subscription.quantity,
             user=user,
             status=SubscriptionPayment.Status.PENDING,
-            paid_since=now(),
-            paid_until=now() + subscription.plan.charge_period,
+            paid_since=subscription.end,
+            paid_until=subscription.end + subscription.plan.charge_period,
         )
 
-    with freeze_time(now() - min_age + timedelta(seconds=30)):
+    with freeze_time(subscription.end - min_age + timedelta(seconds=30)):
         _ = SubscriptionPayment.objects.create(
             provider_codename=dummy,
             subscription=subscription,
             plan=subscription.plan,
+            quantity=subscription.quantity,
             user=user,
             status=SubscriptionPayment.Status.PENDING,
-            paid_since=now(),
-            paid_until=now() + subscription.plan.charge_period,
+            paid_since=subscription.end,
+            paid_until=subscription.end + subscription.plan.charge_period,
         )
 
-    with freeze_time(now()):
+    with freeze_time(subscription.end):
         _ = SubscriptionPayment.objects.create(
             provider_codename=dummy,
             subscription=subscription,
             plan=subscription.plan,
+            quantity=subscription.quantity,
             user=user,
             status=SubscriptionPayment.Status.PENDING,
-            paid_since=now(),
-            paid_until=now() + subscription.plan.charge_period,
+            paid_since=subscription.end,
+            paid_until=subscription.end + subscription.plan.charge_period,
         )
 
-    with caplog.at_level(logging.ERROR):
+    with caplog.at_level(logging.ERROR), freeze_time(subscription.end):
         notify_stuck_pending_payments(older_than=min_age)
         assert len(caplog.records) == 2
         assert caplog.records[0].message == f"Payment stuck in pending state: {very_old_payment}"
